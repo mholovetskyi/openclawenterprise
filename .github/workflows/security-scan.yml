@@ -32,12 +32,16 @@ jobs:
           languages: ${{ matrix.language }}
           queries: security-extended,security-and-quality
 
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Autobuild
         uses: github/codeql-action/autobuild@v3
@@ -47,19 +51,26 @@ jobs:
         with:
           category: "/language:${{ matrix.language }}"
 
-  # ── npm audit ─────────────────────────────────────────────────────────
+  # ── pnpm audit ────────────────────────────────────────────────────────
   npm-audit:
-    name: npm audit
+    name: pnpm audit
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-      - run: npm ci
-      - name: Run npm audit
-        run: npm audit --audit-level=high
+          cache: "pnpm"
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Run pnpm audit
+        run: pnpm audit --audit-level=high
 
   # ── OpenClaw enterprise skill SAST ───────────────────────────────────
   skill-sast:
@@ -71,12 +82,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
+          cache: "pnpm"
 
-      - run: npm ci
+      - run: pnpm install --frozen-lockfile
 
       - name: Scan changed skills
         run: |
@@ -86,7 +101,7 @@ jobs:
             exit 0
           fi
           echo "Scanning changed skills: $CHANGED"
-          npx tsx scripts/scan-skills.ts $CHANGED
+          pnpm exec tsx scripts/scan-skills.ts $CHANGED
 
   # ── Secret scanning ───────────────────────────────────────────────────
   secret-scan:
