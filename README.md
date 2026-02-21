@@ -1,9 +1,10 @@
-# 🦞 OpenClaw — Personal AI Assistant
+# 🦞 OpenClaw — Personal AI Assistant & Enterprise Platform
 
 <p align="center">
     <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/assets/openclaw-enterprise-logo.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text-dark.png">
-        <img src="https://raw.githubusercontent.com/openclaw/openclaw/main/docs/assets/openclaw-logo-text.png" alt="OpenClaw" width="500">
+        <img src="docs/assets/openclaw-enterprise-logo.png" alt="OpenClaw Enterprise" width="600">
     </picture>
 </p>
 
@@ -18,10 +19,26 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
 
-**OpenClaw** is a _personal AI assistant_ you run on your own devices.
+**OpenClaw** is a _personal AI assistant_ you run on your own devices — and the **enterprise-grade AI agent platform** that scales from one developer to your entire organization.
+
 It answers you on the channels you already use (WhatsApp, Telegram, Slack, Discord, Google Chat, Signal, iMessage, Microsoft Teams, WebChat), plus extension channels like BlueBubbles, Matrix, Zalo, and Zalo Personal. It can speak and listen on macOS/iOS/Android, and can render a live Canvas you control. The Gateway is just the control plane — the product is the assistant.
 
-If you want a personal, single-user assistant that feels local, fast, and always-on, this is it.
+If you want a personal, single-user assistant that feels local, fast, and always-on, this is it. If you need to deploy AI agents across your entire company with zero-trust security, RBAC, audit trails, and Kubernetes — [this is that too](#enterprise-deployment).
+
+## One-command install
+
+```bash
+# macOS / Linux
+curl -fsSL https://get.openclaw.dev | bash
+
+# Windows (PowerShell)
+irm https://get.openclaw.dev/install.ps1 | iex
+
+# npm (all platforms)
+npm install -g openclaw@latest && openclaw onboard
+```
+
+> **Enterprise mode:** `curl -fsSL https://get.openclaw.dev | OPENCLAW_ENTERPRISE=1 bash`
 
 [Website](https://openclaw.ai) · [Docs](https://docs.openclaw.ai) · [Vision](VISION.md) · [DeepWiki](https://deepwiki.com/openclaw/openclaw) · [Getting Started](https://docs.openclaw.ai/start/getting-started) · [Updating](https://docs.openclaw.ai/install/updating) · [Showcase](https://docs.openclaw.ai/start/showcase) · [FAQ](https://docs.openclaw.ai/start/faq) · [Wizard](https://docs.openclaw.ai/start/wizard) · [Nix](https://github.com/openclaw/nix-openclaw) · [Docker](https://docs.openclaw.ai/install/docker) · [Discord](https://discord.gg/clawd)
 
@@ -134,6 +151,105 @@ Run `openclaw doctor` to surface risky/misconfigured DM policies.
 - **[First-class tools](https://docs.openclaw.ai/tools)** — browser, canvas, nodes, cron, sessions, and Discord/Slack actions.
 - **[Companion apps](https://docs.openclaw.ai/platforms/macos)** — macOS menu bar app + iOS/Android [nodes](https://docs.openclaw.ai/nodes).
 - **[Onboarding](https://docs.openclaw.ai/start/wizard) + [skills](https://docs.openclaw.ai/tools/skills)** — wizard-driven setup with bundled/managed/workspace skills.
+
+## Enterprise deployment
+
+OpenClaw ships zero-trust enterprise features as **opt-in modules** — they add no startup cost to the default community install (all enterprise code is lazy-loaded behind `enterprise.enabled: true`).
+
+### Features
+
+| Feature | Community | Enterprise |
+|---|---|---|
+| Multi-channel AI assistant | ✅ | ✅ |
+| Local-first gateway | ✅ | ✅ |
+| Skills platform | ✅ | ✅ |
+| **Zero-trust gateway** (loopback by default, explicit warning on LAN) | ✅ | ✅ |
+| **AES-256-GCM encrypted secrets** | — | ✅ |
+| **HashiCorp Vault / AWS SM / GCP SM / Azure KV** | — | ✅ |
+| **IAM / RBAC** (roles, groups, agent service accounts) | — | ✅ |
+| **JWT auth** (RS256/HS256, API keys, token revocation) | — | ✅ |
+| **Tamper-evident audit log** (hash chain, SQLite WAL) | — | ✅ |
+| **Prompt injection defenses** (Unicode normalization, trust boundary wrapping) | — | ✅ |
+| **Runtime guardrails** (credential harvest, reverse shell, PII detection) | — | ✅ |
+| **Prometheus metrics** (`/metrics`, `/healthz`, `/readyz`, `/livez`) | — | ✅ |
+| **Multi-tenancy** (AsyncLocalStorage, per-tenant rate limits) | — | ✅ |
+| **Distributed cluster** (Redis message bus, node heartbeats) | — | ✅ |
+| **Skill code signing** (Ed25519, directory hash, manifest verification) | — | ✅ |
+| **Enterprise SAST** (14 rules, CWE/OWASP tags, risk score) | — | ✅ |
+| **Kubernetes Helm chart** (HPA, PDB, NetworkPolicy, ServiceMonitor) | — | ✅ |
+| **GitHub Actions integration** | — | ✅ |
+
+### Quick enterprise start
+
+```yaml
+# ~/.openclaw/config.yaml
+enterprise:
+  enabled: true
+
+  secrets:
+    backend: vault          # file | vault | aws-sm | gcp-sm | azure-kv
+    vault:
+      address: https://vault.example.com
+      authMethod: kubernetes
+
+  iam:
+    enabled: true
+    jwt:
+      algorithm: RS256     # auto-generates key pair on first start
+
+  audit:
+    enabled: true          # writes tamper-evident log to ~/.openclaw/audit.db
+
+  monitoring:
+    enabled: true          # exposes /metrics (Prometheus) + /healthz
+
+gateway:
+  bind: loopback           # NEVER binds 0.0.0.0 silently
+  auth:
+    mode: jwt
+```
+
+### Kubernetes
+
+```bash
+# Add the Helm repo
+helm repo add openclaw https://charts.openclaw.dev
+helm repo update
+
+# Install community edition
+helm install openclaw openclaw/openclaw
+
+# Install enterprise (HA, 3 replicas)
+helm install openclaw openclaw/openclaw \
+  -f k8s/examples/enterprise-ha.yaml \
+  --set enterprise.enabled=true \
+  --set enterprise.iam.enabled=true \
+  --set enterprise.audit.enabled=true \
+  --set enterprise.monitoring.enabled=true
+```
+
+Full Helm chart reference: [`k8s/helm/openclaw/`](k8s/helm/openclaw/) · [Enterprise HA values](k8s/examples/enterprise-ha.yaml)
+
+### GitHub Actions
+
+```yaml
+- uses: openclaw/openclaw-action@v1
+  with:
+    task: "Review this PR for security issues and post a summary"
+    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Full reference: [`actions/openclaw-action/`](actions/openclaw-action/)
+
+### Enterprise docs
+
+- [Security hardening](docs/enterprise/security.md)
+- [IAM & RBAC](docs/enterprise/iam.md)
+- [Audit logging & compliance](docs/enterprise/audit.md)
+- [Kubernetes deployment](docs/enterprise/kubernetes.md)
+- [Secret management](docs/enterprise/secrets.md)
+
+---
 
 ## Star History
 

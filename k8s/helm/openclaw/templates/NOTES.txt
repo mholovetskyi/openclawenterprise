@@ -1,0 +1,55 @@
+🦞 OpenClaw Enterprise has been deployed!
+
+1. Get the gateway URL:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "openclaw.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo ws://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch its status by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "openclaw.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "openclaw.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo ws://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "openclaw.selectorLabels" . | replace ": " "=" | replace "\n" "," }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit ws://127.0.0.1:8080"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. Check pod status:
+   kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "openclaw.selectorLabels" . | replace ": " "=" | replace "\n" "," }}"
+
+3. View logs:
+   kubectl logs --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "openclaw.name" . }}" -f
+
+{{- if .Values.enterprise.enabled }}
+
+4. Enterprise features enabled:
+{{- if ne .Values.enterprise.secrets.backend "none" }}
+   ✓ Secrets backend: {{ .Values.enterprise.secrets.backend }}
+{{- end }}
+{{- if .Values.enterprise.iam.enabled }}
+   ✓ IAM / RBAC
+{{- end }}
+{{- if .Values.enterprise.audit.enabled }}
+   ✓ Audit logging
+{{- end }}
+{{- if .Values.enterprise.monitoring.enabled }}
+   ✓ Prometheus metrics at /metrics
+{{- end }}
+{{- if .Values.enterprise.tenancy.enabled }}
+   ✓ Multi-tenancy
+{{- end }}
+{{- if .Values.enterprise.cluster.enabled }}
+   ✓ Cluster mode
+{{- end }}
+{{- end }}
+
+Docs: https://github.com/openclaw/openclaw/tree/main/docs/enterprise

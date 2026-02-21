@@ -1,0 +1,189 @@
+name: "OpenClaw AI Agent"
+description: "Run OpenClaw AI agent tasks in your GitHub Actions workflow"
+author: "OpenClaw"
+branding:
+  icon: "cpu"
+  color: "blue"
+
+inputs:
+  task:
+    description: "The task to run (e.g. 'review this PR', 'run security scan', 'update docs')"
+    required: false
+    default: ""
+
+  prompt:
+    description: "Alias for task"
+    required: false
+    default: ""
+
+  skill:
+    description: "Specific skill to invoke (e.g. 'code-review', 'security-scan', 'test-writer')"
+    required: false
+    default: ""
+
+  config:
+    description: "Path to openclaw config.yaml (relative to repo root)"
+    required: false
+    default: ".openclaw/config.yaml"
+
+  version:
+    description: "OpenClaw version to install (default: latest)"
+    required: false
+    default: "latest"
+
+  anthropic-api-key:
+    description: "Anthropic API key (use secrets.ANTHROPIC_API_KEY)"
+    required: false
+    default: ""
+
+  openai-api-key:
+    description: "OpenAI API key (use secrets.OPENAI_API_KEY)"
+    required: false
+    default: ""
+
+  working-directory:
+    description: "Working directory for the agent"
+    required: false
+    default: "."
+
+  output-file:
+    description: "Write agent output to this file"
+    required: false
+    default: ""
+
+  fail-on-error:
+    description: "Fail the workflow if the agent returns an error"
+    required: false
+    default: "true"
+
+  timeout-minutes:
+    description: "Maximum minutes to allow the agent to run"
+    required: false
+    default: "10"
+
+  enterprise-secrets-backend:
+    description: "Enterprise secrets backend (file|vault|aws-sm|gcp-sm|none)"
+    required: false
+    default: "none"
+
+outputs:
+  result:
+    description: "Agent output (stdout)"
+    value: ${{ steps.run-agent.outputs.result }}
+
+  exit-code:
+    description: "Agent process exit code"
+    value: ${{ steps.run-agent.outputs.exit-code }}
+
+  output-file:
+    description: "Path to output file (if output-file input was set)"
+    value: ${{ steps.run-agent.outputs.output-file }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Install OpenClaw
+      shell: bash
+      run: |
+        VERSION="${{ inputs.version }}"
+        if [ "$VERSION" = "latest" ]; then
+          npm install -g openclaw --silent
+        else
+          npm install -g "openclaw@${VERSION}" --silent
+        fi
+        echo "OpenClaw $(openclaw --version) installed"
+
+    - name: Configure OpenClaw
+      shell: bash
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+      run: |
+        CONFIG_PATH="${{ inputs.config }}"
+
+        # Use repo config if it exists
+        if [ -f "$GITHUB_WORKSPACE/$CONFIG_PATH" ]; then
+          echo "Using config from $CONFIG_PATH"
+          mkdir -p ~/.openclaw
+          cp "$GITHUB_WORKSPACE/$CONFIG_PATH" ~/.openclaw/config.yaml
+        else
+          # Generate minimal CI config
+          mkdir -p ~/.openclaw
+          cat > ~/.openclaw/config.yaml <<'YAML'
+        gateway:
+          bind: loopback
+          auth:
+            mode: none
+          port: 3284
+        agent:
+          # CI mode: non-interactive, structured output
+          ci: true
+          timeout: ${{ inputs.timeout-minutes }}m
+        YAML
+        fi
+
+        # Write API keys as environment-based secrets
+        if [ -n "$ANTHROPIC_API_KEY" ]; then
+          mkdir -p ~/.openclaw
+          echo "anthropic_api_key: env://ANTHROPIC_API_KEY" >> ~/.openclaw/config.yaml
+        fi
+        if [ -n "$OPENAI_API_KEY" ]; then
+          echo "openai_api_key: env://OPENAI_API_KEY" >> ~/.openclaw/config.yaml
+        fi
+
+    - name: Run OpenClaw agent
+      id: run-agent
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        OPENAI_API_KEY: ${{ inputs.openai-api-key }}
+        OPENCLAW_CI: "1"
+        OPENCLAW_NO_COLOR: "1"
+      run: |
+        TASK="${{ inputs.task }}${{ inputs.prompt }}"
+        SKILL="${{ inputs.skill }}"
+        OUTPUT_FILE="${{ inputs.output-file }}"
+        FAIL_ON_ERROR="${{ inputs.fail-on-error }}"
+        TIMEOUT="${{ inputs.timeout-minutes }}"
+
+        CMD="openclaw run --ci --timeout=${TIMEOUT}m"
+
+        if [ -n "$SKILL" ]; then
+          CMD="$CMD --skill=$SKILL"
+        fi
+
+        if [ -n "$TASK" ]; then
+          CMD="$CMD --task=$(printf '%q' "$TASK")"
+        fi
+
+        if [ -n "$OUTPUT_FILE" ]; then
+          CMD="$CMD --output=$OUTPUT_FILE"
+        fi
+
+        echo "Running: $CMD"
+        set +e
+        OUTPUT=$($CMD 2>&1)
+        EXIT_CODE=$?
+        set -e
+
+        echo "result<<EOF" >> "$GITHUB_OUTPUT"
+        echo "$OUTPUT" >> "$GITHUB_OUTPUT"
+        echo "EOF" >> "$GITHUB_OUTPUT"
+        echo "exit-code=$EXIT_CODE" >> "$GITHUB_OUTPUT"
+
+        if [ -n "$OUTPUT_FILE" ] && [ -f "$OUTPUT_FILE" ]; then
+          echo "output-file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+        fi
+
+        echo "$OUTPUT"
+
+        if [ "$FAIL_ON_ERROR" = "true" ] && [ "$EXIT_CODE" -ne 0 ]; then
+          echo "Agent exited with code $EXIT_CODE"
+          exit $EXIT_CODE
+        fi

@@ -1,0 +1,311 @@
+/**
+ * Enterprise Secret Management
+ *
+ * Provides a unified interface for secret storage with pluggable backends:
+ *   - file     : AES-256-GCM encrypted local file (default)
+ *   - vault    : HashiCorp Vault (KV v2)
+ *   - aws-sm   : AWS Secrets Manager
+ *   - gcp-sm   : GCP Secret Manager
+ *   - azure-kv : Azure Key Vault
+ *   - env      : Environment variables (read-only, for containers)
+ *
+ * Secret references in config:
+ *   vault://secret/openclaw/openai#api_key
+ *   aws-sm://openclaw/openai-key
+ *   gcp-sm://projects/123/secrets/openai-key
+ *   encrypted://base64blob
+ *   env://OPENAI_API_KEY
+ */
+
+import path from "node:path";
+import os from "node:os";
+import { randomBytes } from "node:crypto";
+import fs from "node:fs";
+import type { OpenClawConfig } from "../../config/config.js";
+
+export type SecretMetadata = {
+  description?: string;
+  tags?: Record<string, string>;
+  createdAt?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+};
+
+export interface SecretBackend {
+  readonly name: string;
+  get(ref: string): Promise<string | null>;
+  set(ref: string, value: string, meta?: SecretMetadata): Promise<void>;
+  delete(ref: string): Promise<void>;
+  list(): Promise<string[]>;
+  exists(ref: string): Promise<boolean>;
+  shutdown(): Promise<void>;
+}
+
+export type SecretsHandle = {
+  backend: SecretBackend;
+  shutdown: () => Promise<void>;
+};
+
+let activeBackend: SecretBackend | null = null;
+
+// ── Reference parsing ─────────────────────────────────────────────────────────
+
+const SCHEME_RE = /^(vault|aws-sm|gcp-sm|azure-kv|encrypted|env):\/\/(.+)$/;
+
+export type ParsedSecretRef = {
+  scheme: "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "encrypted" | "env" | "plain";
+  path: string;
+  field?: string;
+};
+
+export function parseSecretRef(value: string): ParsedSecretRef {
+  const match = value.match(SCHEME_RE);
+  if (!match) return { scheme: "plain", path: value };
+  const scheme = match[1] as ParsedSecretRef["scheme"];
+  const rest = match[2];
+  const hashIdx = rest.lastIndexOf("#");
+  if (hashIdx !== -1) {
+    return { scheme, path: rest.slice(0, hashIdx), field: rest.slice(hashIdx + 1) };
+  }
+  return { scheme, path: rest };
+}
+
+/**
+ * Resolve a config value that may contain a secret reference.
+ * Returns the resolved plaintext or the original value if not a reference.
+ */
+export async function resolveSecretValue(value: string): Promise<string> {
+  const ref = parseSecretRef(value);
+
+  if (ref.scheme === "plain") {
+    return value;
+  }
+
+  if (ref.scheme === "env") {
+    const envValue = process.env[ref.path];
+    if (!envValue) {
+      throw new Error(`Secret reference env://${ref.path}: environment variable not set`);
+    }
+    return envValue;
+  }
+
+  if (ref.scheme === "encrypted") {
+    if (!activeBackend || activeBackend.name !== "file") {
+      throw new Error("encrypted:// references require the file backend to be active");
+    }
+    return (await activeBackend.get(ref.path)) ?? "";
+  }
+
+  if (!activeBackend) {
+    throw new Error(`Secret backend not initialized (reference: ${value})`);
+  }
+
+  const raw = await activeBackend.get(ref.path);
+  if (raw === null) {
+    throw new Error(`Secret not found: ${value}`);
+  }
+
+  // If the backend stores JSON and a field is specified, parse it
+  if (ref.field) {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      const fieldValue = parsed[ref.field];
+      if (fieldValue === undefined) {
+        throw new Error(`Field "${ref.field}" not found in secret ${ref.path}`);
+      }
+      return fieldValue;
+    } catch (err) {
+      if ((err as Error).message.startsWith('Field "')) throw err;
+      throw new Error(`Secret ${ref.path} is not valid JSON (needed to extract field)`);
+    }
+  }
+
+  return raw;
+}
+
+// ── Initialization ─────────────────────────────────────────────────────────────
+
+export async function initSecretsBackend(cfg: OpenClawConfig): Promise<SecretsHandle> {
+  const secretsCfg = cfg.enterprise?.secrets;
+  const backendType = secretsCfg?.backend ?? "file";
+
+  let backend: SecretBackend;
+
+  switch (backendType) {
+    case "vault": {
+      const { createVaultBackend } = await import("./backend-vault.js");
+      const vaultCfg = secretsCfg?.vault;
+      if (!vaultCfg?.address) {
+        throw new Error("enterprise.secrets.vault.address is required for vault backend");
+      }
+      backend = createVaultBackend({
+        address: vaultCfg.address,
+        token: vaultCfg.token ?? process.env.VAULT_TOKEN,
+        mount: vaultCfg.mount,
+        prefix: vaultCfg.prefix,
+        appRole: vaultCfg.appRole,
+        k8sAuth: vaultCfg.k8sAuth,
+        namespace: vaultCfg.namespace,
+      });
+      break;
+    }
+
+    case "aws-sm": {
+      const { createAwsSmBackend } = await import("./backend-aws-sm.js");
+      const awsCfg = secretsCfg?.awsSm;
+      backend = createAwsSmBackend({
+        region: awsCfg?.region ?? process.env.AWS_REGION ?? "us-east-1",
+        prefix: awsCfg?.prefix,
+      });
+      break;
+    }
+
+    case "gcp-sm": {
+      const { createGCPSecretManagerBackend } = await import("./backend-gcp-sm.js");
+      backend = await createGCPSecretManagerBackend(cfg);
+      break;
+    }
+
+    case "azure-kv": {
+      const { createAzureKeyVaultBackend } = await import("./backend-azure-kv.js");
+      backend = await createAzureKeyVaultBackend(cfg);
+      break;
+    }
+
+    case "file":
+    default: {
+      const { createFileBackend } = await import("./backend-file.js");
+      const key = await resolveFileBackendKey(cfg);
+      const storePath =
+        secretsCfg?.filePath ??
+        path.join(os.homedir(), ".openclaw", "secrets.enc");
+      backend = createFileBackend({ storePath, key });
+      await migrateLegacyCredentials(backend, cfg);
+      break;
+    }
+  }
+
+  activeBackend = backend;
+
+  return {
+    backend,
+    shutdown: async () => {
+      await backend.shutdown();
+      activeBackend = null;
+    },
+  };
+}
+
+export function getSecretsBackend(): SecretBackend | null {
+  return activeBackend;
+}
+
+// ── Master key resolution ─────────────────────────────────────────────────────
+
+async function resolveFileBackendKey(cfg: OpenClawConfig): Promise<Buffer> {
+  // 1. Try OS keychain (macOS Keychain, Windows DPAPI, Linux libsecret)
+  const keychainKey = await readFromKeychain();
+  if (keychainKey) return keychainKey;
+
+  // 2. Try env var OPENCLAW_MASTER_KEY (base64)
+  const envKey = process.env.OPENCLAW_MASTER_KEY;
+  if (envKey) {
+    const buf = Buffer.from(envKey, "base64");
+    if (buf.length === 32) return buf;
+  }
+
+  // 3. Generate a new key and store in keychain (first run)
+  const newKey = randomBytes(32);
+  await writeToKeychain(newKey);
+  return newKey;
+}
+
+async function readFromKeychain(): Promise<Buffer | null> {
+  if (process.platform === "darwin") {
+    try {
+      const { execFileSync } = await import("node:child_process");
+      const raw = execFileSync(
+        "security",
+        ["find-generic-password", "-s", "openclaw-master-key", "-w"],
+        { encoding: "utf8", timeout: 5000 },
+      ).trim();
+      const buf = Buffer.from(raw, "base64");
+      if (buf.length === 32) return buf;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function writeToKeychain(key: Buffer): Promise<void> {
+  if (process.platform === "darwin") {
+    try {
+      const { execFileSync } = await import("node:child_process");
+      execFileSync(
+        "security",
+        [
+          "add-generic-password",
+          "-U",
+          "-s", "openclaw-master-key",
+          "-a", "openclaw",
+          "-w", key.toString("base64"),
+        ],
+        { encoding: "utf8", timeout: 5000 },
+      );
+    } catch {
+      // Best-effort — fall back to a local key file
+      const keyPath = path.join(os.homedir(), ".openclaw", ".master-key");
+      fs.writeFileSync(keyPath, key.toString("base64"), { mode: 0o600 });
+    }
+  } else {
+    // Linux / Windows: write to ~/.openclaw/.master-key with 0o600
+    const keyPath = path.join(os.homedir(), ".openclaw", ".master-key");
+    const dir = path.dirname(keyPath);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(keyPath, key.toString("base64"), { mode: 0o600 });
+  }
+}
+
+// ── Legacy credential migration ───────────────────────────────────────────────
+
+async function migrateLegacyCredentials(
+  backend: SecretBackend,
+  _cfg: OpenClawConfig,
+): Promise<void> {
+  const legacyPaths = [
+    path.join(os.homedir(), ".openclaw", "credentials"),
+    path.join(os.homedir(), ".openclaw", "credentials.json"),
+  ];
+
+  for (const legacyPath of legacyPaths) {
+    if (!fs.existsSync(legacyPath)) continue;
+    try {
+      const raw = fs.readFileSync(legacyPath, "utf8");
+      const data = JSON.parse(raw) as Record<string, unknown>;
+      let migrated = 0;
+      for (const [key, value] of Object.entries(data)) {
+        if (typeof value === "string") {
+          const alreadyMigrated = await backend.exists(`legacy/${key}`);
+          if (!alreadyMigrated) {
+            await backend.set(`legacy/${key}`, value, {
+              description: `Migrated from legacy credentials file`,
+              createdAt: new Date().toISOString(),
+            });
+            migrated++;
+          }
+        }
+      }
+      if (migrated > 0) {
+        // Rename legacy file instead of deleting (safer)
+        fs.renameSync(legacyPath, `${legacyPath}.migrated`);
+        process.stderr.write(
+          `[openclaw] Migrated ${migrated} credentials from ${legacyPath} to encrypted storage.\n` +
+            `[openclaw] Legacy file renamed to ${legacyPath}.migrated — review and delete when ready.\n`,
+        );
+      }
+    } catch {
+      // Non-fatal: if migration fails, original file is untouched
+    }
+  }
+}

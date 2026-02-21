@@ -1,0 +1,169 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  OpenClaw Enterprise — High-Availability Helm values overlay     ║
+# ║  helm upgrade --install openclaw k8s/helm/openclaw/              ║
+# ║    -f k8s/examples/enterprise-ha.yaml                            ║
+# ╚══════════════════════════════════════════════════════════════════╝
+#
+# HA deployment with:
+#   - 3 replicas with PodDisruptionBudget
+#   - Enterprise IAM, audit, monitoring, multi-tenancy
+#   - Redis for distributed message bus
+#   - PostgreSQL for audit persistence
+#   - Prometheus ServiceMonitor
+#   - Network policies
+#   - Horizontal Pod Autoscaler
+
+replicaCount: 3
+
+image:
+  repository: ghcr.io/openclaw/openclaw
+  tag: "latest"
+  pullPolicy: Always
+
+# ── Resource sizing (HA) ──────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# ── Autoscaling ────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: true
+  minReplicas: 3
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── Pod disruption budget ─────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# ── Network policy ────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  ingressAllowFrom:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+  egressAllowTo:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: openclaw
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+          - 10.0.0.0/8
+          - 172.16.0.0/12
+          - 192.168.0.0/16
+
+# ── Ingress ────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-http-version: "1.1"
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+  hosts:
+    - host: openclaw.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - hosts:
+        - openclaw.example.com
+      secretName: openclaw-tls
+
+# ── Enterprise features ────────────────────────────────────────────────────
+enterprise:
+  enabled: true
+
+  secrets:
+    backend: vault
+    vault:
+      address: "https://vault.example.com"
+      authMethod: kubernetes
+      role: openclaw
+      path: secret/data/openclaw
+
+  iam:
+    enabled: true
+    jwt:
+      algorithm: RS256
+    oidc:
+      enabled: true
+      issuer: "https://auth.example.com"
+      clientId: "openclaw"
+
+  audit:
+    enabled: true
+    storage:
+      driver: postgresql
+      # Configure via OPENCLAW_AUDIT_DATABASE_URL secret
+    retention:
+      days: 365
+
+  monitoring:
+    enabled: true
+
+  tenancy:
+    enabled: true
+    tenants:
+      - id: default
+        name: "Default"
+        rateLimits:
+          requestsPerMinute: 1000
+
+  cluster:
+    enabled: true
+    redis:
+      # Configure via OPENCLAW_REDIS_URL secret
+
+# ── Monitoring ────────────────────────────────────────────────────────────
+monitoring:
+  enabled: true
+  serviceMonitor:
+    enabled: true
+    additionalLabels:
+      release: kube-prometheus-stack
+    interval: 30s
+
+# ── External secrets (use with external-secrets operator) ────────────────
+# Uncomment to use external-secrets instead of native Kubernetes secrets
+# externalSecrets:
+#   enabled: true
+#   secretStoreRef:
+#     name: vault-backend
+#     kind: ClusterSecretStore
+#   refreshInterval: 1h
+
+# ── Pod topology spread ───────────────────────────────────────────────────
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: openclaw
+
+# ── Anti-affinity ─────────────────────────────────────────────────────────
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - openclaw
+          topologyKey: kubernetes.io/hostname

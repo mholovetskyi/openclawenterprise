@@ -1,0 +1,206 @@
+# Default values for openclaw Helm chart.
+# Override with: helm install openclaw openclaw/openclaw -f my-values.yaml
+
+# ── Image ──────────────────────────────────────────────────────────────────────
+image:
+  repository: ghcr.io/openclaw/openclaw
+  tag: ""  # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# ── Replica count ──────────────────────────────────────────────────────────────
+replicaCount: 1
+
+# ── Service account ────────────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# ── Pod settings ───────────────────────────────────────────────────────────────
+podAnnotations: {}
+podSecurityContext:
+  fsGroup: 1000
+  runAsNonRoot: true
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+  capabilities:
+    drop:
+      - ALL
+
+# ── Service ────────────────────────────────────────────────────────────────────
+service:
+  type: ClusterIP
+  port: 8000
+  annotations: {}
+
+# ── Ingress ────────────────────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  hosts:
+    - host: openclaw.example.com
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# ── Resources ──────────────────────────────────────────────────────────────────
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+
+# ── Autoscaling ────────────────────────────────────────────────────────────────
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+# ── Pod Disruption Budget ──────────────────────────────────────────────────────
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+
+# ── Node selector / tolerations / affinity ────────────────────────────────────
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# ── Persistence ────────────────────────────────────────────────────────────────
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+  # existingClaim: ""
+
+# ── Environment ────────────────────────────────────────────────────────────────
+env: {}
+# OPENCLAW_GATEWAY_TOKEN: "my-secret-token"
+
+envFrom: []
+# - secretRef:
+#     name: openclaw-secrets
+
+# ── OpenClaw Gateway configuration ────────────────────────────────────────────
+gateway:
+  bind: loopback  # loopback | lan | tailnet | custom
+  port: 8000
+  auth:
+    mode: token   # token | password | trusted-proxy | none
+    # token: ""   # set via OPENCLAW_GATEWAY_TOKEN env var
+
+# ── Enterprise features ────────────────────────────────────────────────────────
+enterprise:
+  enabled: false
+
+  secrets:
+    backend: env  # In K8s, use env vars via Kubernetes Secrets or external-secrets
+
+  iam:
+    enabled: true
+    provider: local  # local | oidc | saml | ldap
+    oidc: {}
+    saml: {}
+
+  audit:
+    enabled: true
+    storage: sqlite  # sqlite | postgres | elasticsearch
+    sqlitePath: /data/audit.db
+
+  monitoring:
+    enabled: true
+    prometheus: true
+
+  tenancy:
+    enabled: false
+    tenants: []
+
+  cluster:
+    enabled: false
+    backend: memory  # memory | redis
+
+# ── PostgreSQL (for multi-node / enterprise) ──────────────────────────────────
+postgresql:
+  enabled: false
+  auth:
+    username: openclaw
+    database: openclaw
+    existingSecret: ""
+    secretKeys:
+      userPasswordKey: password
+  primary:
+    persistence:
+      size: 20Gi
+
+# ── Redis (for caching / cluster bus) ────────────────────────────────────────
+redis:
+  enabled: false
+  auth:
+    enabled: true
+    existingSecret: ""
+    existingSecretPasswordKey: password
+
+# ── Monitoring (Prometheus Operator) ────────────────────────────────────────
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    namespace: ""
+    labels: {}
+
+# ── Probes ────────────────────────────────────────────────────────────────────
+livenessProbe:
+  httpGet:
+    path: /livez
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 30
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8000
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  failureThreshold: 3
+
+startupProbe:
+  httpGet:
+    path: /startupz
+    port: 8000
+  failureThreshold: 30
+  periodSeconds: 10
+
+# ── Extra volumes / volume mounts ────────────────────────────────────────────
+extraVolumes: []
+extraVolumeMounts: []
+
+# ── Init containers ───────────────────────────────────────────────────────────
+initContainers: []
+
+# ── Extra containers (sidecars) ───────────────────────────────────────────────
+extraContainers: []
+
+# ── Strategy ──────────────────────────────────────────────────────────────────
+strategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0

@@ -1,4 +1,5 @@
 import type { OpenClawConfig } from "../config/config.js";
+import { auditLog } from "../enterprise/audit/logger.js";
 import type { DispatchFromConfigResult } from "./reply/dispatch-from-config.js";
 import { dispatchReplyFromConfig } from "./reply/dispatch-from-config.js";
 import { finalizeInboundContext } from "./reply/inbound-context.js";
@@ -40,17 +41,57 @@ export async function dispatchInboundMessage(params: {
   replyResolver?: typeof import("./reply.js").getReplyFromConfig;
 }): Promise<DispatchInboundResult> {
   const finalized = finalizeInboundContext(params.ctx);
-  return await withReplyDispatcher({
-    dispatcher: params.dispatcher,
-    run: () =>
-      dispatchReplyFromConfig({
-        ctx: finalized,
-        cfg: params.cfg,
-        dispatcher: params.dispatcher,
-        replyOptions: params.replyOptions,
-        replyResolver: params.replyResolver,
-      }),
+
+  void auditLog({
+    action: "agent.run.start",
+    category: "agent",
+    actor: { type: "user", id: finalized.from ?? "unknown" },
+    resource: { type: "session", id: finalized.sessionKey ?? "default" },
+    outcome: "success",
+    metadata: {
+      channel: finalized.channel,
+      sessionKey: finalized.sessionKey,
+    },
   });
+
+  let result: DispatchInboundResult;
+  try {
+    result = await withReplyDispatcher({
+      dispatcher: params.dispatcher,
+      run: () =>
+        dispatchReplyFromConfig({
+          ctx: finalized,
+          cfg: params.cfg,
+          dispatcher: params.dispatcher,
+          replyOptions: params.replyOptions,
+          replyResolver: params.replyResolver,
+        }),
+    });
+  } catch (err) {
+    void auditLog({
+      action: "agent.run.error",
+      category: "agent",
+      actor: { type: "user", id: finalized.from ?? "unknown" },
+      resource: { type: "session", id: finalized.sessionKey ?? "default" },
+      outcome: "failure",
+      metadata: { error: String(err), channel: finalized.channel },
+    });
+    throw err;
+  }
+
+  void auditLog({
+    action: "agent.run.complete",
+    category: "agent",
+    actor: { type: "user", id: finalized.from ?? "unknown" },
+    resource: { type: "session", id: finalized.sessionKey ?? "default" },
+    outcome: "success",
+    metadata: {
+      channel: finalized.channel,
+      sessionKey: finalized.sessionKey,
+    },
+  });
+
+  return result;
 }
 
 export async function dispatchInboundMessageWithBufferedDispatcher(params: {

@@ -1,0 +1,25 @@
+apiVersion: v2
+name: openclaw
+description: |
+  OpenClaw — the ultimate open-source AI agent platform.
+  From laptop to enterprise fleet. MIT-licensed. No subscriptions.
+type: application
+version: 0.1.0
+appVersion: "2026.2.22"
+keywords:
+  - ai
+  - agent
+  - llm
+  - automation
+  - messaging
+home: https://github.com/openclaw/openclaw
+sources:
+  - https://github.com/openclaw/openclaw
+maintainers:
+  - name: OpenClaw Contributors
+    url: https://github.com/openclaw/openclaw
+annotations:
+  artifacthub.io/license: MIT
+  artifacthub.io/signKey: |
+    fingerprint: <fingerprint>
+    url: https://openclaw.dev/signing.pub

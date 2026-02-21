@@ -20,6 +20,7 @@ import type { createSubsystemLogger } from "../logging/subsystem.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import { handleSlackHttpRequest } from "../slack/http/index.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
+import { handleMetricsRequest, handleHealthRequest } from "../enterprise/monitoring/index.js";
 import {
   authorizeHttpGatewayConnect,
   isLocalDirectRequest,
@@ -517,6 +518,22 @@ export function createGatewayHttpServer(opts: {
         req.url = scopedCanvas.rewrittenUrl;
       }
       const requestPath = new URL(req.url ?? "/", "http://localhost").pathname;
+
+      // ── Enterprise health & metrics probes (no auth required — safe for K8s) ──
+      if (
+        requestPath === "/healthz" ||
+        requestPath === "/livez" ||
+        requestPath === "/readyz" ||
+        requestPath === "/startupz"
+      ) {
+        await handleHealthRequest(req as import("node:http").IncomingMessage, res as import("node:http").ServerResponse, requestPath);
+        return;
+      }
+      if (requestPath === "/metrics") {
+        await handleMetricsRequest(req as import("node:http").IncomingMessage, res as import("node:http").ServerResponse);
+        return;
+      }
+
       if (await handleHooksRequest(req, res)) {
         return;
       }

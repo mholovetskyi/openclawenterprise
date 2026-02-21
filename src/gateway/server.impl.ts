@@ -47,6 +47,7 @@ import { getTotalQueueSize } from "../process/command-queue.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
+import { initEnterprise, type EnterpriseHandle } from "../enterprise/index.js";
 import { startChannelHealthMonitor } from "./channel-health-monitor.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
 import type { ControlUiRootState } from "./control-ui.js";
@@ -632,6 +633,17 @@ export async function startGatewayServer(
     log,
     isNixMode,
   });
+
+  // ── Enterprise subsystem ────────────────────────────────────────────────
+  let enterpriseHandle: EnterpriseHandle | null = null;
+  if (!minimalTestGateway) {
+    try {
+      enterpriseHandle = await initEnterprise(cfgAtStart);
+    } catch (err) {
+      log.warn(`enterprise: init failed (non-fatal): ${String(err)}`);
+    }
+  }
+
   if (!minimalTestGateway) {
     scheduleGatewayUpdateCheck({
       cfg: cfgAtStart,
@@ -754,6 +766,13 @@ export async function startGatewayServer(
         ctx: { port },
         onError: (err) => log.warn(`gateway_stop hook failed: ${String(err)}`),
       });
+      if (enterpriseHandle) {
+        try {
+          await enterpriseHandle.shutdown();
+        } catch (err) {
+          log.warn(`enterprise: shutdown error (ignored): ${String(err)}`);
+        }
+      }
       if (diagnosticsEnabled) {
         stopDiagnosticHeartbeat();
       }

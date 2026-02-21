@@ -1,6 +1,7 @@
 import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import type { WebSocket } from "ws";
+import { auditLog } from "../../../enterprise/audit/logger.js";
 import { loadConfig } from "../../../config/config.js";
 import {
   deriveDeviceIdFromPublicKey,
@@ -437,6 +438,21 @@ export function attachGatewayWsMessageHandler(params: {
           logWsControl.warn(
             `unauthorized conn=${connId} remote=${remoteAddr ?? "?"} client=${clientLabel} ${connectParams.client.mode} v${connectParams.client.version} reason=${failedAuth.reason ?? "unknown"}`,
           );
+          void auditLog({
+            action: "auth.failed",
+            category: "auth",
+            actor: { type: "user", id: connectParams.device?.id ?? "unknown" },
+            resource: { type: "gateway", id: "ws" },
+            outcome: "failure",
+            ip: remoteAddr ?? undefined,
+            metadata: {
+              reason: failedAuth.reason,
+              authMode: resolvedAuth.mode,
+              clientMode: connectParams.client.mode,
+              clientVersion: connectParams.client.version,
+              connId,
+            },
+          });
           const authProvided: AuthProvidedKind = connectParams.auth?.token
             ? "token"
             : connectParams.auth?.password
@@ -822,6 +838,23 @@ export function attachGatewayWsMessageHandler(params: {
           });
           incrementPresenceVersion();
         }
+
+        // Enterprise audit: log successful connection
+        void auditLog({
+          action: "auth.login",
+          category: "auth",
+          actor: { type: "user", id: device?.id ?? connectParams.client.id ?? "unknown" },
+          resource: { type: "gateway", id: "ws" },
+          outcome: "success",
+          ip: isLocalClient ? undefined : (remoteAddr ?? undefined),
+          metadata: {
+            role,
+            clientMode: connectParams.client.mode,
+            clientVersion: connectParams.client.version,
+            connId,
+            authMethod: authMethod ?? "none",
+          },
+        });
 
         const snapshot = buildGatewaySnapshot();
         const cachedHealth = getHealthCache();

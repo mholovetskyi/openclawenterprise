@@ -5,6 +5,8 @@ import { getGlobalHookRunner } from "../plugins/hook-runner-global.js";
 import { isPlainObject } from "../utils.js";
 import { normalizeToolName } from "./tool-policy.js";
 import type { AnyAgentTool } from "./tools/common.js";
+import { getGuardrailEngine } from "../enterprise/security/guardrails.js";
+import { auditLog } from "../enterprise/audit/logger.js";
 
 export type HookContext = {
   agentId?: string;
@@ -130,6 +132,50 @@ export async function runBeforeToolCallHook(args: {
     }
 
     recordToolCall(sessionState, toolName, params, args.toolCallId, args.ctx.loopDetection);
+  }
+
+  // ── Enterprise guardrails ─────────────────────────────────────────────
+  {
+    const guardrailEngine = getGuardrailEngine();
+    if (guardrailEngine) {
+      const guardrailResult = guardrailEngine.evaluate({
+        tool: toolName,
+        input: params,
+        sessionKey: args.ctx?.sessionKey,
+        agentId: args.ctx?.agentId,
+      });
+      if (guardrailResult.action === "block") {
+        const reason = guardrailResult.triggered[0]?.reason ?? "blocked by guardrail";
+        void auditLog({
+          action: "guardrail.block",
+          category: "security",
+          actor: { type: "agent", id: args.ctx?.agentId ?? "unknown" },
+          resource: { type: "tool", id: toolName },
+          outcome: "denied",
+          metadata: {
+            tool: toolName,
+            sessionKey: args.ctx?.sessionKey,
+            triggeredRules: guardrailResult.triggered.map((r) => r.ruleId),
+            reason,
+          },
+        });
+        return { blocked: true, reason };
+      }
+      if (guardrailResult.action === "warn") {
+        void auditLog({
+          action: "guardrail.warn",
+          category: "security",
+          actor: { type: "agent", id: args.ctx?.agentId ?? "unknown" },
+          resource: { type: "tool", id: toolName },
+          outcome: "success",
+          metadata: {
+            tool: toolName,
+            sessionKey: args.ctx?.sessionKey,
+            triggeredRules: guardrailResult.triggered.map((r) => r.ruleId),
+          },
+        });
+      }
+    }
   }
 
   const hookRunner = getGlobalHookRunner();

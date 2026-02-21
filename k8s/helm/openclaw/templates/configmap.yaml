@@ -1,0 +1,46 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "openclaw.fullname" . }}-config
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+data:
+  config.yaml: |
+    gateway:
+      bind: {{ .Values.gateway.bind | quote }}
+      port: {{ .Values.gateway.port }}
+      auth:
+        mode: {{ .Values.gateway.auth.mode | quote }}
+    {{- if .Values.enterprise.enabled }}
+    enterprise:
+      enabled: true
+      {{- if .Values.enterprise.iam.enabled }}
+      iam:
+        enabled: true
+        provider: {{ .Values.enterprise.iam.provider | quote }}
+        {{- if eq .Values.enterprise.iam.provider "oidc" }}
+        oidc:
+          {{- toYaml .Values.enterprise.iam.oidc | nindent 10 }}
+        {{- end }}
+      {{- end }}
+      {{- if .Values.enterprise.audit.enabled }}
+      audit:
+        enabled: true
+        storage: {{ .Values.enterprise.audit.storage | quote }}
+        sqlitePath: {{ .Values.enterprise.audit.sqlitePath | quote }}
+      {{- end }}
+      {{- if .Values.enterprise.monitoring.enabled }}
+      monitoring:
+        enabled: true
+        prometheus: {{ .Values.enterprise.monitoring.prometheus }}
+      {{- end }}
+      {{- if .Values.enterprise.tenancy.enabled }}
+      tenancy:
+        enabled: true
+      {{- end }}
+      {{- if .Values.enterprise.cluster.enabled }}
+      cluster:
+        enabled: true
+        backend: {{ .Values.enterprise.cluster.backend | quote }}
+      {{- end }}
+    {{- end }}

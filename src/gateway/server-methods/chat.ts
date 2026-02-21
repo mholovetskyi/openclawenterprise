@@ -1,4 +1,7 @@
 import fs from "node:fs";
+import { sanitizeInput, wrapWithTrustBoundary } from "../../enterprise/security/input-sanitizer.js";
+import { getGuardrailEngine } from "../../enterprise/security/guardrails.js";
+import { auditLog } from "../../enterprise/audit/logger.js";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
@@ -740,7 +743,36 @@ export const chatHandlers: GatewayRequestHandlers = {
       );
       return;
     }
-    const inboundMessage = sanitizedMessageResult.message;
+    let inboundMessage = sanitizedMessageResult.message;
+    // ── Enterprise prompt injection defense ──────────────────────────────
+    {
+      const enterpriseSanitized = sanitizeInput(inboundMessage, {
+        detectInjection: true,
+        stripInvisible: true,
+        normalize: true,
+        maxLength: 32_768,
+      });
+      if (enterpriseSanitized.injectionDetected) {
+        void auditLog({
+          action: "security.injection_detected",
+          category: "security",
+          actor: { type: "user", id: context.sessionKey ?? "unknown" },
+          resource: { type: "message", id: p.idempotencyKey },
+          outcome: "denied",
+          metadata: {
+            patterns: enterpriseSanitized.detectedPatterns,
+            sessionKey: context.sessionKey,
+          },
+        });
+        respond(
+          false,
+          undefined,
+          errorShape(ErrorCodes.INVALID_REQUEST, "Message rejected: potential prompt injection detected"),
+        );
+        return;
+      }
+      inboundMessage = enterpriseSanitized.sanitized;
+    }
     const stopCommand = isChatStopCommandText(inboundMessage);
     const normalizedAttachments = normalizeRpcAttachmentsToChatAttachments(p.attachments);
     const rawMessage = inboundMessage.trim();

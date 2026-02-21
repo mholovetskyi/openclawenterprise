@@ -1,0 +1,50 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "openclaw.fullname" . }}
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "openclaw.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow gateway WebSocket traffic from ingress controller
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.service.port }}
+      {{- if .Values.networkPolicy.ingressAllowFrom }}
+      from:
+        {{- toYaml .Values.networkPolicy.ingressAllowFrom | nindent 8 }}
+      {{- end }}
+    # Allow Prometheus scraping
+    {{- if .Values.monitoring.serviceMonitor.enabled }}
+    - ports:
+        - protocol: TCP
+          port: {{ .Values.monitoring.metricsPort | default 9090 }}
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ .Values.monitoring.prometheusNamespace | default "monitoring" }}
+    {{- end }}
+  egress:
+    # Allow DNS resolution
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Allow HTTPS to AI provider APIs and any configured external services
+    - ports:
+        - protocol: TCP
+          port: 443
+    # Allow internal cluster communication (e.g., Redis, PostgreSQL)
+    {{- if .Values.networkPolicy.egressAllowTo }}
+    - to:
+        {{- toYaml .Values.networkPolicy.egressAllowTo | nindent 8 }}
+    {{- end }}
+{{- end }}

@@ -1,0 +1,120 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║  OpenClaw — Single-node deployment example                       ║
+# ║  kubectl apply -f k8s/examples/single-node.yaml                  ║
+# ╚══════════════════════════════════════════════════════════════════╝
+#
+# Minimal single-replica deployment, suitable for:
+#   - Development clusters
+#   - Small team deployments (< 10 users)
+#   - Evaluation / proof-of-concept
+#
+# Prerequisites:
+#   kubectl create secret generic openclaw-secrets \
+#     --from-literal=ANTHROPIC_API_KEY=sk-ant-...
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-config
+  namespace: openclaw
+data:
+  config.yaml: |
+    gateway:
+      bind: loopback
+      auth:
+        mode: jwt
+      port: 3284
+
+    agent:
+      provider: anthropic
+      model: claude-sonnet-4-6
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app: openclaw
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openclaw
+  template:
+    metadata:
+      labels:
+        app: openclaw
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: openclaw
+          image: ghcr.io/openclaw/openclaw:latest
+          ports:
+            - containerPort: 3284
+              name: gateway
+          envFrom:
+            - secretRef:
+                name: openclaw-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /home/openclaw/.openclaw/config.yaml
+              subPath: config.yaml
+            - name: data
+              mountPath: /home/openclaw/.openclaw/data
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: 1000m
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 3284
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 3284
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: config
+          configMap:
+            name: openclaw-config
+        - name: data
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw
+  namespace: openclaw
+spec:
+  selector:
+    app: openclaw
+  ports:
+    - name: gateway
+      port: 3284
+      targetPort: 3284
+  type: ClusterIP

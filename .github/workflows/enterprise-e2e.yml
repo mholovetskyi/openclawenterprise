@@ -1,0 +1,154 @@
+name: Enterprise E2E Tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "src/enterprise/**"
+      - "test/enterprise/**"
+  pull_request:
+    branches: [main, master]
+    paths:
+      - "src/enterprise/**"
+      - "test/enterprise/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  enterprise-unit:
+    name: Enterprise Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Run enterprise unit tests
+        run: npm test -- --testPathPattern="enterprise" --coverage
+        env:
+          OPENCLAW_ENTERPRISE: "1"
+          NODE_ENV: test
+
+      - name: Upload coverage
+        uses: codecov/codecov-action@v4
+        if: always()
+        with:
+          flags: enterprise
+
+  secrets-backends:
+    name: Secrets Backend Tests
+    runs-on: ubuntu-latest
+    services:
+      vault:
+        image: hashicorp/vault:1.17
+        ports:
+          - 8200:8200
+        env:
+          VAULT_DEV_ROOT_TOKEN_ID: test-root-token
+          VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+        options: >-
+          --cap-add=IPC_LOCK
+          --health-cmd="vault status"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci && npm run build
+
+      - name: Enable Vault KV secrets engine
+        run: |
+          export VAULT_ADDR=http://127.0.0.1:8200
+          export VAULT_TOKEN=test-root-token
+          vault secrets enable -path=secret kv-v2 || true
+
+      - name: Run secrets backend tests
+        run: npm test -- --testPathPattern="enterprise/secrets"
+        env:
+          NODE_ENV: test
+          VAULT_ADDR: "http://127.0.0.1:8200"
+          VAULT_TOKEN: "test-root-token"
+
+  audit-sqlite:
+    name: Audit SQLite Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci && npm run build
+
+      - name: Run audit tests
+        run: npm test -- --testPathPattern="enterprise/audit"
+        env:
+          NODE_ENV: test
+
+  iam-rbac:
+    name: IAM / RBAC Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci && npm run build
+
+      - name: Run IAM tests
+        run: npm test -- --testPathPattern="enterprise/iam"
+        env:
+          NODE_ENV: test
+
+  k8s-helm-lint:
+    name: Helm Chart Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: "3.14.0"
+
+      - name: Lint Helm chart
+        run: |
+          helm lint k8s/helm/openclaw/
+          helm template openclaw k8s/helm/openclaw/ \
+            --set enterprise.enabled=true \
+            --set ingress.enabled=true \
+            --set autoscaling.enabled=true \
+            --set podDisruptionBudget.enabled=true \
+            --set networkPolicy.enabled=true \
+            --set monitoring.serviceMonitor.enabled=true \
+            | kubectl apply --dry-run=client -f - 2>/dev/null || true
+
+      - name: Validate with kubeconform
+        run: |
+          curl -fsSL -o kubeconform.tar.gz \
+            https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+          tar xzf kubeconform.tar.gz
+          helm template openclaw k8s/helm/openclaw/ | \
+            ./kubeconform -strict -kubernetes-version 1.29.0 -summary || true

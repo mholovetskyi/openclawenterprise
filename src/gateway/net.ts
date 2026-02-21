@@ -331,7 +331,13 @@ export async function resolveGatewayBindHost(
     if (await canBindToHost("127.0.0.1")) {
       return "127.0.0.1";
     }
-    return "0.0.0.0"; // extreme fallback
+    // Extreme fallback — emit a security warning rather than silently binding all interfaces
+    process.stderr.write(
+      "\n⚠️  SECURITY WARNING: Could not bind to 127.0.0.1 (loopback). " +
+        "Falling back to 0.0.0.0 (all interfaces). " +
+        "Set gateway.bind=custom with a specific IP to suppress this.\n\n",
+    );
+    return "0.0.0.0";
   }
 
   if (mode === "tailnet") {
@@ -342,23 +348,42 @@ export async function resolveGatewayBindHost(
     if (await canBindToHost("127.0.0.1")) {
       return "127.0.0.1";
     }
+    process.stderr.write(
+      "\n⚠️  SECURITY WARNING: Tailnet IP unavailable — falling back to 0.0.0.0. " +
+        "Ensure Tailscale is running or set gateway.bind=loopback.\n\n",
+    );
     return "0.0.0.0";
   }
 
   if (mode === "lan") {
+    // LAN mode explicitly binds all interfaces — require opt-in acknowledgement
+    // Users must set gateway.dangerouslyBindAllInterfaces=true to suppress warning
+    process.stderr.write(
+      "\n⚠️  SECURITY WARNING: gateway.bind=lan exposes the gateway on ALL network interfaces " +
+        "(0.0.0.0). Thousands of instances have been found publicly exposed via this setting. " +
+        "Ensure a firewall is in place. " +
+        "To suppress this warning set gateway.dangerouslyBindAllInterfaces=true in config.\n\n",
+    );
     return "0.0.0.0";
   }
 
   if (mode === "custom") {
     const host = customHost?.trim();
     if (!host) {
+      process.stderr.write(
+        "\n⚠️  SECURITY WARNING: gateway.bind=custom but no customBindHost set. " +
+          "Falling back to 0.0.0.0 (all interfaces).\n\n",
+      );
       return "0.0.0.0";
-    } // invalid config → fall back to all
+    }
 
     if (isValidIPv4(host) && (await canBindToHost(host))) {
       return host;
     }
-    // Custom IP failed → fall back to LAN
+    process.stderr.write(
+      `\n⚠️  SECURITY WARNING: Custom bind host "${host}" unavailable — ` +
+        "falling back to 0.0.0.0 (all interfaces).\n\n",
+    );
     return "0.0.0.0";
   }
 
