@@ -10,8 +10,10 @@ on:
 permissions:
   contents: read
   packages: write
-  id-token: write   # required for keyless cosign signing (OIDC)
+  id-token: write        # required for keyless cosign signing (OIDC)
   attestations: write
+  security-events: write # required for uploading SARIF results to GitHub Security
+  actions: read          # required by codeql-action/upload-sarif
 
 env:
   REGISTRY: ghcr.io
@@ -145,6 +147,16 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout  # required by codeql-action/upload-sarif to resolve git commit SHA
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@master
         with:
@@ -155,7 +167,7 @@ jobs:
           exit-code: 0   # Don't fail the build; upload results for review
 
       - name: Upload Trivy SARIF results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-results.sarif
