@@ -3,6 +3,7 @@
  * Uses WAL mode for concurrent reads, with hash chain integrity.
  */
 
+import { createRequire } from "node:module";
 import type { AuditEvent } from "../schema.js";
 
 export type AuditQueryOptions = {
@@ -46,8 +47,10 @@ type BetterSQLiteCtor = new (path: string) => BetterSQLiteDB;
 export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditStorage> {
   let Database: BetterSQLiteCtor;
   try {
+    // Use createRequire so TypeScript doesn't statically resolve this optional dep
+    const _req = createRequire(import.meta.url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = await import("better-sqlite3") as any;
+    const mod = _req("better-sqlite3") as any;
     Database = mod.default ?? mod;
   } catch {
     throw new Error(
