@@ -129,8 +129,8 @@ export function renderApp(state: AppViewState) {
               <img src=${basePath ? `${basePath}/favicon.svg` : "/favicon.svg"} alt="OpenClaw" />
             </div>
             <div class="brand-text">
-              <div class="brand-title">OPENCLAW</div>
-              <div class="brand-sub">Gateway Dashboard</div>
+              <div class="brand-title">${state.settings.enterpriseDashboardTitle?.trim() || "OPENCLAW"}<span class="brand-enterprise-badge">Enterprise</span></div>
+              <div class="brand-sub">${state.settings.enterpriseDashboardTagline?.trim() || "Enterprise Gateway"}</div>
             </div>
           </div>
         </div>
@@ -984,6 +984,41 @@ export function renderApp(state: AppViewState) {
                   state.enterpriseUsersLoading = true;
                   /* users refresh via gateway when connected */
                   state.enterpriseUsersLoading = false;
+                },
+                // User role editing
+                editingUserId: state.enterpriseUserEditingId,
+                editingUserRoles: state.enterpriseUserEditRoles,
+                editingUserActive: state.enterpriseUserEditActive,
+                onStartEditUser: (userId, roles, active) => {
+                  state.enterpriseUserEditingId = userId;
+                  state.enterpriseUserEditRoles = [...roles];
+                  state.enterpriseUserEditActive = active;
+                },
+                onEditUserRolesChange: (roles) => (state.enterpriseUserEditRoles = roles),
+                onEditUserActiveChange: (active) => (state.enterpriseUserEditActive = active),
+                onSaveUserEdit: (userId) => {
+                  // Update the local users list optimistically
+                  state.enterpriseUsers = state.enterpriseUsers.map((u) =>
+                    u.id === userId
+                      ? { ...u, roles: state.enterpriseUserEditRoles, active: state.enterpriseUserEditActive }
+                      : u,
+                  );
+                  state.enterpriseUserEditingId = null;
+                  state.enterpriseUserEditRoles = [];
+                },
+                onCancelUserEdit: () => {
+                  state.enterpriseUserEditingId = null;
+                  state.enterpriseUserEditRoles = [];
+                },
+                // Dashboard branding
+                dashboardTitle: state.settings.enterpriseDashboardTitle ?? "",
+                dashboardTagline: state.settings.enterpriseDashboardTagline ?? "",
+                onDashboardSettingsChange: (title, tagline) => {
+                  state.applySettings({
+                    ...state.settings,
+                    enterpriseDashboardTitle: title || undefined,
+                    enterpriseDashboardTagline: tagline || undefined,
+                  });
                 },
               })
             : nothing

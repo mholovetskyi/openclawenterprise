@@ -236,6 +236,9 @@ export type AppViewState = {
   enterpriseUsers: RbacUser[];
   enterpriseUsersLoading: boolean;
   enterpriseActiveTab: EnterpriseTab;
+  enterpriseUserEditingId: string | null;
+  enterpriseUserEditRoles: string[];
+  enterpriseUserEditActive: boolean;
   updateAvailable: import("./types.js").UpdateAvailable | null;
   client: GatewayBrowserClient | null;
   refreshSessionsAfterChat: Set<string>;

@@ -67,6 +67,23 @@ export type EnterpriseAdminProps = {
   onRefreshMetrics: () => void;
   onRefreshAudit: () => void;
   onRefreshUsers: () => void;
+  // Inline user role/status editing
+  editingUserId: string | null;
+  editingUserRoles: string[];
+  editingUserActive: boolean;
+  onStartEditUser: (userId: string, currentRoles: string[], currentActive: boolean) => void;
+  onEditUserRolesChange: (roles: string[]) => void;
+  onEditUserActiveChange: (active: boolean) => void;
+  onSaveUserEdit: (userId: string) => void;
+  onCancelUserEdit: () => void;
+  // Dashboard branding customization
+  dashboardTitle: string;
+  dashboardTagline: string;
+  onDashboardSettingsChange: (title: string, tagline: string) => void;
 };
 
-export type EnterpriseTab = "overview" | "users" | "audit" | "security" | "cluster";
+export type EnterpriseTab = "overview" | "users" | "audit" | "security" | "cluster" | "settings";
+
+// Built-in roles available for assignment in the UI
+export const BUILTIN_ROLES = ["admin", "operator", "viewer"] as const;
+export type BuiltinRole = (typeof BUILTIN_ROLES)[number];

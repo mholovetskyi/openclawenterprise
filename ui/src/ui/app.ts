@@ -309,6 +309,9 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseUsers: import("./views/enterprise/types.js").RbacUser[] = [];
   @state() enterpriseUsersLoading = false;
   @state() enterpriseActiveTab: import("./views/enterprise/types.js").EnterpriseTab = "overview";
+  @state() enterpriseUserEditingId: string | null = null;
+  @state() enterpriseUserEditRoles: string[] = [];
+  @state() enterpriseUserEditActive = true;
 
   @state() updateAvailable: import("./types.js").UpdateAvailable | null = null;
 

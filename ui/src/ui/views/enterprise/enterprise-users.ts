@@ -1,8 +1,9 @@
 import { html, nothing } from "lit";
 import type { EnterpriseAdminProps, RbacUser } from "./types.js";
+import { BUILTIN_ROLES } from "./types.js";
 
 export function renderEnterpriseUsers(props: EnterpriseAdminProps) {
-  const { users, usersLoading } = props;
+  const { users, usersLoading, editingUserId } = props;
 
   return html`
     <div class="ent-users">
@@ -39,31 +40,116 @@ export function renderEnterpriseUsers(props: EnterpriseAdminProps) {
                     <th>Roles</th>
                     <th>Groups</th>
                     <th>Status</th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
-                  ${users.map(
-                    (u) => html`
-                      <tr class=${u.active ? "" : "ent-row--inactive"}>
-                        <td class="mono ent-td-truncate">${u.id}</td>
-                        <td>${u.displayName ?? html`<span class="muted">—</span>`}</td>
-                        <td class="muted">${u.email ?? "—"}</td>
-                        <td>${renderPillList(u.roles, "role")}</td>
-                        <td>${renderPillList(u.groups, "group")}</td>
-                        <td>
-                          ${u.active
-                            ? html`<span class="ent-badge ent-badge--ok">active</span>`
-                            : html`<span class="ent-badge ent-badge--disabled">inactive</span>`}
-                        </td>
-                      </tr>
-                    `,
+                  ${users.map((u) =>
+                    editingUserId === u.id
+                      ? renderEditRow(u, props)
+                      : renderViewRow(u, props),
                   )}
                 </tbody>
               </table>
             </div>
+            <p class="muted" style="font-size:11px;margin-top:8px">
+              Click <strong>Edit</strong> to change a user's roles or active status.
+              Changes are written to the gateway via the IAM API when connected.
+            </p>
           `
         : nothing}
     </div>
+  `;
+}
+
+function renderViewRow(u: RbacUser, props: EnterpriseAdminProps) {
+  return html`
+    <tr class=${u.active ? "" : "ent-row--inactive"}>
+      <td class="mono ent-td-truncate">${u.id}</td>
+      <td>${u.displayName ?? html`<span class="muted">—</span>`}</td>
+      <td class="muted">${u.email ?? "—"}</td>
+      <td>${renderPillList(u.roles, "role")}</td>
+      <td>${renderPillList(u.groups, "group")}</td>
+      <td>
+        ${u.active
+          ? html`<span class="ent-badge ent-badge--ok">active</span>`
+          : html`<span class="ent-badge ent-badge--disabled">inactive</span>`}
+      </td>
+      <td>
+        <button
+          class="ent-btn-sm"
+          @click=${() => props.onStartEditUser(u.id, [...u.roles], u.active)}
+          title="Edit roles and status for ${u.displayName ?? u.id}"
+        >
+          Edit
+        </button>
+      </td>
+    </tr>
+  `;
+}
+
+function renderEditRow(u: RbacUser, props: EnterpriseAdminProps) {
+  const { editingUserRoles, editingUserActive } = props;
+
+  function toggleRole(role: string) {
+    const next = editingUserRoles.includes(role)
+      ? editingUserRoles.filter((r) => r !== role)
+      : [...editingUserRoles, role];
+    props.onEditUserRolesChange(next);
+  }
+
+  return html`
+    <tr class="ent-edit-row">
+      <td class="mono ent-td-truncate">${u.id}</td>
+      <td>${u.displayName ?? html`<span class="muted">—</span>`}</td>
+      <td class="muted">${u.email ?? "—"}</td>
+      <td>
+        <div class="ent-role-checkboxes">
+          ${BUILTIN_ROLES.map(
+            (role) => html`
+              <label class="ent-role-check">
+                <input
+                  type="checkbox"
+                  .checked=${editingUserRoles.includes(role)}
+                  @change=${() => toggleRole(role)}
+                />
+                <span class="ent-pill ent-pill--role">${role}</span>
+              </label>
+            `,
+          )}
+        </div>
+      </td>
+      <td>${renderPillList(u.groups, "group")}</td>
+      <td>
+        <label class="ent-active-toggle">
+          <input
+            type="checkbox"
+            .checked=${editingUserActive}
+            @change=${(e: Event) =>
+              props.onEditUserActiveChange((e.target as HTMLInputElement).checked)}
+          />
+          <span>${editingUserActive ? "active" : "inactive"}</span>
+        </label>
+      </td>
+      <td>
+        <div class="ent-edit-actions">
+          <button
+            class="ent-btn-sm ent-btn-sm--primary"
+            @click=${() => props.onSaveUserEdit(u.id)}
+            title="Save changes"
+          >
+            Save
+          </button>
+          <button
+            class="ent-btn-sm"
+            @click=${props.onCancelUserEdit}
+            title="Discard changes"
+          >
+            Cancel
+          </button>
+        </div>
+      </td>
+    </tr>
   `;
 }
 

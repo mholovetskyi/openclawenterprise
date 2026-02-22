@@ -14,6 +14,7 @@ import { renderEnterpriseAudit } from "./enterprise-audit.js";
 import { renderEnterpriseUsers } from "./enterprise-users.js";
 import { renderEnterpriseSecurity } from "./enterprise-security.js";
 import { renderEnterpriseCluster } from "./enterprise-cluster.js";
+import { renderEnterpriseSettings } from "./enterprise-settings.js";
 
 const TABS: Array<{ id: EnterpriseTab; label: string; icon: string }> = [
   { id: "overview", label: "Overview", icon: "🏢" },
@@ -21,6 +22,7 @@ const TABS: Array<{ id: EnterpriseTab; label: string; icon: string }> = [
   { id: "audit", label: "Audit log", icon: "📋" },
   { id: "security", label: "Security", icon: "🛡️" },
   { id: "cluster", label: "Cluster", icon: "🔗" },
+  { id: "settings", label: "Settings", icon: "⚙️" },
 ];
 
 export function renderEnterprise(props: EnterpriseAdminProps) {
@@ -60,6 +62,7 @@ export function renderEnterprise(props: EnterpriseAdminProps) {
         ${props.activeTab === "audit" ? renderEnterpriseAudit(props) : nothing}
         ${props.activeTab === "security" ? renderEnterpriseSecurity(props) : nothing}
         ${props.activeTab === "cluster" ? renderEnterpriseCluster(props) : nothing}
+        ${props.activeTab === "settings" ? renderEnterpriseSettings(props) : nothing}
       </div>
     </div>
   `;
@@ -297,6 +300,78 @@ const enterpriseStyles = `
   .ent-defense-label { font-weight: 500; }
   .ent-defense-desc { font-size: 11px; }
   .ent-defense-state { flex-shrink: 0; }
+
+  /* Form fields (settings tab) */
+  .ent-field-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .ent-field-label {
+    font-size: 12px;
+    color: var(--color-muted, #888);
+    font-weight: 500;
+  }
+  .ent-input {
+    width: 100%;
+    max-width: 360px;
+    padding: 6px 10px;
+    font-size: 13px;
+    background: var(--color-surface, #1e1e1e);
+    border: 1px solid var(--color-border, #333);
+    border-radius: 4px;
+    color: var(--color-text, #e2e2e2);
+    font-family: inherit;
+    box-sizing: border-box;
+    outline: none;
+    transition: border-color 0.1s;
+  }
+  .ent-input:focus {
+    border-color: var(--color-accent, #4dabf7);
+  }
+  .ent-input::placeholder {
+    color: var(--color-muted, #888);
+  }
+  .ent-btn-sm--primary {
+    background: var(--color-accent, #4dabf7);
+    border-color: var(--color-accent, #4dabf7);
+    color: #000;
+    font-weight: 600;
+  }
+  .ent-btn-sm--primary:hover:not(:disabled) {
+    opacity: 0.85;
+    color: #000;
+  }
+
+  /* Inline edit row in users table */
+  .ent-edit-row td {
+    background: var(--color-surface, #1e1e1e);
+    vertical-align: middle;
+  }
+  .ent-role-checkboxes {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .ent-role-check {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .ent-active-toggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .ent-edit-actions {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+  }
 
   /* Links */
   .ent-link {

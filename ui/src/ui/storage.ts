@@ -15,6 +15,9 @@ export type UiSettings = {
   navCollapsed: boolean; // Collapsible sidebar state
   navGroupsCollapsed: Record<string, boolean>; // Which nav groups are collapsed
   locale?: string;
+  // Enterprise dashboard customization (set from Enterprise → Settings panel)
+  enterpriseDashboardTitle?: string;
+  enterpriseDashboardTagline?: string;
 };
 
 export function loadSettings(): UiSettings {
@@ -80,6 +83,14 @@ export function loadSettings(): UiSettings {
           ? parsed.navGroupsCollapsed
           : defaults.navGroupsCollapsed,
       locale: isSupportedLocale(parsed.locale) ? parsed.locale : undefined,
+      enterpriseDashboardTitle:
+        typeof parsed.enterpriseDashboardTitle === "string"
+          ? parsed.enterpriseDashboardTitle
+          : undefined,
+      enterpriseDashboardTagline:
+        typeof parsed.enterpriseDashboardTagline === "string"
+          ? parsed.enterpriseDashboardTagline
+          : undefined,
     };
   } catch {
     return defaults;
