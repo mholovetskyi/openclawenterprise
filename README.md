@@ -32,7 +32,7 @@
 </p>
 
 <p align="center">
-  <a href="#one-command-install">Install</a> ·
+  <a href="#install">Install</a> ·
   <a href="#where-openclaw-stops">Enterprise gap</a> ·
   <a href="#zero-trust-gateway">Security</a> ·
   <a href="#secret-management">Secrets</a> ·
@@ -54,23 +54,17 @@ Enterprise deployments have a different set of requirements. Regulated industrie
 
 ---
 
-## One-command install
+## Install
 
 ```bash
-# macOS / Linux (installs Node.js if missing, sets up shell completion)
-curl -fsSL https://get.openclaw.dev | bash
+# All platforms — requires Node.js ≥22
+npm install -g openclaw@latest
 
-# Enterprise mode (writes enterprise config, enables all subsystems)
-curl -fsSL https://get.openclaw.dev | OPENCLAW_ENTERPRISE=1 bash
-
-# Windows PowerShell (winget / scoop / chocolatey auto-detected)
-irm https://get.openclaw.dev/install.ps1 | iex
-
-# npm — all platforms
-npm install -g openclaw@latest && openclaw onboard
+# First-time setup (config, daemon, shell completion)
+openclaw onboard
 ```
 
-> The installer detects your OS and architecture, installs Node.js ≥22 via `fnm` if needed, writes a default config, and sets up shell completion. Total time: under 30 seconds.
+> Node.js ≥22.12.0 is required. Install it via [fnm](https://github.com/Schniz/fnm) (`fnm install 22`), [nvm](https://github.com/nvm-sh/nvm), or the [official installer](https://nodejs.org).
 
 ---
 
@@ -794,9 +788,9 @@ See [`k8s/examples/enterprise-ha.yaml`](k8s/examples/enterprise-ha.yaml) for a p
 
 ---
 
-## GitHub Actions
+## GitHub Actions (roadmap)
 
-Run OpenClaw agent tasks in your CI/CD pipeline.
+A dedicated `openclaw/openclaw-action` is planned. In the meantime, OpenClaw can be invoked directly via `npx` in any workflow:
 
 ```yaml
 # .github/workflows/review.yml
@@ -813,49 +807,19 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: OpenClaw AI Review
-        uses: openclaw/openclaw-action@v1
+      - uses: actions/setup-node@v4
         with:
-          task: >
-            Review this PR for: security vulnerabilities, performance issues,
-            API contract violations, and missing error handling.
-            Post findings as a PR comment with severity labels.
-          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          node-version: "22"
+
+      - name: OpenClaw AI Review
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          npx openclaw@latest agent --message \
+            "Review this PR for security vulnerabilities, performance issues, \
+             API contract violations, and missing error handling. \
+             Post findings as a PR comment with severity labels."
 ```
-
-**More use cases:**
-
-```yaml
-# Security scan on every push
-- uses: openclaw/openclaw-action@v1
-  with:
-    skill: security-scan
-    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-
-# Auto-generate tests for changed files
-- uses: openclaw/openclaw-action@v1
-  with:
-    task: "Write unit tests for all files changed in this PR"
-    output-file: generated-tests.md
-    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-
-# Update docs when API changes
-- uses: openclaw/openclaw-action@v1
-  with:
-    task: "Update docs/api.md to reflect the API changes in this PR"
-    anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-```
-
-| Input | Default | Description |
-|-------|---------|-------------|
-| `task` | | Natural language task |
-| `skill` | | Specific skill to invoke |
-| `anthropic-api-key` | | API key (use secrets) |
-| `openai-api-key` | | OpenAI key (alternative) |
-| `version` | `latest` | OpenClaw version |
-| `timeout-minutes` | `10` | Max run time |
-| `output-file` | | Write output to file |
-| `fail-on-error` | `true` | Fail workflow on error |
 
 ---
 
@@ -982,9 +946,8 @@ gateway:
 | HPA + PDB + NetworkPolicy | — | ✅ |
 | Prometheus ServiceMonitor | — | ✅ |
 | cert-manager TLS | — | ✅ |
-| GitHub Actions integration | — | ✅ |
-| curl\|bash one-command installer | ✅ | ✅ |
-| Windows PowerShell installer | ✅ | ✅ |
+| GitHub Actions integration | — | 🗓 roadmap |
+| npm one-command install | ✅ | ✅ |
 
 ---
 
