@@ -62,10 +62,10 @@ jobs:
           VAULT_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
         options: >-
           --cap-add=IPC_LOCK
-          --health-cmd="vault status"
+          --health-cmd="vault status -address=http://127.0.0.1:8200"
           --health-interval=10s
           --health-timeout=5s
-          --health-retries=5
+          --health-retries=10
 
     steps:
       - uses: actions/checkout@v4

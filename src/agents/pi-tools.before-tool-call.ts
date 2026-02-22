@@ -155,7 +155,7 @@ export async function runBeforeToolCallHook(args: {
           metadata: {
             tool: toolName,
             sessionKey: args.ctx?.sessionKey,
-            triggeredRules: guardrailResult.triggered.map((r) => r.ruleId),
+            triggeredRules: guardrailResult.triggered.map((r) => r.rule.id),
             reason,
           },
         });
@@ -171,7 +171,7 @@ export async function runBeforeToolCallHook(args: {
           metadata: {
             tool: toolName,
             sessionKey: args.ctx?.sessionKey,
-            triggeredRules: guardrailResult.triggered.map((r) => r.ruleId),
+            triggeredRules: guardrailResult.triggered.map((r) => r.rule.id),
           },
         });
       }

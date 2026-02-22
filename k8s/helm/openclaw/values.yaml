@@ -188,6 +188,12 @@ startupProbe:
   failureThreshold: 30
   periodSeconds: 10
 
+# ── Network Policy ───────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: false
+  ingressAllowFrom: []
+  egressAllowTo: []
+
 # ── Extra volumes / volume mounts ────────────────────────────────────────────
 extraVolumes: []
 extraVolumeMounts: []

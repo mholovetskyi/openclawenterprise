@@ -45,12 +45,12 @@ export async function dispatchInboundMessage(params: {
   void auditLog({
     action: "agent.run.start",
     category: "agent",
-    actor: { type: "user", id: finalized.from ?? "unknown" },
-    resource: { type: "session", id: finalized.sessionKey ?? "default" },
+    actor: { type: "user", id: finalized.From ?? "unknown" },
+    resource: { type: "session", id: finalized.SessionKey ?? "default" },
     outcome: "success",
     metadata: {
-      channel: finalized.channel,
-      sessionKey: finalized.sessionKey,
+      channel: finalized.GroupChannel,
+      sessionKey: finalized.SessionKey,
     },
   });
 
@@ -71,10 +71,10 @@ export async function dispatchInboundMessage(params: {
     void auditLog({
       action: "agent.run.error",
       category: "agent",
-      actor: { type: "user", id: finalized.from ?? "unknown" },
-      resource: { type: "session", id: finalized.sessionKey ?? "default" },
+      actor: { type: "user", id: finalized.From ?? "unknown" },
+      resource: { type: "session", id: finalized.SessionKey ?? "default" },
       outcome: "failure",
-      metadata: { error: String(err), channel: finalized.channel },
+      metadata: { error: String(err), channel: finalized.GroupChannel },
     });
     throw err;
   }
@@ -82,12 +82,12 @@ export async function dispatchInboundMessage(params: {
   void auditLog({
     action: "agent.run.complete",
     category: "agent",
-    actor: { type: "user", id: finalized.from ?? "unknown" },
-    resource: { type: "session", id: finalized.sessionKey ?? "default" },
+    actor: { type: "user", id: finalized.From ?? "unknown" },
+    resource: { type: "session", id: finalized.SessionKey ?? "default" },
     outcome: "success",
     metadata: {
-      channel: finalized.channel,
-      sessionKey: finalized.sessionKey,
+      channel: finalized.GroupChannel,
+      sessionKey: finalized.SessionKey,
     },
   });
 

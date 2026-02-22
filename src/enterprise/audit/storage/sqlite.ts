@@ -30,10 +30,24 @@ export interface AuditStorage {
  * SQLite-backed audit storage.
  * Dynamically imports `better-sqlite3` to avoid hard dependency.
  */
+// Minimal DB interface — avoids a compile-time dependency on @types/better-sqlite3
+type BetterSQLiteDB = {
+  pragma(key: string): unknown;
+  exec(sql: string): void;
+  prepare(sql: string): {
+    run(params?: Record<string, unknown>): void;
+    get(params?: Record<string, unknown>): unknown;
+    all(params?: Record<string, unknown>): unknown[];
+  };
+  close(): void;
+};
+type BetterSQLiteCtor = new (path: string) => BetterSQLiteDB;
+
 export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditStorage> {
-  let Database: typeof import("better-sqlite3");
+  let Database: BetterSQLiteCtor;
   try {
-    const mod = await import("better-sqlite3");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mod = await import("better-sqlite3") as any;
     Database = mod.default ?? mod;
   } catch {
     throw new Error(
