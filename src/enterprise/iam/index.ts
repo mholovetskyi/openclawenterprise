@@ -62,18 +62,26 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
   let jwtConfig = cfg.enterprise?.auth?.jwt ?? {};
 
   if (jwtAlgorithm === "RS256" && !jwtConfig.privateKey) {
-    // Persist the key pair so tokens survive restarts
+    // Persist the key pair so tokens survive restarts.
+    // Use readFileSync directly (no existsSync pre-check) to avoid a TOCTOU
+    // race condition where a symlink could be swapped between the check and use.
     const keyFile = path.join(enterpriseDir, "jwt-rsa.json");
-    if (fs.existsSync(keyFile)) {
-      try {
-        const saved = JSON.parse(fs.readFileSync(keyFile, "utf8")) as {
-          privateKey: string;
-          publicKey: string;
-        };
-        jwtConfig = { ...jwtConfig, ...saved, algorithm: "RS256" };
-      } catch {
-        // Corrupt key file — regenerate
+    try {
+      const saved = JSON.parse(fs.readFileSync(keyFile, "utf8")) as {
+        privateKey: string;
+        publicKey: string;
+      };
+      jwtConfig = { ...jwtConfig, ...saved, algorithm: "RS256" };
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      if (code !== "ENOENT") {
+        // File exists but is unreadable or corrupt — warn and regenerate.
+        process.stderr.write(
+          "[enterprise/iam] WARNING: jwt-rsa.json unreadable, regenerating key pair. " +
+            "Existing issued tokens will not verify after restart.\n",
+        );
       }
+      // ENOENT = first start; any other error = corrupt. Either way, generate fresh pair.
     }
     if (!jwtConfig.privateKey) {
       const kp = generateRS256KeyPair();
