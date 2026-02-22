@@ -301,33 +301,57 @@ export function readSessionTitleFieldsFromTranscript(
   opts?: { includeInterSession?: boolean },
 ): SessionTitleFields {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  const filePath = candidates.find((p) => fs.existsSync(p));
-  if (!filePath) {
+
+  let filePath: string | undefined;
+  let fd: number | null = null;
+  for (const p of candidates) {
+    try {
+      fd = fs.openSync(p, "r");
+      filePath = p;
+      break;
+    } catch {
+      // try next candidate
+    }
+  }
+  if (!filePath || fd === null) {
     return { firstUserMessage: null, lastMessagePreview: null };
   }
 
   let stat: fs.Stats;
   try {
-    stat = fs.statSync(filePath);
+    stat = fs.fstatSync(fd);
   } catch {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      /* ignore */
+    }
     return { firstUserMessage: null, lastMessagePreview: null };
   }
 
   const cacheKey = readSessionTitleFieldsCacheKey(filePath, opts);
   const cached = getCachedSessionTitleFields(cacheKey, stat);
   if (cached) {
+    try {
+      fs.closeSync(fd);
+    } catch {
+      /* ignore */
+    }
     return cached;
   }
 
   if (stat.size === 0) {
     const empty = { firstUserMessage: null, lastMessagePreview: null };
     setCachedSessionTitleFields(cacheKey, stat, empty);
+    try {
+      fs.closeSync(fd);
+    } catch {
+      /* ignore */
+    }
     return empty;
   }
 
-  let fd: number | null = null;
   try {
-    fd = fs.openSync(filePath, "r");
     const size = stat.size;
 
     // Head (first user message)

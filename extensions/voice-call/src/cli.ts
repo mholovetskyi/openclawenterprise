@@ -230,13 +230,13 @@ export function registerVoiceCallCli(params: {
 
       for (;;) {
         try {
-          const stat = fs.statSync(file);
-          if (stat.size < offset) {
-            offset = 0;
-          }
-          if (stat.size > offset) {
-            const fd = fs.openSync(file, "r");
-            try {
+          const fd = fs.openSync(file, "r");
+          try {
+            const stat = fs.fstatSync(fd);
+            if (stat.size < offset) {
+              offset = 0;
+            }
+            if (stat.size > offset) {
               const buf = Buffer.alloc(stat.size - offset);
               fs.readSync(fd, buf, 0, buf.length, offset);
               offset = stat.size;
@@ -245,9 +245,9 @@ export function registerVoiceCallCli(params: {
                 // eslint-disable-next-line no-console
                 console.log(line);
               }
-            } finally {
-              fs.closeSync(fd);
             }
+          } finally {
+            fs.closeSync(fd);
           }
         } catch {
           // ignore and retry

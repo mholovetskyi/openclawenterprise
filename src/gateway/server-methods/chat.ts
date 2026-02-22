@@ -294,9 +294,6 @@ function ensureTranscriptFile(params: { transcriptPath: string; sessionId: strin
   ok: boolean;
   error?: string;
 } {
-  if (fs.existsSync(params.transcriptPath)) {
-    return { ok: true };
-  }
   try {
     fs.mkdirSync(path.dirname(params.transcriptPath), { recursive: true });
     const header = {
@@ -309,9 +306,13 @@ function ensureTranscriptFile(params: { transcriptPath: string; sessionId: strin
     fs.writeFileSync(params.transcriptPath, `${JSON.stringify(header)}\n`, {
       encoding: "utf-8",
       mode: 0o600,
+      flag: "wx",
     });
     return { ok: true };
   } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+      return { ok: true };
+    }
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
 }

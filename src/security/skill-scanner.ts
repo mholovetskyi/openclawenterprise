@@ -355,26 +355,19 @@ async function collectScannableFiles(dirPath: string, opts: Required<SkillScanOp
 }
 
 async function readScannableSource(filePath: string, maxFileBytes: number): Promise<string | null> {
-  let st: Awaited<ReturnType<typeof fs.stat>> | null = null;
+  let content: string;
   try {
-    st = await fs.stat(filePath);
+    content = await fs.readFile(filePath, "utf-8");
   } catch (err) {
-    if (hasErrnoCode(err, "ENOENT")) {
+    if (hasErrnoCode(err, "ENOENT") || hasErrnoCode(err, "EISDIR")) {
       return null;
     }
     throw err;
   }
-  if (!st?.isFile() || st.size > maxFileBytes) {
+  if (Buffer.byteLength(content, "utf-8") > maxFileBytes) {
     return null;
   }
-  try {
-    return await fs.readFile(filePath, "utf-8");
-  } catch (err) {
-    if (hasErrnoCode(err, "ENOENT")) {
-      return null;
-    }
-    throw err;
-  }
+  return content;
 }
 
 export async function scanDirectory(

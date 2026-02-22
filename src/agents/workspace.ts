@@ -44,8 +44,10 @@ const workspaceFileCache = new Map<string, { content: string; mtimeMs: number }>
  * hasn't changed, otherwise reads from disk and updates cache.
  */
 async function readFileWithCache(filePath: string): Promise<string> {
+  let handle: fs.FileHandle | undefined;
   try {
-    const stats = await fs.stat(filePath);
+    handle = await fs.open(filePath, "r");
+    const stats = await handle.stat();
     const mtimeMs = stats.mtimeMs;
     const cached = workspaceFileCache.get(filePath);
 
@@ -55,13 +57,15 @@ async function readFileWithCache(filePath: string): Promise<string> {
     }
 
     // Read from disk and update cache
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await handle.readFile("utf-8");
     workspaceFileCache.set(filePath, { content, mtimeMs });
     return content;
   } catch (error) {
     // Remove from cache if file doesn't exist or is unreadable
     workspaceFileCache.delete(filePath);
     throw error;
+  } finally {
+    await handle?.close();
   }
 }
 

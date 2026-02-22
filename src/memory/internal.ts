@@ -153,23 +153,26 @@ export async function buildFileEntry(
   absPath: string,
   workspaceDir: string,
 ): Promise<MemoryFileEntry | null> {
-  let stat;
+  let handle: Awaited<ReturnType<typeof fs.open>>;
   try {
-    stat = await fs.stat(absPath);
+    handle = await fs.open(absPath, "r");
   } catch (err) {
     if (isFileMissingError(err)) {
       return null;
     }
     throw err;
   }
+  let stat: Awaited<ReturnType<typeof handle.stat>>;
   let content: string;
   try {
-    content = await fs.readFile(absPath, "utf-8");
+    [stat, content] = await Promise.all([handle.stat(), handle.readFile("utf-8")]);
   } catch (err) {
     if (isFileMissingError(err)) {
       return null;
     }
     throw err;
+  } finally {
+    await handle.close().catch(() => {});
   }
   const hash = hashText(content);
   return {

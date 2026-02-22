@@ -413,12 +413,10 @@ async function extractZip(params: {
 }): Promise<void> {
   const limits = resolveExtractLimits(params.limits);
   const destinationRealDir = await assertDestinationDirReady(params.destDir);
-  const stat = await fs.stat(params.archivePath);
-  if (stat.size > limits.maxArchiveBytes) {
+  const buffer = await fs.readFile(params.archivePath);
+  if (buffer.length > limits.maxArchiveBytes) {
     throw new Error(ERROR_ARCHIVE_SIZE_EXCEEDS_LIMIT);
   }
-
-  const buffer = await fs.readFile(params.archivePath);
   const zip = await JSZip.loadAsync(buffer);
   const entries = Object.values(zip.files) as ZipEntry[];
   const strip = Math.max(0, Math.floor(params.stripComponents ?? 0));

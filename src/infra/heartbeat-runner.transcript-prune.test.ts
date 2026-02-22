@@ -67,7 +67,7 @@ describe("heartbeat transcript pruning", () => {
       const sessionKey = resolveMainSessionKey(undefined);
       const transcriptPath = path.join(tmpDir, `${params.sessionId}.jsonl`);
       const originalContent = await createTranscriptWithContent(transcriptPath, params.sessionId);
-      const originalSize = (await fs.stat(transcriptPath)).size;
+      const originalSize = Buffer.byteLength(originalContent, "utf-8");
 
       await seedSessionStore(storePath, sessionKey, {
         sessionId: params.sessionId,
@@ -93,9 +93,9 @@ describe("heartbeat transcript pruning", () => {
         deps: { sendTelegram: vi.fn() },
       });
 
-      const finalSize = (await fs.stat(transcriptPath)).size;
+      const finalContent = await fs.readFile(transcriptPath, "utf-8");
+      const finalSize = Buffer.byteLength(finalContent, "utf-8");
       if (params.expectPruned) {
-        const finalContent = await fs.readFile(transcriptPath, "utf-8");
         expect(finalContent).toBe(originalContent);
         expect(finalSize).toBe(originalSize);
         return;

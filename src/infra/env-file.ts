@@ -42,9 +42,7 @@ export function upsertSharedEnvVar(params: {
     updated = true;
   }
 
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  }
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
 
   const output = `${nextLines.join("\n")}\n`;
   fs.writeFileSync(filepath, output, "utf8");

@@ -35,14 +35,11 @@ export function hasWebCredsSync(authDir: string): boolean {
 
 export function readCredsJsonRaw(filePath: string): string | null {
   try {
-    if (!fsSync.existsSync(filePath)) {
+    const content = fsSync.readFileSync(filePath, "utf-8");
+    if (content.length <= 1) {
       return null;
     }
-    const stats = fsSync.statSync(filePath);
-    if (!stats.isFile() || stats.size <= 1) {
-      return null;
-    }
-    return fsSync.readFileSync(filePath, "utf-8");
+    return content;
   } catch {
     return null;
   }
@@ -89,11 +86,10 @@ export async function webAuthExists(authDir: string = resolveDefaultWebAuthDir()
     return false;
   }
   try {
-    const stats = await fs.stat(credsPath);
-    if (!stats.isFile() || stats.size <= 1) {
+    const raw = await fs.readFile(credsPath, "utf-8");
+    if (raw.length <= 1) {
       return false;
     }
-    const raw = await fs.readFile(credsPath, "utf-8");
     JSON.parse(raw);
     return true;
   } catch {

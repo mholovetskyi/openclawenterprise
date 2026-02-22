@@ -98,16 +98,17 @@ function collectBrowserProxyPaths(payload: unknown): string[] {
 }
 
 async function readBrowserProxyFile(filePath: string): Promise<BrowserProxyFile | null> {
-  const stat = await fsPromises.stat(filePath).catch(() => null);
-  if (!stat || !stat.isFile()) {
+  let buffer: Buffer;
+  try {
+    buffer = await fsPromises.readFile(filePath);
+  } catch {
     return null;
   }
-  if (stat.size > BROWSER_PROXY_MAX_FILE_BYTES) {
+  if (buffer.length > BROWSER_PROXY_MAX_FILE_BYTES) {
     throw new Error(
       `browser proxy file exceeds ${Math.round(BROWSER_PROXY_MAX_FILE_BYTES / (1024 * 1024))}MB`,
     );
   }
-  const buffer = await fsPromises.readFile(filePath);
   const mimeType = await detectMime({ buffer, filePath });
   return { path: filePath, base64: buffer.toString("base64"), mimeType };
 }

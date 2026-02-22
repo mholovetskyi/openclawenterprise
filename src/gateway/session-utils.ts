@@ -121,11 +121,10 @@ function resolveIdentityAvatarUrl(
     return undefined;
   }
   try {
-    const stat = fs.statSync(resolved);
-    if (!stat.isFile() || stat.size > AVATAR_MAX_BYTES) {
+    const buffer = fs.readFileSync(resolved);
+    if (buffer.length > AVATAR_MAX_BYTES) {
       return undefined;
     }
-    const buffer = fs.readFileSync(resolved);
     const mime = resolveAvatarMime(resolved);
     return `data:${mime};base64,${buffer.toString("base64")}`;
   } catch {

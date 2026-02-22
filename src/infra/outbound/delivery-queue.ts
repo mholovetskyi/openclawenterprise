@@ -162,10 +162,6 @@ export async function loadPendingDeliveries(stateDir?: string): Promise<QueuedDe
     }
     const filePath = path.join(queueDir, file);
     try {
-      const stat = await fs.promises.stat(filePath);
-      if (!stat.isFile()) {
-        continue;
-      }
       const raw = await fs.promises.readFile(filePath, "utf-8");
       entries.push(JSON.parse(raw));
     } catch {

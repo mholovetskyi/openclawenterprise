@@ -71,13 +71,12 @@ export async function getCallHistoryFromStore(
 ): Promise<CallRecord[]> {
   const logPath = path.join(storePath, "calls.jsonl");
 
+  let content: string;
   try {
-    await fsp.access(logPath);
+    content = await fsp.readFile(logPath, "utf-8");
   } catch {
     return [];
   }
-
-  const content = await fsp.readFile(logPath, "utf-8");
   const lines = content.trim().split("\n").filter(Boolean);
   const calls: CallRecord[] = [];
 

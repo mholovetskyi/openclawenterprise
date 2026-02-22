@@ -72,9 +72,12 @@ export function extractSessionText(content: unknown): string | null {
 }
 
 export async function buildSessionEntry(absPath: string): Promise<SessionFileEntry | null> {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
-    const stat = await fs.stat(absPath);
-    const raw = await fs.readFile(absPath, "utf-8");
+    handle = await fs.open(absPath, "r");
+    const [stat, raw] = await Promise.all([handle.stat(), handle.readFile("utf-8")]);
+    await handle.close().catch(() => {});
+    handle = undefined;
     const lines = raw.split("\n");
     const collected: string[] = [];
     const lineMap: number[] = [];

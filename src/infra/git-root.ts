@@ -41,23 +41,21 @@ export function findGitRoot(startDir: string, opts: { maxDepth?: number } = {}):
 
 function resolveGitDirFromMarker(repoRoot: string): string | null {
   const gitPath = path.join(repoRoot, ".git");
+  let raw: string;
   try {
-    const stat = fs.statSync(gitPath);
-    if (stat.isDirectory()) {
+    raw = fs.readFileSync(gitPath, "utf-8");
+  } catch (err) {
+    // If .git is a directory (normal full clone), it IS the git dir.
+    if ((err as NodeJS.ErrnoException).code === "EISDIR") {
       return gitPath;
     }
-    if (!stat.isFile()) {
-      return null;
-    }
-    const raw = fs.readFileSync(gitPath, "utf-8");
-    const match = raw.match(/gitdir:\s*(.+)/i);
-    if (!match?.[1]) {
-      return null;
-    }
-    return path.resolve(repoRoot, match[1].trim());
-  } catch {
     return null;
   }
+  const match = raw.match(/gitdir:\s*(.+)/i);
+  if (!match?.[1]) {
+    return null;
+  }
+  return path.resolve(repoRoot, match[1].trim());
 }
 
 export function resolveGitHeadPath(

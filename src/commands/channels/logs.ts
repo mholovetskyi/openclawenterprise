@@ -42,20 +42,22 @@ function matchesChannel(line: NonNullable<LogLine>, channel: string) {
 }
 
 async function readTailLines(file: string, limit: number): Promise<string[]> {
-  const stat = await fs.stat(file).catch(() => null);
-  if (!stat) {
+  let handle: Awaited<ReturnType<typeof fs.open>> | undefined;
+  try {
+    handle = await fs.open(file, "r");
+  } catch {
     return [];
   }
-  const size = stat.size;
-  const start = Math.max(0, size - MAX_BYTES);
-  const handle = await fs.open(file, "r");
   try {
+    const stat = await handle!.stat();
+    const size = stat.size;
+    const start = Math.max(0, size - MAX_BYTES);
     const length = Math.max(0, size - start);
     if (length === 0) {
       return [];
     }
     const buffer = Buffer.alloc(length);
-    const readResult = await handle.read(buffer, 0, length, start);
+    const readResult = await handle!.read(buffer, 0, length, start);
     const text = buffer.toString("utf8", 0, readResult.bytesRead);
     let lines = text.split("\n");
     if (start > 0) {
@@ -69,7 +71,7 @@ async function readTailLines(file: string, limit: number): Promise<string[]> {
     }
     return lines;
   } finally {
-    await handle.close();
+    await handle?.close();
   }
 }
 

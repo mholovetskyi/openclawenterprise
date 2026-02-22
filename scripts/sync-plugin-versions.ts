@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 type PackageJson = {
@@ -24,10 +24,15 @@ const changelogged: string[] = [];
 const skipped: string[] = [];
 
 function ensureChangelogEntry(changelogPath: string, version: string): boolean {
-  if (!existsSync(changelogPath)) {
-    return false;
+  let content: string;
+  try {
+    content = readFileSync(changelogPath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return false;
+    }
+    throw err;
   }
-  const content = readFileSync(changelogPath, "utf8");
   if (content.includes(`## ${version}`)) {
     return false;
   }

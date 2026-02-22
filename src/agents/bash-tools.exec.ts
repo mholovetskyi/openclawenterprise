@@ -90,25 +90,20 @@ async function validateScriptFileForShellBleed(params: {
     : path.resolve(params.workdir, target.relOrAbsPath);
 
   // Best-effort: only validate if file exists and is reasonably small.
-  let stat: { isFile(): boolean; size: number };
+  let content: string;
   try {
     await assertSandboxPath({
       filePath: absPath,
       cwd: params.workdir,
       root: params.workdir,
     });
-    stat = await fs.stat(absPath);
+    content = await fs.readFile(absPath, "utf-8");
   } catch {
     return;
   }
-  if (!stat.isFile()) {
+  if (Buffer.byteLength(content, "utf-8") > 512 * 1024) {
     return;
   }
-  if (stat.size > 512 * 1024) {
-    return;
-  }
-
-  const content = await fs.readFile(absPath, "utf-8");
 
   // Common failure mode: shell env var syntax leaking into Python/JS.
   // We deliberately match all-caps/underscore vars to avoid false positives with `$` as a JS identifier.
