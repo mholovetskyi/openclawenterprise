@@ -68,6 +68,7 @@ import { renderNodes } from "./views/nodes.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderSessions } from "./views/sessions.ts";
 import { renderSkills } from "./views/skills.ts";
+import { renderEnterprise } from "./views/enterprise/enterprise.js";
 
 const AVATAR_DATA_RE = /^data:/i;
 const AVATAR_HTTP_RE = /^https?:\/\//i;
@@ -956,6 +957,34 @@ export function renderApp(state: AppViewState) {
                 onRefresh: () => loadLogs(state, { reset: true }),
                 onExport: (lines, label) => state.exportLogs(lines, label),
                 onScroll: (event) => state.handleLogsScroll(event),
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "enterprise"
+            ? renderEnterprise({
+                status: state.enterpriseStatus,
+                metrics: state.enterpriseMetrics,
+                auditEvents: state.enterpriseAuditEvents,
+                auditLoading: state.enterpriseAuditLoading,
+                users: state.enterpriseUsers,
+                usersLoading: state.enterpriseUsersLoading,
+                activeTab: state.enterpriseActiveTab,
+                onTabChange: (tab) => (state.enterpriseActiveTab = tab),
+                onRefreshMetrics: () => {
+                  /* metrics refresh via gateway when connected */
+                },
+                onRefreshAudit: () => {
+                  state.enterpriseAuditLoading = true;
+                  /* audit log refresh via gateway when connected */
+                  state.enterpriseAuditLoading = false;
+                },
+                onRefreshUsers: () => {
+                  state.enterpriseUsersLoading = true;
+                  /* users refresh via gateway when connected */
+                  state.enterpriseUsersLoading = false;
+                },
               })
             : nothing
         }

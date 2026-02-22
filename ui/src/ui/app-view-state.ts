@@ -34,6 +34,13 @@ import type {
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
 import type { SessionLogEntry } from "./views/usage.ts";
+import type {
+  EnterpriseStatus,
+  MetricSnapshot,
+  AuditEventRow,
+  RbacUser,
+  EnterpriseTab,
+} from "./views/enterprise/types.js";
 
 export type AppViewState = {
   settings: UiSettings;
@@ -222,6 +229,13 @@ export type AppViewState = {
   logsLimit: number;
   logsMaxBytes: number;
   logsAtBottom: boolean;
+  enterpriseStatus: EnterpriseStatus | null;
+  enterpriseMetrics: MetricSnapshot | null;
+  enterpriseAuditEvents: AuditEventRow[];
+  enterpriseAuditLoading: boolean;
+  enterpriseUsers: RbacUser[];
+  enterpriseUsersLoading: boolean;
+  enterpriseActiveTab: EnterpriseTab;
   updateAvailable: import("./types.js").UpdateAvailable | null;
   client: GatewayBrowserClient | null;
   refreshSessionsAfterChat: Set<string>;

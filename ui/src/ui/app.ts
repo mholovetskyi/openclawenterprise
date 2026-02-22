@@ -302,6 +302,14 @@ export class OpenClawApp extends LitElement {
   @state() cronRuns: CronRunLogEntry[] = [];
   @state() cronBusy = false;
 
+  @state() enterpriseStatus: import("./views/enterprise/types.js").EnterpriseStatus | null = null;
+  @state() enterpriseMetrics: import("./views/enterprise/types.js").MetricSnapshot | null = null;
+  @state() enterpriseAuditEvents: import("./views/enterprise/types.js").AuditEventRow[] = [];
+  @state() enterpriseAuditLoading = false;
+  @state() enterpriseUsers: import("./views/enterprise/types.js").RbacUser[] = [];
+  @state() enterpriseUsersLoading = false;
+  @state() enterpriseActiveTab: import("./views/enterprise/types.js").EnterpriseTab = "overview";
+
   @state() updateAvailable: import("./types.js").UpdateAvailable | null = null;
 
   @state() skillsLoading = false;

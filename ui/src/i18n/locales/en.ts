@@ -18,6 +18,7 @@ export const en: TranslationMap = {
     control: "Control",
     agent: "Agent",
     settings: "Settings",
+    enterprise: "Enterprise",
     expand: "Expand sidebar",
     collapse: "Collapse sidebar",
   },
@@ -35,6 +36,7 @@ export const en: TranslationMap = {
     config: "Config",
     debug: "Debug",
     logs: "Logs",
+    enterprise: "Enterprise Admin",
   },
   subtitles: {
     agents: "Manage agent workspaces, tools, and identities.",
@@ -50,6 +52,7 @@ export const en: TranslationMap = {
     config: "Edit ~/.openclaw/openclaw.json safely.",
     debug: "Gateway snapshots, events, and manual RPC calls.",
     logs: "Live tail of the gateway file logs.",
+    enterprise: "IAM users & roles, tamper-evident audit log, security controls, and cluster management.",
   },
   overview: {
     access: {

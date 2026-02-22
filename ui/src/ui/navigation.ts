@@ -9,6 +9,7 @@ export const TAB_GROUPS = [
   },
   { label: "agent", tabs: ["agents", "skills", "nodes"] },
   { label: "settings", tabs: ["config", "debug", "logs"] },
+  { label: "enterprise", tabs: ["enterprise"] },
 ] as const;
 
 export type Tab =
@@ -24,7 +25,8 @@ export type Tab =
   | "chat"
   | "config"
   | "debug"
-  | "logs";
+  | "logs"
+  | "enterprise";
 
 const TAB_PATHS: Record<Tab, string> = {
   agents: "/agents",
@@ -40,6 +42,7 @@ const TAB_PATHS: Record<Tab, string> = {
   config: "/config",
   debug: "/debug",
   logs: "/logs",
+  enterprise: "/enterprise",
 };
 
 const PATH_TO_TAB = new Map(Object.entries(TAB_PATHS).map(([tab, path]) => [path, tab as Tab]));
@@ -151,6 +154,8 @@ export function iconForTab(tab: Tab): IconName {
       return "bug";
     case "logs":
       return "scrollText";
+    case "enterprise":
+      return "puzzle";
     default:
       return "folder";
   }
