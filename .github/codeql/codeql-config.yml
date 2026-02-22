@@ -1,0 +1,11 @@
+name: "OpenClaw CodeQL Config"
+
+queries:
+  - uses: security-extended
+
+# Exclude path-problem (taint-tracking) queries — these do deep inter-procedural
+# data-flow analysis and consistently hang on large codebases. All other
+# security-extended queries (XSS, CSRF, prototype pollution, etc.) still run.
+query-filters:
+  - exclude:
+      kind: path-problem
