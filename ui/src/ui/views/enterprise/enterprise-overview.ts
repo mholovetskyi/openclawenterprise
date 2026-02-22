@@ -35,7 +35,7 @@ export function renderEnterpriseOverview(props: EnterpriseAdminProps) {
         </div>
         <a
           class="ent-link"
-          href="https://github.com/openclaw/openclaw/tree/main/docs/enterprise"
+          href="https://github.com/mholovetskyi/openclawenterprise/tree/main/docs/enterprise"
           target="_blank"
           rel="noreferrer"
           >Enterprise docs →</a

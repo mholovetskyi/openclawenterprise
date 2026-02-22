@@ -107,21 +107,21 @@ export function renderEnterpriseSecurity(props: EnterpriseAdminProps) {
         <div class="ent-link-list">
           <a
             class="ent-link"
-            href="https://github.com/openclaw/openclaw/blob/main/docs/enterprise/security.md"
+            href="https://github.com/mholovetskyi/openclawenterprise/blob/main/docs/enterprise/security.md"
             target="_blank"
             rel="noreferrer"
             >Security hardening guide →</a
           >
           <a
             class="ent-link"
-            href="https://github.com/openclaw/openclaw/blob/main/docs/enterprise/iam.md"
+            href="https://github.com/mholovetskyi/openclawenterprise/blob/main/docs/enterprise/iam.md"
             target="_blank"
             rel="noreferrer"
             >IAM & RBAC docs →</a
           >
           <a
             class="ent-link"
-            href="https://github.com/openclaw/openclaw/security/advisories"
+            href="https://github.com/mholovetskyi/openclawenterprise/security/advisories"
             target="_blank"
             rel="noreferrer"
             >Security advisories →</a
