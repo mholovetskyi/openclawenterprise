@@ -83,6 +83,15 @@ RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
       rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
     fi
 
+# Update npm to latest to pull in patched versions of bundled packages
+# (tar, minimatch, glob) that ship with older npm releases and carry CVEs.
+RUN npm install -g npm@latest && npm cache clean --force
+
+# Remove the corepack cache — it contains a full pnpm tarball with its own
+# transitive dependencies that Trivy flags as CVEs. At runtime pnpm runs from
+# /app/node_modules, not from the corepack download cache.
+RUN rm -rf /root/.cache/node/corepack /home/node/.cache/node/corepack
+
 ENV NODE_ENV=production
 ENV OPENCLAW_PREFER_PNPM=1
 
