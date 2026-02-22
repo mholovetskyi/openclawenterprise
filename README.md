@@ -40,6 +40,7 @@
   <a href="#audit-logging--compliance">Audit</a> ·
   <a href="#prompt-injection-defenses">Guardrails</a> ·
   <a href="#kubernetes">Kubernetes</a> ·
+  <a href="#test-suite--quality-assurance">Tests</a> ·
   <a href="docs/enterprise/">Docs</a>
 </p>
 
@@ -984,6 +985,98 @@ gateway:
 | GitHub Actions integration | — | ✅ |
 | curl\|bash one-command installer | ✅ | ✅ |
 | Windows PowerShell installer | ✅ | ✅ |
+
+---
+
+## Test suite & quality assurance
+
+**370 tests · 20 test files · all passing in CI**
+
+Every enterprise security subsystem ships with a dedicated unit test suite. Tests run in CI on every push via Vitest and cover correctness, edge cases, cryptographic properties, and failure modes — not just happy paths.
+
+### Coverage by security domain
+
+#### Secret backends (91 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `backend-vault.test.ts` | 24 | Token auth, AppRole, no-auth fallback, KV v2 CRUD, custom request headers |
+| `backend-azure-kv.test.ts` | 24 | HTTP 404 vs `SecretNotFound` error code disambiguation, Azure-safe name encoding/decoding |
+| `backend-gcp-sm.test.ts` | 22 | gRPC error code mapping (`NOT_FOUND`, `PERMISSION_DENIED`), Buffer and string payload handling, create-or-skip-if-exists semantics |
+| `backend-aws-sm.test.ts` | 21 | Get/set/delete/list/exists operations, pagination across multiple pages, SDK error propagation |
+
+#### Skill supply chain security (37 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `code-signing.test.ts` | 17 | Ed25519 sign and verify round-trip, key derivation, modified-file detection, multi-key trust anchors, corrupt-signature rejection |
+| `sast.test.ts` | 20 | All 14 SAST rules fire on matching patterns, risk score accumulation 0–100, CWE and OWASP tag presence, `approve`/`review`/`reject` threshold recommendations |
+
+#### IAM / RBAC (69 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `rbac/store.test.ts` | 26 | User, role, and group CRUD; duplicate rejection; cascade-delete integrity |
+| `rbac/engine.test.ts` | 23 | Permission evaluation, wildcard matching (`agents.*`, `*`), group role inheritance, cycle detection in role graphs |
+| `rbac/model.test.ts` | 20 | All 5 built-in roles and their exact permission sets; custom role definition; invalid role rejection |
+
+#### Authentication (23 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `jwt.test.ts` | 23 | RS256 and HS256 sign/verify, access token and refresh token lifecycle, API key generation (`oc_…` prefix), SHA-256 key hash storage (raw key never stored), expired-token rejection |
+
+#### Audit logging (27 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `audit/schema.test.ts` | 17 | ULID ID generation, SHA-256 hash chain linkage, single-event tamper detection, multi-event chain break detection at exact index |
+| `audit/logger.test.ts` | 10 | Auth/agent/guardrail event logging, disk-full simulation with graceful degradation |
+
+#### Cryptography & secret routing (45 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `encryption.test.ts` | 16 | AES-256-GCM encrypt/decrypt round-trip, IV uniqueness across encryptions, auth-tag tamper detection, wrong-key rejection |
+| `secrets/index.test.ts` | 14 | Secret reference URI parsing (`vault://`, `aws-sm://`, `gcp-sm://`, `azure-kv://`, `env://`, `file://`), backend routing, backend-not-configured errors |
+| `backend-file.test.ts` | 15 | File backend CRUD, encrypted-at-rest storage, plaintext-credential migration |
+
+#### Security & guardrails (40 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `input-sanitizer.test.ts` | 22 | NFC Unicode normalization, invisible character stripping, all 8 injection pattern families, trust boundary tag injection, configurable truncation |
+| `guardrails.test.ts` | 18 | Rule evaluation against tool inputs and outputs, pluggable custom rules, `block`/`require-approval`/`warn` action dispatch, audit event emission on block |
+
+#### Observability & infrastructure (38 tests)
+
+| Test file | Tests | What it validates |
+|-----------|-------|-------------------|
+| `monitoring/index.test.ts` | 10 | Prometheus metric registration and increment, `/healthz` probe response shape, noop stub when monitoring is disabled |
+| `tenancy/index.test.ts` | 14 | `AsyncLocalStorage` tenant context propagation through nested async calls, per-tenant rate limit enforcement, missing-context error |
+| `cluster/index.test.ts` | 14 | Node heartbeat registration, stale-node eviction after missed heartbeats, in-memory coordinator for development |
+
+### What the tests prove
+
+- **Tamper detection works.** The audit hash chain tests verify that modifying or deleting any event — even a single byte — causes `verifyChain()` to identify the exact break point.
+- **Crypto is correct.** AES-256-GCM tests confirm IV uniqueness (no nonce reuse), auth-tag integrity (ciphertext cannot be silently tampered), and wrong-key rejection.
+- **RBAC enforces least privilege.** The engine tests cover wildcards, inheritance cycles, and every built-in role's exact permission boundary.
+- **Injection patterns are blocked.** The sanitizer tests cover all 8 rule families including Unicode homoglyph attacks, Base64-encoded payloads, and urgency/authority spoofing phrases.
+- **Cloud backends handle errors correctly.** Vault, AWS SM, GCP SM, and Azure KV tests verify that SDK errors (gRPC codes, HTTP status codes, SDK exception types) are mapped to consistent `SecretNotFoundError` / `SecretBackendError` types.
+- **Code signing rejects modified skills.** SAST and signing tests verify that a single modified file in a skill directory causes signature verification to fail before installation.
+
+### Running the tests
+
+```bash
+# Full enterprise test suite
+pnpm vitest run --config vitest.unit.config.ts src/enterprise
+
+# Single domain
+pnpm vitest run --config vitest.unit.config.ts src/enterprise/iam
+pnpm vitest run --config vitest.unit.config.ts src/enterprise/security
+pnpm vitest run --config vitest.unit.config.ts src/enterprise/secrets
+pnpm vitest run --config vitest.unit.config.ts src/enterprise/audit
+```
 
 ---
 
