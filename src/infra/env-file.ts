@@ -14,8 +14,12 @@ export function upsertSharedEnvVar(params: {
   const value = params.value;
 
   let raw = "";
-  if (fs.existsSync(filepath)) {
+  try {
     raw = fs.readFileSync(filepath, "utf8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw err;
+    }
   }
 
   const lines = raw.length ? raw.split(/\r?\n/) : [];

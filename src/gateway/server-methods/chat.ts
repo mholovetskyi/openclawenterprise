@@ -360,16 +360,23 @@ function appendAssistantTranscriptMessage(params: {
     return { ok: false, error: "transcript path not resolved" };
   }
 
-  if (!fs.existsSync(transcriptPath)) {
-    if (!params.createIfMissing) {
-      return { ok: false, error: "transcript file not found" };
-    }
+  if (params.createIfMissing) {
     const ensured = ensureTranscriptFile({
       transcriptPath,
       sessionId: params.sessionId,
     });
     if (!ensured.ok) {
       return { ok: false, error: ensured.error ?? "failed to create transcript file" };
+    }
+  } else {
+    try {
+      const fd = fs.openSync(transcriptPath, "r");
+      fs.closeSync(fd);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return { ok: false, error: "transcript file not found" };
+      }
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
     }
   }
 

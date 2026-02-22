@@ -26,8 +26,8 @@ export function resolveWebCredsBackupPath(authDir: string): string {
 
 export function hasWebCredsSync(authDir: string): boolean {
   try {
-    const stats = fsSync.statSync(resolveWebCredsPath(authDir));
-    return stats.isFile() && stats.size > 1;
+    const content = fsSync.readFileSync(resolveWebCredsPath(authDir), "utf-8");
+    return content.length > 1;
   } catch {
     return false;
   }
@@ -149,10 +149,15 @@ export function readWebSelfId(authDir: string = resolveDefaultWebAuthDir()) {
   // Read the cached WhatsApp Web identity (jid + E.164) from disk if present.
   try {
     const credsPath = resolveWebCredsPath(resolveUserPath(authDir));
-    if (!fsSync.existsSync(credsPath)) {
-      return { e164: null, jid: null } as const;
+    let raw: string;
+    try {
+      raw = fsSync.readFileSync(credsPath, "utf-8");
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return { e164: null, jid: null } as const;
+      }
+      throw err;
     }
-    const raw = fsSync.readFileSync(credsPath, "utf-8");
     const parsed = JSON.parse(raw) as { me?: { id?: string } } | undefined;
     const jid = parsed?.me?.id ?? null;
     const e164 = jid ? jidToE164(jid, { authDir }) : null;

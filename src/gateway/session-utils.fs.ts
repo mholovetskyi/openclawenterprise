@@ -74,12 +74,22 @@ export function readSessionMessages(
 ): unknown[] {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile);
 
-  const filePath = candidates.find((p) => fs.existsSync(p));
-  if (!filePath) {
+  let fileContent: string | null = null;
+  for (const p of candidates) {
+    try {
+      fileContent = fs.readFileSync(p, "utf-8");
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+    }
+  }
+  if (fileContent === null) {
     return [];
   }
 
-  const lines = fs.readFileSync(filePath, "utf-8").split(/\r?\n/);
+  const lines = fileContent.split(/\r?\n/);
   const messages: unknown[] = [];
   for (const line of lines) {
     if (!line.trim()) {
@@ -186,13 +196,12 @@ export function archiveSessionTranscripts(opts: {
     opts.sessionFile,
     opts.agentId,
   )) {
-    if (!fs.existsSync(candidate)) {
-      continue;
-    }
     try {
       archived.push(archiveFileOnDisk(candidate, opts.reason));
-    } catch {
-      // Best-effort.
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        // Best-effort: ignore errors other than file not found.
+      }
     }
   }
   return archived;
@@ -456,7 +465,18 @@ function findExistingTranscriptPath(
   agentId?: string,
 ): string | null {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  return candidates.find((p) => fs.existsSync(p)) ?? null;
+  for (const p of candidates) {
+    try {
+      const fd = fs.openSync(p, "r");
+      fs.closeSync(fd);
+      return p;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+    }
+  }
+  return null;
 }
 
 function withOpenTranscriptFd<T>(filePath: string, read: (fd: number) => T | null): T | null {
@@ -742,7 +762,19 @@ export function readSessionPreviewItemsFromTranscript(
   maxChars: number,
 ): SessionPreviewItem[] {
   const candidates = resolveSessionTranscriptCandidates(sessionId, storePath, sessionFile, agentId);
-  const filePath = candidates.find((p) => fs.existsSync(p));
+  let filePath: string | undefined;
+  for (const p of candidates) {
+    try {
+      const fd = fs.openSync(p, "r");
+      fs.closeSync(fd);
+      filePath = p;
+      break;
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+        throw err;
+      }
+    }
+  }
   if (!filePath) {
     return [];
   }

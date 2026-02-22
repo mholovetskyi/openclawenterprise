@@ -27,9 +27,14 @@ function walkUpFrom<T>(
 function hasGitMarker(repoRoot: string): boolean {
   const gitPath = path.join(repoRoot, ".git");
   try {
-    const stat = fs.statSync(gitPath);
-    return stat.isDirectory() || stat.isFile();
-  } catch {
+    fs.readFileSync(gitPath);
+    return true;
+  } catch (err) {
+    const code = (err as NodeJS.ErrnoException).code;
+    // EISDIR means .git is a directory (normal full clone) — still a valid marker.
+    if (code === "EISDIR") {
+      return true;
+    }
     return false;
   }
 }

@@ -214,12 +214,16 @@ export function registerVoiceCallCli(params: {
       const since = Math.max(0, Number(options.since ?? 0));
       const pollMs = Math.max(50, Number(options.poll ?? 250));
 
-      if (!fs.existsSync(file)) {
-        logger.error(`No log file at ${file}`);
-        process.exit(1);
+      let initial: string;
+      try {
+        initial = fs.readFileSync(file, "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          logger.error(`No log file at ${file}`);
+          process.exit(1);
+        }
+        throw err;
       }
-
-      const initial = fs.readFileSync(file, "utf8");
       const lines = initial.split("\n").filter(Boolean);
       for (const line of lines.slice(Math.max(0, lines.length - since))) {
         // eslint-disable-next-line no-console
@@ -265,11 +269,15 @@ export function registerVoiceCallCli(params: {
       const file = options.file;
       const last = Math.max(1, Number(options.last ?? 200));
 
-      if (!fs.existsSync(file)) {
-        throw new Error("No log file at " + file);
+      let content: string;
+      try {
+        content = fs.readFileSync(file, "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          throw new Error("No log file at " + file);
+        }
+        throw err;
       }
-
-      const content = fs.readFileSync(file, "utf8");
       const lines = content.split("\n").filter(Boolean).slice(-last);
 
       const turnLatencyMs: number[] = [];

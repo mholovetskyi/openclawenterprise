@@ -1,4 +1,7 @@
-FROM node:22-bookworm@sha256:cd7bcd2e7a1e6f72052feb023c7f6b722205d3fcab7bbcbd2d1bfdab10b1e935
+# ── Stage 1: Builder ──────────────────────────────────────────────────────────
+# Full bookworm image required for native module compilation (better-sqlite3,
+# canvas, etc.) and Bun build tooling. Dev tools stay in this stage only.
+FROM node:22-bookworm@sha256:cd7bcd2e7a1e6f72052feb023c7f6b722205d3fcab7bbcbd2d1bfdab10b1e935 AS builder
 
 # Install Bun (required for build scripts)
 RUN curl -fsSL https://bun.sh/install | bash
@@ -49,11 +52,41 @@ RUN pnpm build
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:build
 
-ENV NODE_ENV=production
 
-# Security hardening: Run as non-root user
-# The node:22-bookworm image includes a 'node' user (uid 1000)
-# This reduces the attack surface by preventing container escape via root privileges
+# ── Stage 2: Runtime ──────────────────────────────────────────────────────────
+# bookworm-slim strips compiler toolchain, ImageMagick, gnupg, perl, and other
+# dev packages that are not needed at runtime — eliminating the bulk of OS-level
+# CVEs while keeping the same glibc version so native .node binaries are compatible.
+FROM node:22-bookworm-slim AS runtime
+
+RUN corepack enable
+
+WORKDIR /app
+
+# Copy the fully-built application from the builder stage.
+# Compiled native modules (.node files) are glibc-compatible: both stages use
+# Debian bookworm; only the non-essential OS packages differ.
+COPY --from=builder --chown=node:node /app /app
+
+# Copy Playwright browser cache if it was installed in the builder stage.
+# The /home/node directory always exists, so this COPY is always safe.
+COPY --from=builder --chown=node:node /home/node /home/node
+
+# Re-install xvfb in the slim runtime if the browser build arg was set,
+# since slim does not include it and Chromium needs it for headless operation.
+ARG OPENCLAW_INSTALL_BROWSER=""
+USER root
+RUN if [ -n "$OPENCLAW_INSTALL_BROWSER" ]; then \
+      apt-get update && \
+      DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends xvfb && \
+      apt-get clean && \
+      rm -rf /var/lib/apt/lists/* /var/cache/apt/archives/*; \
+    fi
+
+ENV NODE_ENV=production
+ENV OPENCLAW_PREFER_PNPM=1
+
+# Security hardening: Run as non-root user (uid 1001 in bookworm-slim)
 USER node
 
 # Start gateway server with default config.

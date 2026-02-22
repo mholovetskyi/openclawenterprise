@@ -390,11 +390,12 @@ vi.mock("../config/config.js", async () => {
       const configPath = resolveConfigPath();
       let fileConfig: Record<string, unknown> = {};
       try {
-        if (fsSync.existsSync(configPath)) {
-          const raw = fsSync.readFileSync(configPath, "utf-8");
-          fileConfig = JSON.parse(raw) as Record<string, unknown>;
+        const raw = fsSync.readFileSync(configPath, "utf-8");
+        fileConfig = JSON.parse(raw) as Record<string, unknown>;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          // Ignore parse errors too — fall back to empty config.
         }
-      } catch {
         fileConfig = {};
       }
 

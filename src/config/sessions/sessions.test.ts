@@ -183,8 +183,10 @@ describe("appendAssistantMessageToSessionTranscript", () => {
 
     expect(result.ok).toBe(true);
     if (result.ok) {
-      const lines = fs.readFileSync(result.sessionFile, "utf-8").trim().split("\n");
-      const sessionFileMode = fs.statSync(result.sessionFile).mode & 0o777;
+      const sessionFileFd = fs.openSync(result.sessionFile, "r");
+      const sessionFileMode = fs.fstatSync(sessionFileFd).mode & 0o777;
+      const lines = fs.readFileSync(sessionFileFd, "utf-8").trim().split("\n");
+      fs.closeSync(sessionFileFd);
       if (process.platform !== "win32") {
         expect(sessionFileMode).toBe(0o600);
       }

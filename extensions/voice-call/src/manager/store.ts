@@ -19,16 +19,20 @@ export function loadActiveCallsFromStore(storePath: string): {
   rejectedProviderCallIds: Set<string>;
 } {
   const logPath = path.join(storePath, "calls.jsonl");
-  if (!fs.existsSync(logPath)) {
-    return {
-      activeCalls: new Map(),
-      providerCallIdMap: new Map(),
-      processedEventIds: new Set(),
-      rejectedProviderCallIds: new Set(),
-    };
+  let content: string;
+  try {
+    content = fs.readFileSync(logPath, "utf-8");
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return {
+        activeCalls: new Map(),
+        providerCallIdMap: new Map(),
+        processedEventIds: new Set(),
+        rejectedProviderCallIds: new Set(),
+      };
+    }
+    throw err;
   }
-
-  const content = fs.readFileSync(logPath, "utf-8");
   const lines = content.split("\n");
 
   const callMap = new Map<CallId, CallRecord>();
