@@ -5,7 +5,7 @@
  * Follows the same pattern as OpenClaw's existing device identity signatures.
  */
 
-import { createSign, createVerify, generateKeyPairSync, randomBytes } from "node:crypto";
+import { generateKeyPairSync, randomBytes, sign, verify, createPrivateKey, createPublicKey } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -90,9 +90,8 @@ export function signSkill(params: {
   const contentHash = hashDirectory(params.skillDir);
   const privateKeyDer = Buffer.from(params.privateKeyBase64, "base64url");
 
-  const signer = createSign("SHA256");
-  signer.update(contentHash);
-  const signature = signer.sign({ key: privateKeyDer, format: "der", type: "pkcs8" }, "base64url");
+  const privateKeyObj = createPrivateKey({ key: privateKeyDer, format: "der", type: "pkcs8" });
+  const signature = sign(null, Buffer.from(contentHash), privateKeyObj).toString("base64url");
 
   // Derive public key from private key
   const { publicKey: publicKeyBase64 } = derivePublicKey(params.privateKeyBase64);
@@ -131,12 +130,12 @@ export function verifySkillSignature(params: {
   // Verify signature
   try {
     const publicKeyDer = Buffer.from(params.signature.publicKey, "base64url");
-    const verifier = createVerify("SHA256");
-    verifier.update(contentHash);
-    const valid = verifier.verify(
-      { key: publicKeyDer, format: "der", type: "spki" },
-      params.signature.signature,
-      "base64url",
+    const publicKeyObj = createPublicKey({ key: publicKeyDer, format: "der", type: "spki" });
+    const valid = verify(
+      null,
+      Buffer.from(contentHash),
+      publicKeyObj,
+      Buffer.from(params.signature.signature, "base64url"),
     );
     if (!valid) return { valid: false, reason: "Signature verification failed" };
     return { valid: true };
@@ -146,11 +145,9 @@ export function verifySkillSignature(params: {
 }
 
 function derivePublicKey(privateKeyBase64: string): { publicKey: string } {
-  // For Ed25519, we need to re-generate or extract the public key from the private key DER
-  // This is a simplified version — in practice, use KeyObject API
   const privateKeyDer = Buffer.from(privateKeyBase64, "base64url");
-  // Ed25519 PKCS#8 DER: last 32 bytes of a 48-byte key is the seed
-  // The public key (spki) is derived deterministically
-  // For now, we store the public key separately during key generation
-  return { publicKey: privateKeyBase64.slice(0, 44) }; // placeholder
+  const privateKeyObj = createPrivateKey({ key: privateKeyDer, format: "der", type: "pkcs8" });
+  const publicKeyObj = createPublicKey(privateKeyObj);
+  const publicKeyDer = publicKeyObj.export({ type: "spki", format: "der" }) as Buffer;
+  return { publicKey: publicKeyDer.toString("base64url") };
 }

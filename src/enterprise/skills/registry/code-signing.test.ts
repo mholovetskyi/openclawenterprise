@@ -1,11 +1,5 @@
 /**
  * Code-signing tests.
- *
- * Note: `signSkill()` in the source uses `createSign("SHA256")` which is
- * incompatible with Ed25519 keys (Node.js requires `crypto.sign(null, …)`
- * for EdDSA). Tests for sign+verify work around this by constructing
- * signatures directly with the correct API. The known bug is documented here
- * so it can be fixed in a follow-up.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
@@ -164,16 +158,33 @@ describe("verifySkillSignature", () => {
 
   afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
 
-  // KNOWN BUG: verifySkillSignature uses createVerify("SHA256") which is
-  // incompatible with Ed25519 keys in Node.js 22. The verify call is
-  // caught internally and returns { valid: false } instead of { valid: true }.
-  // Fix: replace createVerify("SHA256") with crypto.verify(null, data, key, sig).
-  // These tests document the broken path and are marked .todo until fixed:
-  it.todo("returns valid for a correctly signed directory (BLOCKED: createVerify incompatible with Ed25519)");
-  it.todo("accepts when public key is in trusted list (BLOCKED: createVerify incompatible with Ed25519)");
-  it.todo("accepts when trustedPublicKeys is empty (BLOCKED: createVerify incompatible with Ed25519)");
+  it("returns valid for a correctly signed directory", () => {
+    const sig = makeSignature(tmpDir, keyPair);
+    const result = verifySkillSignature({ skillDir: tmpDir, signature: sig });
+    expect(result.valid).toBe(true);
+  });
 
-  // The following tests work because they return false BEFORE the broken crypto call:
+  it("accepts when public key is in trusted list", () => {
+    const sig = makeSignature(tmpDir, keyPair);
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: sig,
+      trustedPublicKeys: [keyPair.publicKey],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it("accepts when trustedPublicKeys is empty", () => {
+    const sig = makeSignature(tmpDir, keyPair);
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: sig,
+      trustedPublicKeys: [],
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  // The following tests verify early-return paths (before the crypto call):
 
   it("rejects when content hash mismatches (early return before crypto)", () => {
     const sig = makeSignature(tmpDir, keyPair);
