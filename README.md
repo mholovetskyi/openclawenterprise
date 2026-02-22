@@ -40,6 +40,7 @@
   <a href="#audit-logging--compliance">Audit</a> ·
   <a href="#prompt-injection-defenses">Guardrails</a> ·
   <a href="#kubernetes">Kubernetes</a> ·
+  <a href="#connecting-to-enterprise-messaging">Channels</a> ·
   <a href="#test-suite--quality-assurance">Tests</a> ·
   <a href="docs/enterprise/">Docs</a>
 </p>
@@ -797,6 +798,213 @@ See [`k8s/examples/enterprise-ha.yaml`](k8s/examples/enterprise-ha.yaml) for a p
 - cert-manager TLS with Let's Encrypt
 - NetworkPolicy (ingress from nginx, egress to Vault + external APIs)
 - `topologySpreadConstraints` for zone distribution
+
+---
+
+## Connecting to enterprise messaging
+
+OpenClaw integrates with the platforms your team already uses. Every channel is configured in `~/.openclaw/config.yaml` under `channels.<name>`. Run `pnpm openclaw onboard` for an interactive setup wizard.
+
+### Slack
+
+**Status:** production-ready. Socket Mode (default) or HTTP Events API.
+
+**Step 1 — Create a Slack app**
+
+Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** → **From manifest** and paste the JSON below, then replace `OpenClaw` with your preferred bot name:
+
+```json
+{
+  "display_information": { "name": "OpenClaw" },
+  "features": {
+    "bot_user": { "display_name": "OpenClaw", "always_online": false },
+    "app_home": { "messages_tab_enabled": true }
+  },
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "chat:write", "channels:history", "channels:read",
+        "groups:history", "im:history", "mpim:history",
+        "users:read", "app_mentions:read",
+        "reactions:read", "reactions:write",
+        "files:read", "files:write", "commands"
+      ]
+    }
+  },
+  "settings": {
+    "socket_mode_enabled": true,
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention", "message.channels", "message.groups",
+        "message.im", "message.mpim",
+        "reaction_added", "reaction_removed"
+      ]
+    }
+  }
+}
+```
+
+- Under **Socket Mode**, generate an **App-Level Token** (`xapp-...`) with scope `connections:write`.
+- Under **OAuth & Permissions**, install the app to your workspace and copy the **Bot Token** (`xoxb-...`).
+- Under **App Home**, enable the **Messages Tab** so users can DM the bot.
+
+**Step 2 — Configure OpenClaw**
+
+```yaml
+channels:
+  slack:
+    enabled: true
+    botToken: xoxb-...       # or env: SLACK_BOT_TOKEN
+    appToken: xapp-...       # or env: SLACK_APP_TOKEN
+    requireMention: true     # require @mention in channels (default)
+    dmPolicy: pairing        # pairing | open | allowlist
+    groupPolicy: allowlist   # allowlist channels explicitly
+    channels:
+      C0123456789:           # Slack channel ID
+        allow: true
+```
+
+**Step 3 — Start the gateway**
+
+```bash
+pnpm gateway:watch
+```
+
+The bot will appear online in Slack immediately. DM it directly or `@mention` it in any channel it has been added to.
+
+---
+
+### Microsoft Teams
+
+**Status:** supported via plugin (Azure Bot Framework). Requires a public HTTPS endpoint for the bot webhook.
+
+**Step 1 — Install the Teams plugin**
+
+```bash
+pnpm openclaw plugins install @openclaw/msteams
+# or from this repo's local checkout:
+pnpm openclaw plugins install ./extensions/msteams
+```
+
+**Step 2 — Register an Azure Bot**
+
+1. Go to [portal.azure.com](https://portal.azure.com) → **Azure Bot** → **Create**.
+2. Choose **Multi Tenant** (or **Single Tenant** if you want org-only access).
+3. Note the **App ID** and generate a **Client Secret** — copy both.
+4. Under **Channels**, add **Microsoft Teams**.
+5. Under **Configuration**, set the **Messaging endpoint** to your gateway's public URL:
+   ```
+   https://your-gateway.example.com/api/messages
+   ```
+   The gateway listens on port 3978 and path `/api/messages` by default. Use a reverse proxy (nginx, Caddy) or tunnel (ngrok, Tailscale Funnel) to expose it over HTTPS.
+
+**Step 3 — Configure OpenClaw**
+
+```yaml
+channels:
+  msteams:
+    enabled: true
+    appId: "<Azure App ID>"           # or env: MSTEAMS_APP_ID
+    appPassword: "<Client Secret>"    # or env: MSTEAMS_APP_PASSWORD
+    tenantId: "<Azure AD Tenant ID>"  # omit for multi-tenant
+    webhook:
+      port: 3978
+      path: /api/messages
+    requireMention: true              # require @mention in channels
+    dmPolicy: pairing                 # pairing | open | allowlist
+    replyStyle: thread                # thread | top-level
+```
+
+**Step 4 — Install the Teams app**
+
+Generate an app package (zip of `manifest.json` + icons) and upload it in Teams Admin Center or sideload it directly:
+
+- **Teams Admin Center** → Manage apps → Upload → select the zip → publish to your org.
+- **Teams client** → Apps → Manage your apps → Upload an app (sideloading, for dev/test).
+
+The bot then appears in Teams search. Users can DM it directly or `@mention` it in any channel it is added to.
+
+---
+
+### Google Chat (Google Workspace)
+
+**Status:** production-ready via Google Chat API (HTTP webhook).
+
+**Step 1 — Create a Google Cloud project**
+
+1. Go to [console.cloud.google.com](https://console.cloud.google.com) → Enable **Google Chat API**.
+2. Create a **Service Account** (Credentials → Create Credentials → Service Account).
+3. Generate a **JSON key** for the service account and copy it to the gateway host, e.g. `~/.openclaw/googlechat-sa.json`.
+
+**Step 2 — Configure the Chat App**
+
+In [Google Chat API → Configuration](https://console.cloud.google.com/apis/api/chat.googleapis.com/hangouts-chat):
+
+- Set **Connection settings** to **HTTP endpoint URL** pointing to `https://your-gateway.example.com/googlechat`.
+- Set **Visibility** to your domain or specific users.
+- Set **App status** to **Live**.
+
+**Step 3 — Configure OpenClaw**
+
+```yaml
+channels:
+  googlechat:
+    enabled: true
+    serviceAccountFile: ~/.openclaw/googlechat-sa.json
+    requireMention: true
+    dmPolicy: pairing
+    groupPolicy: allowlist
+```
+
+Users find the bot by searching its app name in the Google Chat search bar (it won't appear in the Marketplace listing — search by name directly).
+
+---
+
+### Mattermost (self-hosted)
+
+**Status:** supported via plugin (bot token + WebSocket events). Channels, groups, and DMs are supported.
+
+**Step 1 — Install the Mattermost plugin**
+
+```bash
+pnpm openclaw plugins install @openclaw/mattermost
+```
+
+**Step 2 — Create a bot account**
+
+In Mattermost: **System Console** → **Integrations** → **Bot Accounts** → **Add Bot Account**. Copy the **bot token** shown on creation (it is only displayed once).
+
+**Step 3 — Configure OpenClaw**
+
+```yaml
+channels:
+  mattermost:
+    enabled: true
+    botToken: "<mattermost-bot-token>"  # or env: MATTERMOST_BOT_TOKEN
+    baseUrl: https://chat.example.com   # your Mattermost server URL
+    dmPolicy: pairing
+    requireMention: true
+```
+
+**Step 4 — Add the bot to channels**
+
+In Mattermost, invite the bot user to any channel with `/invite @openclaw`. It will respond to DMs automatically and to `@openclaw` mentions in channels.
+
+---
+
+### Channel overview
+
+| Channel | Auth required | Plugin needed | DMs | Group channels |
+|---------|--------------|---------------|-----|----------------|
+| Slack | Bot token + App token | No | ✅ | ✅ |
+| Microsoft Teams | Azure App ID + Secret | Yes (`@openclaw/msteams`) | ✅ | ✅ |
+| Google Chat | GCP service account JSON | No | ✅ | ✅ (spaces) |
+| Mattermost | Bot token | Yes (`@openclaw/mattermost`) | ✅ | ✅ |
+| Discord | Bot token | No | ✅ | ✅ |
+| Telegram | Bot token (BotFather) | No | ✅ | ✅ |
+| WhatsApp | QR pairing (Baileys) | No | ✅ | ✅ |
+
+> **Outlook / Exchange email** is not a chat channel. For email-triggered automation, see [Gmail Pub/Sub hooks](#community-features) in the community edition.
 
 ---
 
