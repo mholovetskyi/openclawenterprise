@@ -119,7 +119,15 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
 
       - name: Run Gitleaks
-        run: gitleaks detect --source . --redact
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            LOG_OPTS="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
+          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+            LOG_OPTS="-1"
+          else
+            LOG_OPTS="${{ github.event.before }}..${{ github.sha }}"
+          fi
+          gitleaks detect --source . --redact --log-opts="$LOG_OPTS"
 
   # ── Dependency review ─────────────────────────────────────────────────
   dependency-review:

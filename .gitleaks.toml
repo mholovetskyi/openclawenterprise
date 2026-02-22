@@ -1,0 +1,24 @@
+title = "OpenClaw Enterprise Gitleaks Config"
+
+[allowlist]
+description = "Global allowlist for test fixtures, mocks, and documentation"
+
+paths = [
+  # Test files routinely contain fake tokens/keys for unit/e2e tests
+  '''test/''',
+  '''\.test\.ts$''',
+  '''\.test\.js$''',
+  '''\.spec\.ts$''',
+  '''\.spec\.js$''',
+  # Fixture and mock directories
+  '''fixtures/''',
+  '''mocks/''',
+  # Documentation — example values, not real secrets
+  '''docs/''',
+  '''\.md$''',
+  '''\.mdx$''',
+  # Vendored third-party code
+  '''vendor/''',
+  # Changelog may reference commit SHAs that look like tokens
+  '''CHANGELOG\.md$''',
+]
