@@ -56,15 +56,27 @@ Enterprise deployments have a different set of requirements. Regulated industrie
 
 ## Install
 
-```bash
-# All platforms — requires Node.js ≥22
-npm install -g openclaw@latest
+OpenClaw Enterprise is a source-available fork — build it from this repository. Requires Node.js ≥22.12.0 and [pnpm](https://pnpm.io).
 
-# First-time setup (config, daemon, shell completion)
-openclaw onboard
+```bash
+# 1. Clone the enterprise fork
+git clone https://github.com/mholovetskyi/openclawenterprise.git
+cd openclawenterprise
+
+# 2. Install dependencies and build
+pnpm install
+pnpm build
+
+# 3. First-time setup (config, daemon, shell completion)
+pnpm openclaw onboard --install-daemon
+
+# 4. Start the gateway
+pnpm gateway:watch
 ```
 
-> Node.js ≥22.12.0 is required. Install it via [fnm](https://github.com/Schniz/fnm) (`fnm install 22`), [nvm](https://github.com/nvm-sh/nvm), or the [official installer](https://nodejs.org).
+> **Node.js ≥22.12.0** is required. Install via [fnm](https://github.com/Schniz/fnm) (`fnm install 22`), [nvm](https://github.com/nvm-sh/nvm), or the [official installer](https://nodejs.org).
+>
+> Looking for the community edition? `npm install -g openclaw@latest` — no build step needed.
 
 ---
 
@@ -1091,9 +1103,11 @@ openclaw update --channel stable|beta|dev
 
 ### Build from source
 
+Community edition:
+
 ```bash
-git clone https://github.com/mholovetskyi/openclawenterprise.git
-cd openclawenterprise
+git clone https://github.com/openclaw/openclaw.git
+cd openclaw
 
 pnpm install
 pnpm ui:build
@@ -1102,6 +1116,8 @@ pnpm build
 pnpm openclaw onboard --install-daemon
 pnpm gateway:watch    # dev loop with auto-reload
 ```
+
+Enterprise edition: see [Install](#install) above.
 
 ---
 
