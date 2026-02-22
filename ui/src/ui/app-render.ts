@@ -7,6 +7,11 @@ import { renderChatControls, renderTab, renderThemeToggle } from "./app-render.h
 import type { AppViewState } from "./app-view-state.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
+import {
+  loadEnterpriseUsers,
+  loadEnterpriseAudit,
+  upsertEnterpriseUser,
+} from "./controllers/enterprise.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
@@ -973,17 +978,37 @@ export function renderApp(state: AppViewState) {
                 activeTab: state.enterpriseActiveTab,
                 onTabChange: (tab) => (state.enterpriseActiveTab = tab),
                 onRefreshMetrics: () => {
-                  /* metrics refresh via gateway when connected */
+                  // Metrics come from Prometheus /metrics — displayed via the overview tab
                 },
                 onRefreshAudit: () => {
+                  if (!state.client) return;
                   state.enterpriseAuditLoading = true;
-                  /* audit log refresh via gateway when connected */
-                  state.enterpriseAuditLoading = false;
+                  state.requestUpdate?.();
+                  void loadEnterpriseAudit(state.client, { limit: 100 })
+                    .then((result) => {
+                      state.enterpriseAuditEvents = result.events;
+                      state.enterpriseAuditLoading = false;
+                      state.requestUpdate?.();
+                    })
+                    .catch(() => {
+                      state.enterpriseAuditLoading = false;
+                      state.requestUpdate?.();
+                    });
                 },
                 onRefreshUsers: () => {
+                  if (!state.client) return;
                   state.enterpriseUsersLoading = true;
-                  /* users refresh via gateway when connected */
-                  state.enterpriseUsersLoading = false;
+                  state.requestUpdate?.();
+                  void loadEnterpriseUsers(state.client)
+                    .then((result) => {
+                      state.enterpriseUsers = result.users;
+                      state.enterpriseUsersLoading = false;
+                      state.requestUpdate?.();
+                    })
+                    .catch(() => {
+                      state.enterpriseUsersLoading = false;
+                      state.requestUpdate?.();
+                    });
                 },
                 // User role editing
                 editingUserId: state.enterpriseUserEditingId,
@@ -997,7 +1022,10 @@ export function renderApp(state: AppViewState) {
                 onEditUserRolesChange: (roles) => (state.enterpriseUserEditRoles = roles),
                 onEditUserActiveChange: (active) => (state.enterpriseUserEditActive = active),
                 onSaveUserEdit: (userId) => {
-                  // Update the local users list optimistically
+                  if (!state.client) return;
+                  const user = state.enterpriseUsers.find((u) => u.id === userId);
+                  if (!user) return;
+                  // Optimistic local update
                   state.enterpriseUsers = state.enterpriseUsers.map((u) =>
                     u.id === userId
                       ? { ...u, roles: state.enterpriseUserEditRoles, active: state.enterpriseUserEditActive }
@@ -1005,6 +1033,15 @@ export function renderApp(state: AppViewState) {
                   );
                   state.enterpriseUserEditingId = null;
                   state.enterpriseUserEditRoles = [];
+                  state.requestUpdate?.();
+                  // Persist to gateway
+                  void upsertEnterpriseUser(state.client, {
+                    ...user,
+                    roles: state.enterpriseUserEditRoles,
+                    active: state.enterpriseUserEditActive,
+                  }).catch((err) => {
+                    console.error("[enterprise] failed to save user edit:", err);
+                  });
                 },
                 onCancelUserEdit: () => {
                   state.enterpriseUserEditingId = null;

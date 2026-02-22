@@ -25,6 +25,8 @@ export interface AuditStorage {
   getLastHash(): Promise<string | undefined>;
   count(): Promise<number>;
   shutdown(): Promise<void>;
+  /** GDPR: replace all occurrences of actorId with pseudonym. Returns rows affected. */
+  anonymizeActor?(actorId: string, pseudonym: string): Promise<number>;
 }
 
 /**
@@ -175,6 +177,38 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
 
     async shutdown(): Promise<void> {
       db.close();
+    },
+
+    async anonymizeActor(actorId: string, pseudonym: string): Promise<number> {
+      // Update indexed columns
+      db.prepare(
+        "UPDATE audit_events SET actor_id = @pseudo, actor_email = NULL WHERE actor_id = @actorId",
+      ).run({ pseudo: pseudonym, actorId });
+
+      // Rewrite raw JSON blobs — actor.id and actor.email replaced
+      const rows = db
+        .prepare("SELECT id, raw FROM audit_events WHERE actor_id = @pseudo")
+        .all({ pseudo: pseudonym }) as Array<{ id: string; raw: string }>;
+
+      let count = 0;
+      for (const row of rows) {
+        try {
+          const event = JSON.parse(row.raw) as Record<string, unknown> & {
+            actor: Record<string, unknown>;
+          };
+          event.actor.id = pseudonym;
+          delete event.actor.email;
+          delete event.actor.name;
+          db.prepare("UPDATE audit_events SET raw = @raw WHERE id = @id").run({
+            raw: JSON.stringify(event),
+            id: row.id,
+          });
+          count++;
+        } catch {
+          // Skip malformed rows
+        }
+      }
+      return count;
     },
   };
 }

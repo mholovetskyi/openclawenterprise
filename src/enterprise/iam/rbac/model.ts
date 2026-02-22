@@ -10,12 +10,15 @@ export type Permission = string; // "resource.action" | "resource.*" | "*"
 export type Role = {
   id: string;
   name: string;
+  displayName?: string;
   description?: string;
   permissions: Permission[];
   /** Inherit all permissions from these roles */
   inherits?: string[];
   /** System roles cannot be modified */
   system?: boolean;
+  /** Alias for system (used in gateway wire format) */
+  builtIn?: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -44,10 +47,19 @@ export type User = {
   externalId?: string;
   /** Channel identity bindings: {"telegram": "12345", "slack": "U123"} */
   channelIds?: Record<string, string>;
-  enabled: boolean;
-  createdAt: string;
-  updatedAt: string;
+  /** Alias for enabled (gateway wire format) */
+  active?: boolean;
+  enabled?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   lastLoginAt?: string;
+  lastSeenAt?: string;
+  /** TOTP secret (base32, encrypted at rest) — set when MFA is enrolled */
+  totpSecret?: string;
+  /** Whether MFA is required for this user */
+  mfaEnabled?: boolean;
+  /** CIDR allowlist for this user — empty means no IP restriction */
+  allowedCidrs?: string[];
 };
 
 export type AgentIdentity = {

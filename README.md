@@ -37,8 +37,11 @@
   <a href="#zero-trust-gateway">Security</a> ·
   <a href="#secret-management">Secrets</a> ·
   <a href="#iam--rbac">IAM</a> ·
+  <a href="#oidc--sso">OIDC/SSO</a> ·
+  <a href="#mfa--totp">MFA</a> ·
   <a href="#audit-logging--compliance">Audit</a> ·
-  <a href="#prompt-injection-defenses">Guardrails</a> ·
+  <a href="#gdpr-compliance-art-17--art-20">GDPR</a> ·
+  <a href="#distributed-cluster">Cluster</a> ·
   <a href="#kubernetes">Kubernetes</a> ·
   <a href="#connecting-to-enterprise-messaging">Channels</a> ·
   <a href="#test-suite--quality-assurance">Tests</a> ·
@@ -157,12 +160,19 @@ OpenClaw's config type had no `enterprise` key — enterprise config was silentl
 ┌──────────────────────┐  ┌────────────────────────▼────────────────────────────┐  ┌──────────────────────┐
 │   ENTERPRISE IAM     │  │                      GATEWAY                        │  │  ENTERPRISE SECRETS  │
 │                      │◄─┤  WebSocket control plane · HTTP API · REST compat   ├─►│                      │
-│  JWT RS256 / HS256   │  │  bind: loopback (default) — 0.0.0.0 NEVER silent   │  │  AES-256-GCM file    │
-│  API keys (oc_...)   │  │  auth: jwt | token | password | none                │  │  HashiCorp Vault     │
-│  RBAC engine         │  │  /metrics  /healthz  /livez  /readyz  /startupz     │  │  AWS Secrets Manager │
-│  5 built-in roles    │  └────────────────────────┬────────────────────────────┘  │  GCP Secret Manager  │
-│  Group inheritance   │                           │                               │  Azure Key Vault     │
-│  Wildcard perms      │  ┌────────────────────────▼────────────────────────────┐  └──────────────────────┘
+│  OIDC/SSO (PKCE)     │  │  bind: loopback (default) — 0.0.0.0 NEVER silent   │  │  AES-256-GCM file    │
+│  MFA/TOTP (RFC 6238) │  │  auth: jwt | token | password | none                │  │  HashiCorp Vault     │
+│  JWT RS256/HS256     │  │  /metrics  /healthz  /livez  /readyz  /startupz     │  │  AWS Secrets Manager │
+│  API keys (oc_...)   │  └────────────────────────┬────────────────────────────┘  │  GCP Secret Manager  │
+│  RBAC (5 built-in)   │                           │                               │  Azure Key Vault     │
+│  SQLite persistent   │  ┌────────────────────────▼────────────────────────────┐  └──────────────────────┘
+│  Token revocation    │                                                            ┌──────────────────────┐
+│  IP allowlisting     │                                                            │  SIGNED CONTAINERS   │
+└──────────────────────┘                                                            │                      │
+                                                                                    │  cosign keyless      │
+                                                                                    │  syft SBOM (SPDX)   │
+                                                                                    │  Trivy vuln scan     │
+                                                                                    └──────────────────────┘
 └──────────────────────┘  │                   AGENT RUNTIME                     │
                           │                                                     │
 ┌──────────────────────┐  │  ┌─────────────┐  ┌──────────────────────────────┐ │  ┌──────────────────────┐
@@ -172,13 +182,13 @@ OpenClaw's config type had no `enterprise` key — enterprise config was silentl
 │  SHA-256 hash chain  │  │  └─────────────┘  │   ③ Mass delete (rm -rf /)  │ │  │  agent_runs_total    │
 │  ULID IDs            │  │                   │   ④ SSN / credit card PII   │ │  │  auth_failures_total │
 │  SQLite WAL          │  │  ┌─────────────┐  │   ⑤ Custom pluggable rules  │ │  │  guardrail_blocks    │
-│  Audit events:       │  │  │  Skills     │  └──────────────────────────────┘ │  │  skill_invocations   │
-│  auth.login          │  │  │  (Ed25519   │                                   │  │  audit_events_total  │
-│  auth.failed         │  │  │   signed)   │  ┌──────────────────────────────┐ │  │  /metrics endpoint   │
-│  agent.run.*         │  │  │             │  │  ENTERPRISE SAST             │ │  │  Grafana dashboards  │
-│  guardrail.block     │  │  │  SAST scan  │  │  14 rules · CWE/OWASP tags  │ │  └──────────────────────┘
-│  skill.invoke        │  │  │  before     │  │  Risk score 0–100            │ │
-│  security.*          │  │  │  install    │  │  approve / review / reject   │ │  ┌──────────────────────┐
+│  PostgreSQL backend  │  │  │  Skills     │  └──────────────────────────────┘ │  │  skill_invocations   │
+│  SIEM/Syslog (RFC    │  │  │  (Ed25519   │                                   │  │  audit_events_total  │
+│   5424) · Webhook    │  │  │   signed)   │  ┌──────────────────────────────┐ │  │  /metrics endpoint   │
+│  GDPR export+erase   │  │  │             │  │  ENTERPRISE SAST             │ │  │  Grafana dashboards  │
+│  Audit events:       │  │  │  SAST scan  │  │  14 rules · CWE/OWASP tags  │ │  └──────────────────────┘
+│  auth.login          │  │  │  before     │  │  Risk score 0–100            │ │
+│  guardrail.block     │  │  │  install    │  │  approve / review / reject   │ │  ┌──────────────────────┐
 └──────────────────────┘  │  └─────────────┘  └──────────────────────────────┘ │  │  MULTI-TENANCY       │
                           └────────────────────────────────────────────────────┘  │                      │
                                                                                    │  AsyncLocalStorage   │
@@ -403,9 +413,108 @@ Token lifecycle:
 
 Existing `operator.*` scope tokens from the community edition continue to work. They are automatically mapped to the RBAC `operator` role permissions via the `LEGACY_SCOPE_TO_PERMISSIONS` adapter — no migration required.
 
-### OIDC / SSO (roadmap)
+### OIDC / SSO
 
-The IAM architecture is designed for pluggable identity providers. Okta, Azure AD, Google Workspace, and LDAP integration is planned. The `initIAM()` interface has explicit extension points for external IdP adapters.
+OpenClaw Enterprise ships a complete OpenID Connect (OIDC) integration supporting any compliant IdP — Okta, Azure AD / Entra ID, Google Workspace, Auth0, Keycloak, Dex. The flow uses **PKCE** (Proof Key for Code Exchange) with server-side state validation. No external OIDC library required — pure Node.js.
+
+```yaml
+enterprise:
+  auth:
+    oidc:
+      discoveryUrl: https://your-org.okta.com/.well-known/openid-configuration
+      clientId: 0oa...
+      clientSecret: env://OIDC_CLIENT_SECRET  # never inline
+      redirectUri: https://openclaw.example.com/auth/oidc/callback
+      scopes: [openid, email, profile, groups]
+      groupsClaim: groups          # JWT claim that contains IdP groups
+      roleMap:
+        Engineering: operator      # IdP group name → OpenClaw RBAC role ID
+        Admins: admin
+        SRE: admin
+      defaultRole: viewer          # role for users not matched by roleMap
+```
+
+**Endpoints registered automatically:**
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /auth/oidc/login` | Redirect to IdP authorization endpoint with PKCE challenge |
+| `GET /auth/oidc/callback` | Exchange code, verify ID token, issue OpenClaw JWTs |
+
+**How it works:**
+
+1. `/auth/oidc/login` — generates a PKCE code verifier + SHA-256 challenge, stores pending state (10-minute TTL), redirects to IdP
+2. IdP authenticates and redirects back with `?code=...&state=...`
+3. State is validated and consumed; authorization code exchanged for tokens at IdP token endpoint
+4. **ID token signature verified against the IdP's JWKS** — RSA public keys fetched from discovery URL, cached 5 minutes, matched by `kid` header
+5. Claims checked: `exp`, `nbf`, `iss`, `aud`
+6. User's IdP groups mapped to RBAC roles via `roleMap`; user provisioned/updated in SQLite RBAC store
+7. OpenClaw access + refresh tokens issued and returned to client
+
+(`src/enterprise/auth/oidc.ts`)
+
+---
+
+### MFA / TOTP
+
+Time-based one-time passwords (TOTP, RFC 6238) with no external dependencies — pure Node.js implementation (HMAC-SHA1, 30-second windows, 6-digit codes, ±1 step clock-skew tolerance).
+
+```yaml
+enterprise:
+  auth:
+    mfa:
+      enabled: true
+      issuer: "My Company OpenClaw"       # label shown in authenticator apps
+      requireForRoles: [admin, super-admin]  # enforce MFA for these roles
+```
+
+**Gateway RPC methods:**
+
+| Method | Description |
+|--------|-------------|
+| `enterprise.mfa.enroll` | Generate TOTP secret + `otpauth://` URI for QR code display |
+| `enterprise.mfa.confirm-enroll` | Confirm enrollment with first valid code |
+| `enterprise.mfa.verify` | Verify a code (login step-up) |
+| `enterprise.mfa.disable` | Revoke MFA for a user (admin action) |
+
+(`src/enterprise/auth/mfa.ts`)
+
+---
+
+### Token revocation
+
+Refresh tokens are persisted in SQLite and can be individually or bulk-revoked:
+
+- **Single-token revocation** — logout from a specific session
+- **Bulk revocation** — force-logout all sessions for a user (admin action)
+- **Access token revocation list** — immediately invalidate issued access tokens before their natural expiry (for compromised accounts)
+
+Refresh tokens are stored as **SHA-256 hashes** — the raw token is never written to disk. On each use the token is rotated (single-use): old token revoked, new token issued.
+
+| Method | Description |
+|--------|-------------|
+| `enterprise.sessions.list` | List active sessions for a user |
+| `enterprise.sessions.revoke` | Revoke a specific session by JTI |
+
+(`src/enterprise/auth/token-store.ts`)
+
+---
+
+### IP allowlisting
+
+Per-user CIDR allowlists restrict which IP addresses may authenticate as a given user. If `allowedCidrs` is set and non-empty, connections from IPs outside the list are rejected before token issuance.
+
+```yaml
+# Set via admin API or enterprise.users RPC on the user record:
+allowedCidrs:
+  - "10.0.0.0/8"       # corporate VPN range
+  - "192.168.1.0/24"   # office subnet
+  - "203.0.113.5/32"   # specific IP
+```
+
+Supports full IPv4 CIDR matching and IPv6 CIDR matching (via BigInt expansion for the full 128-bit address space). Empty `allowedCidrs` means no restriction — the feature is opt-in per user.
+
+(`src/enterprise/security/ip-allowlist.ts`)
 
 ---
 
@@ -483,6 +592,94 @@ if (!result.valid) {
 }
 ```
 
+### PostgreSQL audit backend
+
+For deployments that need centralized, queryable audit storage at scale:
+
+```yaml
+enterprise:
+  audit:
+    storage:
+      driver: postgres
+      connectionString: env://AUDIT_POSTGRES_URL  # never inline credentials
+      maxConnections: 10
+      idleTimeoutMs: 30000
+      connectionTimeoutMs: 5000
+```
+
+```bash
+npm install pg  # optional dependency, not included by default
+```
+
+The schema uses JSONB for raw event and metadata columns, with indexes on `timestamp`, `actor_id`, `action`, `category`, `outcome`, and `tenant_id`. Implements the same `AuditStorage` interface as the SQLite backend — swap drivers with a config change. GDPR anonymization (`anonymizeActor`) rewrites actor references in-place without breaking the hash chain. (`src/enterprise/audit/storage/postgres.ts`)
+
+---
+
+### SIEM / syslog export
+
+Forward audit events to your SIEM system in real time.
+
+**Syslog (RFC 5424 — UDP or TCP):**
+
+```yaml
+enterprise:
+  audit:
+    sinks:
+      - type: syslog
+        protocol: udp           # udp (default) or tcp
+        host: siem.example.com
+        port: 514
+        facility: 16            # local0
+        appName: openclaw
+```
+
+Each event is formatted as RFC 5424 with structured data element `openclaw@32473` containing `id`, `actor`, `action`, `outcome`, `tenantId`, and `durationMs`. TCP transport includes automatic reconnection with a bounded write queue.
+
+**Webhook / generic log aggregator:**
+
+```yaml
+enterprise:
+  audit:
+    sinks:
+      - type: webhook
+        url: https://logs.example.com/ingest
+        batchSize: 100          # events per POST
+        flushIntervalMs: 5000   # max wait before flush
+        headers:
+          Authorization: env://LOG_INGEST_TOKEN
+```
+
+Batches events into JSON arrays and POSTs them. Compatible with Elastic, Splunk HEC, Datadog, Loki, and any HTTP ingest endpoint. (`src/enterprise/audit/sinks/syslog.ts`)
+
+---
+
+### GDPR compliance (Art. 17 + Art. 20)
+
+Two operations meet GDPR data subject rights:
+
+**Data export (Art. 20 — right to portability):**
+
+```
+GET enterprise.gdpr.export?userId=<id>   # requires super-admin role
+```
+
+Returns a JSON object containing: user profile, all audit events where the user was the actor, and all active sessions. Safe to deliver directly to the data subject.
+
+**Data erasure (Art. 17 — right to be forgotten):**
+
+```
+POST enterprise.gdpr.erase { userId }    # requires super-admin role
+```
+
+Erasure steps:
+1. Revokes all active refresh tokens (sessions terminated immediately)
+2. Pseudonymizes all audit log entries referencing the user — actor ID and email replaced with `[erased-{sha256}]`. **The audit chain remains intact and verifiable** — event content is updated, hash chain is not broken
+3. Deletes the user profile from the RBAC store
+
+(`src/enterprise/iam/gdpr.ts`)
+
+---
+
 ### Compliance mapping
 
 | Standard | Requirement | How it's met |
@@ -490,6 +687,8 @@ if (!result.valid) {
 | SOC 2 CC6 | Logical access control | Auth events, role assignments, failed logins |
 | SOC 2 CC7 | System operations | Agent runs, tool executions, config changes |
 | HIPAA §164.312(b) | Audit controls | Full event log with actor, resource, outcome, IP |
+| GDPR Art. 17 | Right to erasure | `gdprEraseUser` — pseudonymize + delete |
+| GDPR Art. 20 | Right to portability | `gdprExportUser` — full JSON export |
 | GDPR Art. 30 | Records of processing | Actor + resource on every event; GDPR retention config |
 | PCI DSS 10 | Audit log review | Hash chain + retention policy + centralized storage |
 
@@ -713,11 +912,21 @@ enterprise:
           requestsPerMinute: 100
 ```
 
+### Storage-layer isolation
+
+In addition to `AsyncLocalStorage` context propagation, tenant isolation is enforced at the **SQL query level**. All RBAC and audit storage calls are wrapped with tenant-scoped adapters that:
+
+- Auto-stamp `tenantId` on every write if context is set
+- Enforce tenant filter (`WHERE tenant_id = ?`) on every read
+- Throw a `TENANT_ISOLATION_VIOLATION` error if code attempts to read another tenant's data
+
+This prevents data leakage even if application code forgets to filter by tenant. (`src/enterprise/tenancy/isolation.ts`)
+
 ---
 
 ## Distributed cluster
 
-For high-availability deployments, multiple OpenClaw gateway nodes can form a cluster. Nodes discover each other, exchange heartbeats, and route events through a shared message bus.
+For high-availability deployments, multiple OpenClaw gateway nodes form a cluster backed by Redis. Nodes discover each other, elect a leader, exchange heartbeats, and route events through a shared message bus.
 
 ```yaml
 enterprise:
@@ -729,9 +938,40 @@ enterprise:
     heartbeatIntervalMs: 10000
 ```
 
-The cluster coordinator tracks node health via heartbeats. If a node misses 3 consecutive heartbeats, it's removed from the active node set. The message bus uses Redis pub/sub for cross-node event delivery — the same event model as single-node, just distributed.
+```bash
+npm install ioredis  # optional dependency for Redis cluster support
+```
 
-**InMemoryCoordinator** is provided for single-node development and testing — no Redis needed.
+**How it works:**
+
+- **Leader election** — `SET NX EX` atomic lock on `{keyPrefix}leader`. Lock TTL = 3× heartbeat interval. The leader is re-elected automatically if the current leader fails to renew
+- **Lock renewal** — the leader renews its lock every heartbeat interval. Renewal errors yield leadership immediately to prevent split-brain
+- **Node heartbeats** — each node writes its heartbeat key with TTL = 4× heartbeat interval. Nodes that stop renewing are evicted automatically by Redis TTL expiry
+- **Message bus** — Redis pub/sub via a dedicated `SUBSCRIBE` connection. Same event model as single-node, just distributed across all nodes in the cluster
+
+**InMemoryCoordinator** is provided for single-node development and testing — no Redis needed. Falls back automatically with a warning if `ioredis` is not installed.
+
+(`src/enterprise/cluster/index.ts`)
+
+---
+
+### Distributed rate limiting
+
+When multiple gateway nodes share Redis, rate limits are enforced globally across all nodes using a sliding window algorithm:
+
+```yaml
+enterprise:
+  security:
+    rateLimiting:
+      enabled: true
+      redisUrl: env://REDIS_URL   # same Redis as cluster.redis.url
+      windowMs: 60000             # 1-minute window
+      maxRequests: 1000           # per subject per window
+```
+
+The Redis implementation uses sorted sets: each request adds a timestamped entry with `ZADD`, removes expired entries with `ZREMRANGEBYSCORE`, and counts active entries with `ZCARD`. If Redis is unavailable, the limiter falls back to per-node in-memory windows with an automatic stderr warning.
+
+(`src/enterprise/security/rate-limit.ts`)
 
 ---
 
@@ -1008,38 +1248,35 @@ In Mattermost, invite the bot user to any channel with `/invite @openclaw`. It w
 
 ---
 
-## GitHub Actions (roadmap)
+## Signed container images + SBOM
 
-A dedicated `openclaw/openclaw-action` is planned. In the meantime, OpenClaw can be invoked directly via `npx` in any workflow:
+Every release image is built, signed, and attested via GitHub Actions. Signatures use **cosign keyless signing** — no private key to manage, GitHub OIDC is the trust anchor.
 
-```yaml
-# .github/workflows/review.yml
-name: AI Code Review
-on:
-  pull_request:
-    types: [opened, synchronize]
+```bash
+# Verify image signature
+cosign verify \
+  --certificate-identity-regexp="https://github.com/mholovetskyi/openclawenterprise/.*" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/mholovetskyi/openclawenterprise:latest
 
-jobs:
-  review:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-
-      - name: OpenClaw AI Review
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          npx openclaw@latest agent --message \
-            "Review this PR for security vulnerabilities, performance issues, \
-             API contract violations, and missing error handling. \
-             Post findings as a PR comment with severity labels."
+# Verify SBOM attestation
+cosign verify-attestation \
+  --type spdxjson \
+  --certificate-identity-regexp="https://github.com/mholovetskyi/openclawenterprise/.*" \
+  --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+  ghcr.io/mholovetskyi/openclawenterprise:latest
 ```
+
+**CI workflow (`.github/workflows/container.yml`):**
+
+| Job | Tool | Output |
+|-----|------|--------|
+| `build` | Docker Buildx | Multi-platform image (linux/amd64, linux/arm64) pushed to ghcr.io |
+| `sign` | cosign keyless | Transparency log entry; no private key or secrets required |
+| `sbom` | syft + cosign | SPDX-JSON SBOM generated and attested to image digest |
+| `vulnerability-scan` | Trivy | Findings uploaded to GitHub Security tab as SARIF |
+
+The SBOM is also uploaded as a workflow artifact (90-day retention) for offline inspection. Vulnerability scan results appear in the **Security → Code scanning** tab of the repository.
 
 ---
 
@@ -1069,6 +1306,21 @@ enterprise:
       expiresIn: 15m
       refreshExpiresIn: 7d
 
+  # ── OIDC / SSO (optional — remove if using local accounts) ────────
+  auth:
+    oidc:
+      discoveryUrl: https://your-org.okta.com/.well-known/openid-configuration
+      clientId: 0oa...
+      clientSecret: env://OIDC_CLIENT_SECRET
+      redirectUri: https://openclaw.example.com/auth/oidc/callback
+      roleMap:
+        Engineering: operator
+        Admins: admin
+      defaultRole: viewer
+    mfa:
+      enabled: true
+      requireForRoles: [admin, super-admin]
+
   # ── Audit logging ─────────────────────────────────────────────────
   audit:
     enabled: true
@@ -1096,9 +1348,18 @@ enterprise:
   tenancy:
     enabled: false
 
-  # ── Cluster (optional) ───────────────────────────────────────────
+  # ── Cluster (optional — requires ioredis) ────────────────────────
   cluster:
     enabled: false
+    # redis:
+    #   url: env://REDIS_URL
+    #   keyPrefix: openclaw:
+
+  # ── Security ──────────────────────────────────────────────────────
+  security:
+    rateLimiting:
+      enabled: true
+      redisUrl: env://REDIS_URL   # shared with cluster if enabled
 
 # ── Gateway ───────────────────────────────────────────────────────
 gateway:
@@ -1139,34 +1400,49 @@ gateway:
 | Enterprise SAST (14 rules, CWE/OWASP) | — | ✅ |
 | **Identity & Access** | | |
 | IAM / RBAC (5 built-in roles) | — | ✅ |
+| SQLite-persistent RBAC store | — | ✅ |
 | JWT RS256/HS256 auth | — | ✅ |
 | API key management | — | ✅ |
 | Group membership + role inheritance | — | ✅ |
 | Agent service accounts | — | ✅ |
 | Legacy scope backwards compatibility | — | ✅ |
+| OIDC / SSO (Okta, Azure AD, Google, Auth0) | — | ✅ |
+| MFA / TOTP (RFC 6238, pure Node.js) | — | ✅ |
+| Refresh token revocation (single + bulk) | — | ✅ |
+| Access token revocation list | — | ✅ |
+| IP allowlisting (IPv4 + IPv6 CIDR) | — | ✅ |
 | **Compliance** | | |
 | Tamper-evident audit log (SHA-256 chain) | — | ✅ |
 | ULID event IDs (sortable, millisecond) | — | ✅ |
 | SQLite WAL audit storage | — | ✅ |
+| PostgreSQL audit backend | — | ✅ |
+| SIEM / Syslog (RFC 5424 UDP + TCP) | — | ✅ |
+| Webhook log sink (Elastic, Splunk, Datadog) | — | ✅ |
 | Configurable retention policy | — | ✅ |
 | Chain verification API | — | ✅ |
+| GDPR data export (Art. 20) | — | ✅ |
+| GDPR data erasure (Art. 17) | — | ✅ |
 | SOC 2 / HIPAA / GDPR mapping | — | ✅ |
 | **Observability** | | |
 | Prometheus metrics (20+ metrics) | — | ✅ |
 | /metrics /healthz /livez /readyz /startupz | — | ✅ |
 | Grafana dashboard (included) | — | ✅ |
-| Admin dashboard UI | — | ✅ |
+| Admin dashboard UI (live, gateway-wired) | — | ✅ |
 | **Scale** | | |
 | Multi-tenancy (AsyncLocalStorage) | — | ✅ |
+| Multi-tenant storage isolation (SQL-level) | — | ✅ |
 | Per-tenant rate limits | — | ✅ |
-| Distributed cluster (Redis message bus) | — | ✅ |
+| Distributed rate limiting (Redis sliding window) | — | ✅ |
+| Distributed cluster (Redis leader election + pub/sub) | — | ✅ |
 | Node heartbeats + health tracking | — | ✅ |
 | **Deployment** | | |
 | Kubernetes Helm chart (full) | — | ✅ |
 | HPA + PDB + NetworkPolicy | — | ✅ |
 | Prometheus ServiceMonitor | — | ✅ |
 | cert-manager TLS | — | ✅ |
-| GitHub Actions integration | — | 🗓 roadmap |
+| Signed container images (cosign keyless) | — | ✅ |
+| SBOM attestation (syft SPDX-JSON) | — | ✅ |
+| Vulnerability scanning (Trivy → GitHub Security) | — | ✅ |
 | npm one-command install | ✅ | ✅ |
 
 ---
@@ -1334,10 +1610,11 @@ Enterprise edition: see [Install](#install) above.
 | Doc | Description |
 |-----|-------------|
 | [Security hardening](docs/enterprise/security.md) | Zero-trust config, DM policies, production checklist |
-| [IAM & RBAC](docs/enterprise/iam.md) | Roles, permissions, JWT config, API keys, OIDC roadmap |
-| [Audit logging](docs/enterprise/audit.md) | Hash chain verification, compliance mapping, GDPR |
+| [IAM & RBAC](docs/enterprise/iam.md) | Roles, permissions, JWT config, API keys, OIDC, MFA, IP allowlisting |
+| [Audit logging](docs/enterprise/audit.md) | Hash chain verification, PostgreSQL, SIEM/syslog, GDPR |
 | [Kubernetes](docs/enterprise/kubernetes.md) | Helm chart reference, HA config, Prometheus, cert-manager |
 | [Secret management](docs/enterprise/secrets.md) | All 5 backends, secret reference URIs, migration |
+| [Container security](docs/enterprise/containers.md) | cosign signing, SBOM verification, Trivy scanning |
 
 ---
 
