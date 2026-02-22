@@ -6,6 +6,7 @@ If you believe you've found a security issue in OpenClaw, please report it priva
 
 Report vulnerabilities directly to the repository where the issue lives:
 
+- **Enterprise features** (secrets, IAM/RBAC, audit, guardrails) — [mholovetskyi/openclawenterprise](https://github.com/mholovetskyi/openclawenterprise) via [GitHub private vulnerability reporting](https://github.com/mholovetskyi/openclawenterprise/security/advisories/new)
 - **Core CLI and gateway** — [openclaw/openclaw](https://github.com/openclaw/openclaw)
 - **macOS desktop app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/macos)
 - **iOS app** — [openclaw/openclaw](https://github.com/openclaw/openclaw) (apps/ios)
