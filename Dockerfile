@@ -90,7 +90,14 @@ RUN npm install -g npm@latest && npm cache clean --force
 # Remove the corepack cache — it contains a full pnpm tarball with its own
 # transitive dependencies that Trivy flags as CVEs. At runtime pnpm runs from
 # /app/node_modules, not from the corepack download cache.
-RUN rm -rf /root/.cache/node/corepack /home/node/.cache/node/corepack
+# Also remove the pnpm global content-addressable store: it holds raw package
+# source files (including test fixtures with JWT tokens and other patterns that
+# Trivy flags as secrets). node_modules are already fully installed; the store
+# is only a build-time cache and is not used at runtime.
+RUN rm -rf \
+      /root/.cache/node/corepack \
+      /home/node/.cache/node/corepack \
+      /home/node/.local/share/pnpm/store
 
 # Remove development-only files that are not needed at runtime.
 # This eliminates false-positive secret-scanner (Trivy) alerts caused by:
