@@ -52,6 +52,13 @@ RUN pnpm build
 ENV OPENCLAW_PREFER_PNPM=1
 RUN pnpm ui:build
 
+# Remove the pnpm global content-addressable store from the builder.
+# The store is only a build-time cache; node_modules are already fully
+# installed. Removing it here (rather than in the runtime stage) ensures the
+# files never appear in any image layer, which prevents Trivy's per-layer
+# secret scanner from flagging JWT tokens embedded in package source files.
+RUN rm -rf /home/node/.local/share/pnpm/store
+
 
 # ── Stage 2: Runtime ──────────────────────────────────────────────────────────
 # bookworm-slim strips compiler toolchain, ImageMagick, gnupg, perl, and other
@@ -90,14 +97,7 @@ RUN npm install -g npm@latest && npm cache clean --force
 # Remove the corepack cache — it contains a full pnpm tarball with its own
 # transitive dependencies that Trivy flags as CVEs. At runtime pnpm runs from
 # /app/node_modules, not from the corepack download cache.
-# Also remove the pnpm global content-addressable store: it holds raw package
-# source files (including test fixtures with JWT tokens and other patterns that
-# Trivy flags as secrets). node_modules are already fully installed; the store
-# is only a build-time cache and is not used at runtime.
-RUN rm -rf \
-      /root/.cache/node/corepack \
-      /home/node/.cache/node/corepack \
-      /home/node/.local/share/pnpm/store
+RUN rm -rf /root/.cache/node/corepack /home/node/.cache/node/corepack
 
 # Remove development-only files that are not needed at runtime.
 # This eliminates false-positive secret-scanner (Trivy) alerts caused by:
