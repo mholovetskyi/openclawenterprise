@@ -92,6 +92,26 @@ RUN npm install -g npm@latest && npm cache clean --force
 # /app/node_modules, not from the corepack download cache.
 RUN rm -rf /root/.cache/node/corepack /home/node/.cache/node/corepack
 
+# Remove development-only files that are not needed at runtime.
+# This eliminates false-positive secret-scanner (Trivy) alerts caused by:
+#   - docs/         : config-reference examples with realistic-looking credentials
+#   - test fixtures : *.test.ts files contain fake RSA keys, JWTs, API tokens
+#   - .secrets.baseline / .gitleaks.toml : secret-scanning metadata files
+# find is used for test files so that cached builder layers (built before the
+# .dockerignore exclusions were added) don't carry stale test fixtures forward.
+RUN find /app -maxdepth 6 \( \
+      -name "*.test.ts" -o -name "*.spec.ts" \
+      -o -name "*.test.js" -o -name "*.spec.js" \
+    \) -delete && \
+    rm -rf \
+      /app/docs \
+      /app/.secrets.baseline \
+      /app/.detect-secrets.cfg \
+      /app/.gitleaks.toml \
+      /app/tsconfig.json \
+      /app/tsdown.config.ts \
+      /app/.github
+
 ENV NODE_ENV=production
 ENV OPENCLAW_PREFER_PNPM=1
 

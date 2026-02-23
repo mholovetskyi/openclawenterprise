@@ -38,6 +38,26 @@ apps/macos/.build
 apps/ios/build
 **/*.trace
 
+# Documentation — not needed at build or runtime; contains example credentials
+# that scanners (Trivy/Gitleaks) flag as false positives
+docs/
+
+# Test and spec files — not needed in the production image.
+# These contain realistic-looking fake credentials (RSA keys, API tokens, etc.)
+# used as test fixtures that cause false-positive secret scanner alerts.
+**/*.test.ts
+**/*.spec.ts
+**/*.test.js
+**/*.spec.js
+**/__tests__/
+**/__mocks__/
+
+# Development-only config and secret-scanning metadata
+.secrets.baseline
+.detect-secrets.cfg
+.gitleaks.toml
+.github/
+
 # large app trees not needed for CLI build
 apps/
 assets/
