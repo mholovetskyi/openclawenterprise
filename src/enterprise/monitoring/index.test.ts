@@ -1,7 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { initMonitoring } from "./index.js";
+import { describe, it, expect, vi } from "vitest";
 import type { OpenClawConfig } from "../../config/config.js";
+import { initMonitoring } from "./index.js";
 
 // Mock the metrics module to avoid real Prometheus registry setup
 vi.mock("./metrics.js", () => ({
@@ -14,20 +14,30 @@ function makeRequest(url: string): IncomingMessage {
   return { url } as IncomingMessage;
 }
 
-function makeResponse(): ServerResponse & { _body: string; _status: number; _headers: Record<string, string> } {
+function makeResponse(): ServerResponse & {
+  _body: string;
+  _status: number;
+  _headers: Record<string, string>;
+} {
   const res = {
     _body: "",
     _status: 0,
     _headers: {} as Record<string, string>,
     writeHead(status: number, headers?: Record<string, string>) {
       this._status = status;
-      if (headers) Object.assign(this._headers, headers);
+      if (headers) {
+        Object.assign(this._headers, headers);
+      }
     },
     end(body?: string) {
       this._body = body ?? "";
     },
   };
-  return res as unknown as ServerResponse & { _body: string; _status: number; _headers: Record<string, string> };
+  return res as unknown as ServerResponse & {
+    _body: string;
+    _status: number;
+    _headers: Record<string, string>;
+  };
 }
 
 const cfg = {} as OpenClawConfig;

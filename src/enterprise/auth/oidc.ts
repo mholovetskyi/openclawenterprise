@@ -90,7 +90,9 @@ import { createVerify } from "node:crypto";
 
 async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${url}`);
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status} fetching ${url}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -101,12 +103,12 @@ type JwkKey = {
   kid?: string;
   use?: string;
   alg?: string;
-  n?: string;    // RSA modulus (base64url)
-  e?: string;    // RSA exponent (base64url)
+  n?: string; // RSA modulus (base64url)
+  e?: string; // RSA exponent (base64url)
   x5c?: string[]; // X.509 certificate chain
-  crv?: string;  // EC curve
-  x?: string;    // EC x
-  y?: string;    // EC y
+  crv?: string; // EC curve
+  x?: string; // EC x
+  y?: string; // EC y
 };
 
 type JwkSet = { keys: JwkKey[] };
@@ -147,13 +149,21 @@ async function verifyIdToken(
   expectedAudience?: string,
 ): Promise<Record<string, unknown>> {
   const parts = idToken.split(".");
-  if (parts.length !== 3) throw new Error("Malformed JWT: expected 3 parts");
+  if (parts.length !== 3) {
+    throw new Error("Malformed JWT: expected 3 parts");
+  }
 
   let header: Record<string, unknown>;
   let payload: Record<string, unknown>;
   try {
-    header = JSON.parse(Buffer.from(parts[0]!, "base64url").toString("utf8")) as Record<string, unknown>;
-    payload = JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as Record<string, unknown>;
+    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
+    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<
+      string,
+      unknown
+    >;
   } catch {
     throw new Error("Malformed JWT: invalid base64url encoding");
   }
@@ -166,7 +176,9 @@ async function verifyIdToken(
     throw new Error("ID token not yet valid");
   }
   if (expectedIssuer && payload["iss"] !== expectedIssuer) {
-    throw new Error(`ID token issuer mismatch: expected ${expectedIssuer}, got ${payload["iss"]}`);
+    throw new Error(
+      `ID token issuer mismatch: expected ${expectedIssuer}, got ${String(payload["iss"])}`,
+    );
   }
   if (expectedAudience && payload["aud"] !== expectedAudience) {
     throw new Error("ID token audience mismatch");
@@ -186,14 +198,18 @@ async function verifyIdToken(
 
   // Verify signature using Node.js built-in crypto
   const signingInput = `${parts[0]}.${parts[1]}`;
-  const signature = Buffer.from(parts[2]!, "base64url");
+  const signature = Buffer.from(parts[2], "base64url");
 
   if (alg.startsWith("RS") || alg.startsWith("PS")) {
     const pem = jwkToPem(matchingKey);
-    const verify = createVerify(alg === "RS256" ? "RSA-SHA256" : alg === "RS384" ? "RSA-SHA384" : "RSA-SHA512");
+    const verify = createVerify(
+      alg === "RS256" ? "RSA-SHA256" : alg === "RS384" ? "RSA-SHA384" : "RSA-SHA512",
+    );
     verify.update(signingInput);
     const valid = verify.verify(pem, signature);
-    if (!valid) throw new Error("ID token signature verification failed");
+    if (!valid) {
+      throw new Error("ID token signature verification failed");
+    }
   } else {
     // For EC keys and other algorithms, signature verification requires
     // the SubtleCrypto API or a JWK parsing library. Log a warning and
@@ -205,19 +221,6 @@ async function verifyIdToken(
   }
 
   return payload;
-}
-
-function decodeJwtPayload(token: string): Record<string, unknown> {
-  const parts = token.split(".");
-  if (parts.length < 2) throw new Error("Invalid JWT");
-  try {
-    return JSON.parse(Buffer.from(parts[1]!, "base64url").toString("utf8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    throw new Error("Malformed JWT payload");
-  }
 }
 
 // ── In-flight state store (pending logins) ────────────────────────────────────
@@ -236,7 +239,9 @@ const pendingLogins = new Map<string, PendingLogin>();
 function cleanupPendingLogins(): void {
   const now = Date.now();
   for (const [state, entry] of pendingLogins) {
-    if (entry.expiresAt < now) pendingLogins.delete(state);
+    if (entry.expiresAt < now) {
+      pendingLogins.delete(state);
+    }
   }
 }
 
@@ -259,12 +264,16 @@ export class OidcService {
   }
 
   shutdown(): void {
-    if (this.cleanupTimer) clearInterval(this.cleanupTimer);
+    if (this.cleanupTimer) {
+      clearInterval(this.cleanupTimer);
+    }
   }
 
   /** Generate the authorization redirect URL (PKCE). */
   getAuthorizationUrl(redirectAfter?: string): { url: string; state: string } {
-    if (!this.discovery) throw new Error("OidcService not initialized");
+    if (!this.discovery) {
+      throw new Error("OidcService not initialized");
+    }
     const state = generateState();
     const verifier = generateCodeVerifier();
     const challenge = generateCodeChallenge(verifier);
@@ -298,11 +307,20 @@ export class OidcService {
   async handleCallback(
     code: string,
     stateParam: string,
-  ): Promise<{ accessToken: string; refreshToken: string; expiresIn: number; redirectAfter?: string }> {
-    if (!this.discovery) throw new Error("OidcService not initialized");
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    expiresIn: number;
+    redirectAfter?: string;
+  }> {
+    if (!this.discovery) {
+      throw new Error("OidcService not initialized");
+    }
 
     const pending = pendingLogins.get(stateParam);
-    if (!pending) throw Object.assign(new Error("Invalid or expired state"), { code: "INVALID_STATE" });
+    if (!pending) {
+      throw Object.assign(new Error("Invalid or expired state"), { code: "INVALID_STATE" });
+    }
     if (pending.expiresAt < Date.now()) {
       pendingLogins.delete(stateParam);
       throw Object.assign(new Error("Login session expired"), { code: "SESSION_EXPIRED" });
@@ -347,7 +365,7 @@ export class OidcService {
     const idpGroups: string[] = Array.isArray(claims[groupsClaim])
       ? (claims[groupsClaim] as string[])
       : typeof claims[groupsClaim] === "string"
-        ? [claims[groupsClaim] as string]
+        ? [claims[groupsClaim]]
         : [];
 
     // Map IdP groups → OpenClaw roles
@@ -366,7 +384,7 @@ export class OidcService {
     const now = new Date().toISOString();
     const userId = user?.id ?? `oidc:${externalId}`;
     await this.iam.store.upsertUser({
-      ...(user ?? {}),
+      ...user,
       id: userId,
       externalId,
       email,
@@ -380,7 +398,9 @@ export class OidcService {
     });
 
     const updatedUser = await this.iam.store.getUser(userId);
-    if (!updatedUser) throw new Error("Failed to provision OIDC user");
+    if (!updatedUser) {
+      throw new Error("Failed to provision OIDC user");
+    }
 
     // Issue OpenClaw tokens
     const result = this.iam.jwt.issueForUser(updatedUser);
@@ -421,7 +441,9 @@ export function createOidcHandlers(service: OidcService): {
 
         if (error) {
           res.writeHead(400);
-          res.end(JSON.stringify({ error, description: url.searchParams.get("error_description") }));
+          res.end(
+            JSON.stringify({ error, description: url.searchParams.get("error_description") }),
+          );
           return;
         }
 
@@ -429,11 +451,13 @@ export function createOidcHandlers(service: OidcService): {
 
         // Return tokens as JSON (UI stores them via device-auth mechanism)
         res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
-          expiresIn: result.expiresIn,
-        }));
+        res.end(
+          JSON.stringify({
+            accessToken: result.accessToken,
+            refreshToken: result.refreshToken,
+            expiresIn: result.expiresIn,
+          }),
+        );
       } catch (err) {
         const code = (err as { code?: string }).code === "INVALID_STATE" ? 400 : 500;
         res.writeHead(code);
@@ -445,12 +469,11 @@ export function createOidcHandlers(service: OidcService): {
 
 // ── Factory ────────────────────────────────────────────────────────────────────
 
-export async function initOidc(
-  cfg: OpenClawConfig,
-  iam: IAMHandle,
-): Promise<OidcService | null> {
+export async function initOidc(cfg: OpenClawConfig, iam: IAMHandle): Promise<OidcService | null> {
   const oidcCfg = cfg.enterprise?.auth?.oidc as OidcConfig | undefined;
-  if (!oidcCfg?.discoveryUrl || !oidcCfg.clientId) return null;
+  if (!oidcCfg?.discoveryUrl || !oidcCfg.clientId) {
+    return null;
+  }
 
   const service = new OidcService(oidcCfg, iam);
   await service.initialize();

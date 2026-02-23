@@ -49,7 +49,7 @@ async function readTailLines(file: string, limit: number): Promise<string[]> {
     return [];
   }
   try {
-    const stat = await handle!.stat();
+    const stat = await handle.stat();
     const size = stat.size;
     const start = Math.max(0, size - MAX_BYTES);
     const length = Math.max(0, size - start);
@@ -57,7 +57,7 @@ async function readTailLines(file: string, limit: number): Promise<string[]> {
       return [];
     }
     const buffer = Buffer.alloc(length);
-    const readResult = await handle!.read(buffer, 0, length, start);
+    const readResult = await handle.read(buffer, 0, length, start);
     const text = buffer.toString("utf8", 0, readResult.bytesRead);
     let lines = text.split("\n");
     if (start > 0) {

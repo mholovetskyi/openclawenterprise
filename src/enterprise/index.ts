@@ -70,7 +70,7 @@ export async function initEnterprise(cfg: OpenClawConfig): Promise<EnterpriseHan
 
   handle = {
     shutdown: async () => {
-      for (const fn of shutdowns.reverse()) {
+      for (const fn of shutdowns.toReversed()) {
         try {
           await fn();
         } catch {

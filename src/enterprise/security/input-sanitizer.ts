@@ -60,7 +60,11 @@ const INJECTION_RULES: InjectionRule[] = [
   { id: "developer-mode", pattern: /enable\s+developer\s+mode/gi, severity: "warn" },
   // System prompt extraction
   { id: "system-prompt-leak", pattern: /print\s+(your|the)\s+system\s+prompt/gi, severity: "warn" },
-  { id: "reveal-instructions", pattern: /reveal\s+(your|the)\s+(system\s+)?instructions?/gi, severity: "warn" },
+  {
+    id: "reveal-instructions",
+    pattern: /reveal\s+(your|the)\s+(system\s+)?instructions?/gi,
+    severity: "warn",
+  },
   // Role hijacking
   { id: "you-are-now", pattern: /you\s+are\s+now\s+(?!openclaw|a\s+helpful)/gi, severity: "warn" },
   // Indirect injection markers (from external content)
@@ -75,6 +79,7 @@ const INJECTION_RULES: InjectionRule[] = [
 const INVISIBLE_CHAR_PATTERN = /[\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff\u00ad]/g;
 
 /** Zero-width and formatting characters */
+// eslint-disable-next-line no-misleading-character-class
 const ZERO_WIDTH_PATTERN = /[\u200b\u200c\u200d\u200e\u200f\u2060\u2061\u2062\u2063\ufeff]/g;
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -97,6 +102,7 @@ export function sanitizeInput(raw: string, opts: SanitizeOptions = {}): Sanitize
     text = text
       .replace(INVISIBLE_CHAR_PATTERN, "")
       .replace(ZERO_WIDTH_PATTERN, "")
+      // eslint-disable-next-line no-control-regex
       .replace(/[\x00-\x08\x0b-\x0c\x0e-\x1f\x7f]/g, ""); // control chars (keep \t\n\r)
     charsRemoved += before - text.length;
   }

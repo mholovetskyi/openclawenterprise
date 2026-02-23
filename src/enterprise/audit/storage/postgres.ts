@@ -44,10 +44,7 @@ type PoolConfig = {
 type QueryResult<R> = { rows: R[]; rowCount: number | null };
 
 type Pool = {
-  query<R = Record<string, unknown>>(
-    sql: string,
-    params?: unknown[],
-  ): Promise<QueryResult<R>>;
+  query<R = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<QueryResult<R>>;
   end(): Promise<void>;
 };
 
@@ -57,12 +54,10 @@ function loadPg(): PoolCtor {
   try {
     const req = createRequire(import.meta.url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = req("pg") as any;
+    const mod = req("pg");
     return (mod.Pool ?? mod.default?.Pool) as PoolCtor;
   } catch {
-    throw new Error(
-      "PostgreSQL audit backend requires pg. Run: npm install pg",
-    );
+    throw new Error("PostgreSQL audit backend requires pg. Run: npm install pg");
   }
 }
 
@@ -152,17 +147,29 @@ export async function createPostgresAuditStorage(config: PoolConfig): Promise<Au
         params.push(val);
       }
 
-      if (opts.actorId) add("actor_id = ?", opts.actorId);
-      if (opts.category) add("category = ?", opts.category);
-      if (opts.action) add("action ILIKE ?", `%${opts.action}%`);
-      if (opts.outcome) add("outcome = ?", opts.outcome);
-      if (opts.tenantId) add("tenant_id = ?", opts.tenantId);
-      if (opts.from) add("timestamp >= ?", opts.from);
-      if (opts.until) add("timestamp <= ?", opts.until);
+      if (opts.actorId) {
+        add("actor_id = ?", opts.actorId);
+      }
+      if (opts.category) {
+        add("category = ?", opts.category);
+      }
+      if (opts.action) {
+        add("action ILIKE ?", `%${opts.action}%`);
+      }
+      if (opts.outcome) {
+        add("outcome = ?", opts.outcome);
+      }
+      if (opts.tenantId) {
+        add("tenant_id = ?", opts.tenantId);
+      }
+      if (opts.from) {
+        add("timestamp >= ?", opts.from);
+      }
+      if (opts.until) {
+        add("timestamp <= ?", opts.until);
+      }
       if (opts.search) {
-        conditions.push(
-          `(action ILIKE $${i} OR actor_id ILIKE $${i} OR raw::text ILIKE $${i})`,
-        );
+        conditions.push(`(action ILIKE $${i} OR actor_id ILIKE $${i} OR raw::text ILIKE $${i})`);
         params.push(`%${opts.search}%`);
         i++;
       }
@@ -222,16 +229,21 @@ export async function createPostgresAuditStorage(config: PoolConfig): Promise<Au
       let count = 0;
       for (const row of result.rows) {
         try {
-          const event = typeof row.raw === "string"
-            ? (JSON.parse(row.raw) as Record<string, unknown> & { actor: Record<string, unknown> })
-            : (row.raw as unknown as Record<string, unknown> & { actor: Record<string, unknown> });
+          const event =
+            typeof row.raw === "string"
+              ? (JSON.parse(row.raw) as Record<string, unknown> & {
+                  actor: Record<string, unknown>;
+                })
+              : (row.raw as unknown as Record<string, unknown> & {
+                  actor: Record<string, unknown>;
+                });
           event.actor.id = pseudonym;
           delete event.actor.email;
           delete event.actor.name;
-          await pool.query(
-            "UPDATE audit_events SET raw = $1 WHERE id = $2",
-            [JSON.stringify(event), row.id],
-          );
+          await pool.query("UPDATE audit_events SET raw = $1 WHERE id = $2", [
+            JSON.stringify(event),
+            row.id,
+          ]);
           count++;
         } catch {
           // Skip

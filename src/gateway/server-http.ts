@@ -16,11 +16,11 @@ import {
 } from "../canvas-host/a2ui.js";
 import type { CanvasHostHandler } from "../canvas-host/server.js";
 import { loadConfig } from "../config/config.js";
+import { handleMetricsRequest, handleHealthRequest } from "../enterprise/monitoring/index.js";
 import type { createSubsystemLogger } from "../logging/subsystem.js";
 import { safeEqualSecret } from "../security/secret-equal.js";
 import { handleSlackHttpRequest } from "../slack/http/index.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
-import { handleMetricsRequest, handleHealthRequest } from "../enterprise/monitoring/index.js";
 import {
   authorizeHttpGatewayConnect,
   isLocalDirectRequest,
@@ -526,11 +526,11 @@ export function createGatewayHttpServer(opts: {
         requestPath === "/readyz" ||
         requestPath === "/startupz"
       ) {
-        await handleHealthRequest(req as import("node:http").IncomingMessage, res as import("node:http").ServerResponse, requestPath);
+        await handleHealthRequest(req, res, requestPath);
         return;
       }
       if (requestPath === "/metrics") {
-        await handleMetricsRequest(req as import("node:http").IncomingMessage, res as import("node:http").ServerResponse);
+        await handleMetricsRequest(req, res);
         return;
       }
 

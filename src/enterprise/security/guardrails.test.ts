@@ -4,8 +4,6 @@ import {
   DEFAULT_GUARDRAIL_RULES,
   getGuardrailEngine,
   setGuardrailEngine,
-  type GuardrailRule,
-  type GuardrailContext,
 } from "./guardrails.js";
 
 describe("GuardrailEngine.evaluate", () => {

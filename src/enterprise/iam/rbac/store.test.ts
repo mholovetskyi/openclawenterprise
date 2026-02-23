@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { InMemoryRBACStore } from "./store.js";
 import type { Role, User, Group, AgentIdentity } from "./model.js";
+import { InMemoryRBACStore } from "./store.js";
 
 function makeRole(id: string): Role {
   return {
@@ -52,7 +52,9 @@ function makeAgent(id: string, tenantId?: string, apiKeyHash?: string): AgentIde
 
 describe("InMemoryRBACStore — Roles", () => {
   let store: InMemoryRBACStore;
-  beforeEach(() => { store = new InMemoryRBACStore(); });
+  beforeEach(() => {
+    store = new InMemoryRBACStore();
+  });
 
   it("listRoles returns empty array initially", async () => {
     expect(await store.listRoles()).toEqual([]);
@@ -80,7 +82,7 @@ describe("InMemoryRBACStore — Roles", () => {
     await store.upsertRole(makeRole("a"));
     await store.upsertRole(makeRole("b"));
     const roles = await store.listRoles();
-    expect(roles.map((r) => r.id).sort()).toEqual(["a", "b"]);
+    expect(roles.map((r) => r.id).toSorted()).toEqual(["a", "b"]);
   });
 
   it("deleteRole removes the role", async () => {
@@ -92,7 +94,9 @@ describe("InMemoryRBACStore — Roles", () => {
 
 describe("InMemoryRBACStore — Users", () => {
   let store: InMemoryRBACStore;
-  beforeEach(() => { store = new InMemoryRBACStore(); });
+  beforeEach(() => {
+    store = new InMemoryRBACStore();
+  });
 
   it("listUsers returns empty initially", async () => {
     expect(await store.listUsers()).toEqual([]);
@@ -141,7 +145,7 @@ describe("InMemoryRBACStore — Users", () => {
     await store.upsertUser(makeUser("u2", "tenant-b"));
     await store.upsertUser(makeUser("u3", "tenant-a"));
     const tenantA = await store.listUsers("tenant-a");
-    expect(tenantA.map((u) => u.id).sort()).toEqual(["u1", "u3"]);
+    expect(tenantA.map((u) => u.id).toSorted()).toEqual(["u1", "u3"]);
   });
 
   it("deleteUser removes user", async () => {
@@ -153,7 +157,9 @@ describe("InMemoryRBACStore — Users", () => {
 
 describe("InMemoryRBACStore — Groups", () => {
   let store: InMemoryRBACStore;
-  beforeEach(() => { store = new InMemoryRBACStore(); });
+  beforeEach(() => {
+    store = new InMemoryRBACStore();
+  });
 
   it("upsertGroup and getGroup", async () => {
     const group = makeGroup("eng");
@@ -181,7 +187,9 @@ describe("InMemoryRBACStore — Groups", () => {
 
 describe("InMemoryRBACStore — Agent Identities", () => {
   let store: InMemoryRBACStore;
-  beforeEach(() => { store = new InMemoryRBACStore(); });
+  beforeEach(() => {
+    store = new InMemoryRBACStore();
+  });
 
   it("upsertAgentIdentity and getAgentIdentity", async () => {
     const agent = makeAgent("bot-1");

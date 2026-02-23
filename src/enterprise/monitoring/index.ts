@@ -24,7 +24,9 @@ export async function initMonitoring(cfg: OpenClawConfig): Promise<MonitoringHan
   return {
     async handleMetricsRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
       const url = req.url?.split("?")[0];
-      if (url !== "/metrics") return false;
+      if (url !== "/metrics") {
+        return false;
+      }
       const body = await getMetricsOutput();
       res.writeHead(200, { "Content-Type": "text/plain; version=0.0.4; charset=utf-8" });
       res.end(body);
@@ -33,7 +35,9 @@ export async function initMonitoring(cfg: OpenClawConfig): Promise<MonitoringHan
 
     async handleHealthRequest(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
       const url = req.url?.split("?")[0];
-      if (!url) return false;
+      if (!url) {
+        return false;
+      }
 
       // Liveness: is the process alive?
       if (url === "/livez" || url === "/healthz") {
@@ -47,7 +51,13 @@ export async function initMonitoring(cfg: OpenClawConfig): Promise<MonitoringHan
         const checks: Record<string, string> = { process: "ok" };
         const allOk = Object.values(checks).every((v) => v === "ok");
         res.writeHead(allOk ? 200 : 503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: allOk ? "ok" : "degraded", checks, timestamp: new Date().toISOString() }));
+        res.end(
+          JSON.stringify({
+            status: allOk ? "ok" : "degraded",
+            checks,
+            timestamp: new Date().toISOString(),
+          }),
+        );
         return true;
       }
 

@@ -50,7 +50,13 @@ class InMemoryRateLimiter implements RateLimiter {
 
     timestamps.push(now);
     this.windows.set(key, timestamps);
-    return { allowed: true, remaining: limit - timestamps.length, limit, resetAt: now + windowMs, windowMs };
+    return {
+      allowed: true,
+      remaining: limit - timestamps.length,
+      limit,
+      resetAt: now + windowMs,
+      windowMs,
+    };
   }
 
   async reset(key: string): Promise<void> {
@@ -78,7 +84,7 @@ async function loadRedis(url: string): Promise<RedisClient> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod = req("ioredis") as any;
+  const mod = req("ioredis");
   const Redis = mod.default ?? mod;
   return new Redis(url) as RedisClient;
 }
@@ -102,11 +108,17 @@ class RedisRateLimiter implements RateLimiter {
       // Remove the entry we just added (over limit)
       await this.redis.zremrangebyscore(key, now, now);
       const oldest = await this.redis.zrange(key, 0, 0, "WITHSCORES");
-      const oldestTs = oldest.length >= 2 ? parseInt(oldest[1]!, 10) : now;
+      const oldestTs = oldest.length >= 2 ? parseInt(oldest[1], 10) : now;
       return { allowed: false, remaining: 0, limit, resetAt: oldestTs + windowMs, windowMs };
     }
 
-    return { allowed: true, remaining: Math.max(0, limit - count), limit, resetAt: now + windowMs, windowMs };
+    return {
+      allowed: true,
+      remaining: Math.max(0, limit - count),
+      limit,
+      resetAt: now + windowMs,
+      windowMs,
+    };
   }
 
   async reset(key: string): Promise<void> {
@@ -121,7 +133,9 @@ class RedisRateLimiter implements RateLimiter {
 // ── Factory ────────────────────────────────────────────────────────────────────
 
 export async function createRateLimiter(redisUrl?: string): Promise<RateLimiter> {
-  if (!redisUrl) return new InMemoryRateLimiter();
+  if (!redisUrl) {
+    return new InMemoryRateLimiter();
+  }
 
   try {
     const redis = await loadRedis(redisUrl);

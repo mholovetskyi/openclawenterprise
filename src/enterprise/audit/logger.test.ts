@@ -6,9 +6,9 @@ import {
   setAuditEnabled,
   getAuditStorage,
 } from "./logger.js";
-import type { AuditStorage } from "./storage/sqlite.js";
 import { verifyEventHash } from "./schema.js";
 import type { AuditEventInput } from "./schema.js";
+import type { AuditStorage } from "./storage/sqlite.js";
 
 const baseInput: AuditEventInput = {
   actor: { type: "user", id: "user-1" },
@@ -21,7 +21,9 @@ function makeMockStorage(): AuditStorage & { events: unknown[] } {
   const events: unknown[] = [];
   return {
     events,
-    append: vi.fn(async (event) => { events.push(event); }),
+    append: vi.fn(async (event) => {
+      events.push(event);
+    }),
     query: vi.fn(async () => ({ events: [], total: 0 })),
     getLastHash: vi.fn(async () => undefined),
     count: vi.fn(async () => 0),
@@ -40,6 +42,7 @@ describe("auditLog", () => {
     setAuditEnabled(false);
     const result = await auditLog(baseInput);
     expect(result).toBeNull();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(storage.append).not.toHaveBeenCalled();
   });
 
@@ -55,7 +58,9 @@ describe("auditLog", () => {
     setAuditStorage(storage);
     const event = await auditLog(baseInput);
     expect(event).not.toBeNull();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(storage.append).toHaveBeenCalledOnce();
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(storage.append).toHaveBeenCalledWith(event);
   });
 
@@ -86,7 +91,9 @@ describe("auditLog", () => {
 
   it("swallows storage errors without crashing", async () => {
     const errStorage: AuditStorage = {
-      append: vi.fn(async () => { throw new Error("disk full"); }),
+      append: vi.fn(async () => {
+        throw new Error("disk full");
+      }),
       query: vi.fn(async () => ({ events: [], total: 0 })),
       getLastHash: vi.fn(async () => undefined),
       count: vi.fn(async () => 0),
@@ -118,6 +125,7 @@ describe("auditLogSync", () => {
     auditLogSync(baseInput);
     // Give the async operation time to complete
     await new Promise((r) => setTimeout(r, 10));
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(storage.append).toHaveBeenCalled();
   });
 });

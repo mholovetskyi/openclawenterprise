@@ -11,20 +11,16 @@
  *     prefix: openclaw-                             # optional name prefix
  */
 
-import type { SecretBackend } from "./index.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { SecretBackend } from "./index.js";
 
-export async function createAzureKeyVaultBackend(
-  cfg: OpenClawConfig,
-): Promise<SecretBackend> {
+export async function createAzureKeyVaultBackend(cfg: OpenClawConfig): Promise<SecretBackend> {
   const azCfg = cfg.enterprise?.secrets?.azureKv as
     | { vaultUrl: string; prefix?: string }
     | undefined;
 
   if (!azCfg?.vaultUrl) {
-    throw new Error(
-      "enterprise.secrets.azureKv.vaultUrl is required for azure-kv backend",
-    );
+    throw new Error("enterprise.secrets.azureKv.vaultUrl is required for azure-kv backend");
   }
 
   const vaultUrl = azCfg.vaultUrl;
@@ -58,7 +54,9 @@ export async function createAzureKeyVaultBackend(
         await client.getSecret(name);
         return true;
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return false;
+        if (isNotFoundError(err)) {
+          return false;
+        }
         throw err;
       }
     },
@@ -69,7 +67,9 @@ export async function createAzureKeyVaultBackend(
         const secret = await client.getSecret(name);
         return secret.value ?? null;
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return null;
+        if (isNotFoundError(err)) {
+          return null;
+        }
         throw err;
       }
     },
@@ -87,7 +87,9 @@ export async function createAzureKeyVaultBackend(
         const poller = await client.beginDeleteSecret(name);
         await poller.pollUntilDone();
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return;
+        if (isNotFoundError(err)) {
+          return;
+        }
         throw err;
       }
     },
@@ -96,13 +98,19 @@ export async function createAzureKeyVaultBackend(
       const names: string[] = [];
       const props = client.listPropertiesOfSecrets();
       for await (const secret of props) {
-        if (!secret.name) continue;
+        if (!secret.name) {
+          continue;
+        }
         const decoded = decodeAzureName(secret.name);
         // Strip backend prefix
         const stripped = prefix ? decoded.replace(new RegExp(`^${prefix}`), "") : decoded;
-        if (keyPrefix && !stripped.startsWith(keyPrefix)) continue;
+        if (keyPrefix && !stripped.startsWith(keyPrefix)) {
+          continue;
+        }
         // Skip deleted secrets
-        if (secret.enabled === false) continue;
+        if (secret.enabled === false) {
+          continue;
+        }
         names.push(stripped);
       }
       return names;
@@ -121,13 +129,13 @@ function encodeAzureName(key: string): string {
 }
 
 function decodeAzureName(name: string): string {
-  return name.replace(/--([0-9a-f]+)-/g, (_, hex) =>
-    String.fromCodePoint(parseInt(hex, 16)),
-  );
+  return name.replace(/--([0-9a-f]+)-/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
 function isNotFoundError(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
+  if (typeof err !== "object" || err === null) {
+    return false;
+  }
   const e = err as { statusCode?: number; code?: string };
   return e.statusCode === 404 || e.code === "SecretNotFound";
 }

@@ -70,7 +70,7 @@ async function readLogSlice(params: {
   }
 
   try {
-    const stat = await handle!.stat();
+    const stat = await handle.stat();
     const size = stat.size;
     const maxBytes = clamp(params.maxBytes, 1, MAX_BYTES);
     const limit = clamp(params.limit, 1, MAX_LIMIT);

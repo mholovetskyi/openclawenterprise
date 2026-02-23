@@ -22,7 +22,6 @@ vi.mock("@google-cloud/secret-manager", () => ({
     deleteSecret = mockGCPClient.deleteSecret;
     listSecretsAsync = mockGCPClient.listSecretsAsync;
     close = mockGCPClient.close;
-    constructor() {}
   },
 }));
 
@@ -187,10 +186,7 @@ describe("createGCPSecretManagerBackend — operations", () => {
 
   it("list — skips entries without a name", async () => {
     mockGCPClient.listSecretsAsync.mockReturnValueOnce(
-      asyncOf(
-        { name: "projects/my-project/secrets/openclaw_x2f_key-a" },
-        {},
-      ),
+      asyncOf({ name: "projects/my-project/secrets/openclaw_x2f_key-a" }, {}),
     );
     expect(await backend.list()).toEqual(["key-a"]);
   });

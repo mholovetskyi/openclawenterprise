@@ -3,7 +3,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { randomUUID } from "node:crypto";
 
 export type AuditEventCategory =
   | "auth"
@@ -30,7 +29,7 @@ export type AuditActor = {
 };
 
 export type AuditResource = {
-  type: string;   // e.g. "agent", "skill", "session", "user", "config"
+  type: string; // e.g. "agent", "skill", "session", "user", "config"
   id: string;
   name?: string;
 };
@@ -47,7 +46,7 @@ export type AuditEvent = {
   actor: AuditActor;
 
   // WHAT
-  action: string;                // e.g. "agent.run", "skill.install", "config.update"
+  action: string; // e.g. "agent.run", "skill.install", "config.update"
   category: AuditEventCategory;
 
   // WHERE
@@ -62,19 +61,19 @@ export type AuditEvent = {
   metadata?: Record<string, unknown>;
 
   // TAMPER EVIDENCE
-  previousHash?: string;  // SHA-256 of previous event in chain
-  hash: string;           // SHA-256 of this event (excluding hash field itself)
+  previousHash?: string; // SHA-256 of previous event in chain
+  hash: string; // SHA-256 of this event (excluding hash field itself)
 };
 
-export type AuditEventInput = Omit<AuditEvent, "id" | "timestamp" | "version" | "hash" | "previousHash">;
+export type AuditEventInput = Omit<
+  AuditEvent,
+  "id" | "timestamp" | "version" | "hash" | "previousHash"
+>;
 
 /**
  * Build a new AuditEvent from input, computing the tamper-evident hash.
  */
-export function buildAuditEvent(
-  input: AuditEventInput,
-  previousHash?: string,
-): AuditEvent {
+export function buildAuditEvent(input: AuditEventInput, previousHash?: string): AuditEvent {
   const id = generateULID();
   const timestamp = new Date().toISOString();
 
@@ -117,7 +116,7 @@ export function verifyChain(events: AuditEvent[]): { valid: boolean; firstBroken
 function computeEventHash(event: AuditEvent): string {
   // Exclude the hash field itself from the computation
   const { hash: _hash, ...rest } = event;
-  const canonical = JSON.stringify(rest, Object.keys(rest).sort());
+  const canonical = JSON.stringify(rest, Object.keys(rest).toSorted());
   return createHash("sha256").update(canonical).digest("hex");
 }
 
