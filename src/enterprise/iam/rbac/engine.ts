@@ -5,7 +5,6 @@
 
 import {
   type Permission,
-  type Role,
   type User,
   type Group,
   type AgentIdentity,
@@ -56,7 +55,9 @@ export class RBACEngine {
   async canAll(ctx: AuthzContext, permissions: Permission[]): Promise<AuthzResult> {
     for (const perm of permissions) {
       const result = await this.can(ctx, perm);
-      if (!result.allowed) return result;
+      if (!result.allowed) {
+        return result;
+      }
     }
     return { allowed: true };
   }
@@ -68,7 +69,9 @@ export class RBACEngine {
     const reasons: string[] = [];
     for (const perm of permissions) {
       const result = await this.can(ctx, perm);
-      if (result.allowed) return { allowed: true };
+      if (result.allowed) {
+        return { allowed: true };
+      }
       reasons.push((result as { reason: string }).reason);
     }
     return {
@@ -91,7 +94,7 @@ export class RBACEngine {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async resolveGroups(ctx: AuthzContext): Promise<Group[]> {
-    const groupIds = ctx.identity.roles ? [] : []; // agents don't have group membership
+    const _groupIds = ctx.identity.roles ? [] : []; // agents don't have group membership
     if (ctx.identityType === "user") {
       const user = ctx.identity as User;
       if (user.groups?.length) {
@@ -116,8 +119,14 @@ const LEGACY_SCOPE_TO_PERMISSIONS: Record<string, Permission[]> = {
   "operator.admin": ["*"],
   "operator.write": ["agents.run", "send", "chat.*", "sessions.*", "node.invoke", "tts.*"],
   "operator.read": [
-    "agents.list", "sessions.list", "sessions.preview", "health.read",
-    "status.read", "models.list", "config.get", "node.list",
+    "agents.list",
+    "sessions.list",
+    "sessions.preview",
+    "health.read",
+    "status.read",
+    "models.list",
+    "config.get",
+    "node.list",
   ],
   "operator.approvals": ["exec.approval.*"],
   "operator.pairing": ["device.pair.*", "node.pair.*", "device.token.*"],
@@ -127,7 +136,9 @@ export function legacyScopesToPermissions(scopes: readonly string[]): Permission
   const perms: Permission[] = [];
   for (const scope of scopes) {
     const mapped = LEGACY_SCOPE_TO_PERMISSIONS[scope];
-    if (mapped) perms.push(...mapped);
+    if (mapped) {
+      perms.push(...mapped);
+    }
   }
   return [...new Set(perms)];
 }

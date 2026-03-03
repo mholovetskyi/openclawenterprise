@@ -10,9 +10,9 @@
  */
 
 import { createHash } from "node:crypto";
-import type { RBACStore } from "./rbac/store.js";
-import type { TokenStore } from "../auth/token-store.js";
 import type { AuditStorage } from "../audit/storage/sqlite.js";
+import type { TokenStore } from "../auth/token-store.js";
+import type { RBACStore } from "./rbac/store.js";
 
 // ── Export ─────────────────────────────────────────────────────────────────────
 

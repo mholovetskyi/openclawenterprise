@@ -149,13 +149,7 @@ export const BUILT_IN_ROLES: readonly Role[] = [
     id: "agent-service",
     name: "Agent Service Account",
     description: "For non-human agent identities",
-    permissions: [
-      "agent",
-      "send",
-      "tools.*",
-      "sessions.read",
-      "skills.status",
-    ],
+    permissions: ["agent", "send", "tools.*", "sessions.read", "skills.status"],
     system: true,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
@@ -169,13 +163,14 @@ export const BUILT_IN_ROLES: readonly Role[] = [
  * Supports wildcards: "agents.*" grants "agents.create", "agents.list", etc.
  * "*" grants everything.
  */
-export function permissionGranted(
-  requested: Permission,
-  granted: readonly Permission[],
-): boolean {
+export function permissionGranted(requested: Permission, granted: readonly Permission[]): boolean {
   for (const g of granted) {
-    if (g === "*") return true;
-    if (g === requested) return true;
+    if (g === "*") {
+      return true;
+    }
+    if (g === requested) {
+      return true;
+    }
     // Wildcard suffix: "agents.*" matches "agents.create"
     if (g.endsWith(".*")) {
       const prefix = g.slice(0, -2);
@@ -197,10 +192,14 @@ export function expandRolePermissions(
 ): Permission[] {
   const permissions: Permission[] = [];
   for (const roleId of roleIds) {
-    if (visited.has(roleId)) continue;
+    if (visited.has(roleId)) {
+      continue;
+    }
     visited.add(roleId);
     const role = allRoles.find((r) => r.id === roleId);
-    if (!role) continue;
+    if (!role) {
+      continue;
+    }
     permissions.push(...role.permissions);
     if (role.inherits?.length) {
       permissions.push(...expandRolePermissions(role.inherits, allRoles, visited));

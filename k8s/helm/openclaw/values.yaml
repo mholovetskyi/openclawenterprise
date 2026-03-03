@@ -4,7 +4,7 @@
 # ── Image ──────────────────────────────────────────────────────────────────────
 image:
   repository: ghcr.io/openclaw/openclaw
-  tag: ""  # defaults to .Chart.AppVersion
+  tag: "" # defaults to .Chart.AppVersion
   pullPolicy: IfNotPresent
   pullSecrets: []
 
@@ -98,10 +98,10 @@ envFrom: []
 
 # ── OpenClaw Gateway configuration ────────────────────────────────────────────
 gateway:
-  bind: loopback  # loopback | lan | tailnet | custom
+  bind: loopback # loopback | lan | tailnet | custom
   port: 8000
   auth:
-    mode: token   # token | password | trusted-proxy | none
+    mode: token # token | password | trusted-proxy | none
     # token: ""   # set via OPENCLAW_GATEWAY_TOKEN env var
 
 # ── Enterprise features ────────────────────────────────────────────────────────
@@ -109,17 +109,17 @@ enterprise:
   enabled: false
 
   secrets:
-    backend: env  # In K8s, use env vars via Kubernetes Secrets or external-secrets
+    backend: env # In K8s, use env vars via Kubernetes Secrets or external-secrets
 
   iam:
     enabled: true
-    provider: local  # local | oidc | saml | ldap
+    provider: local # local | oidc | saml | ldap
     oidc: {}
     saml: {}
 
   audit:
     enabled: true
-    storage: sqlite  # sqlite | postgres | elasticsearch
+    storage: sqlite # sqlite | postgres | elasticsearch
     sqlitePath: /data/audit.db
 
   monitoring:
@@ -132,7 +132,7 @@ enterprise:
 
   cluster:
     enabled: false
-    backend: memory  # memory | redis
+    backend: memory # memory | redis
 
 # ── PostgreSQL (for multi-node / enterprise) ──────────────────────────────────
 postgresql:

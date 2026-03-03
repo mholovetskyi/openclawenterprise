@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import type { OpenClawConfig } from "../../config/config.js";
 import {
   getTenantContext,
   runWithTenant,
@@ -8,7 +9,6 @@ import {
   initTenancy,
   type TenantContext,
 } from "./index.js";
-import type { OpenClawConfig } from "../../config/config.js";
 
 describe("getTenantContext", () => {
   it("returns DEFAULT_TENANT_CONTEXT outside of any tenant scope", () => {

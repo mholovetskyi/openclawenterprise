@@ -126,10 +126,7 @@ export const EnterpriseUserDeleteResultSchema = Type.Object(
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
 
-export const EnterpriseRolesListParamsSchema = Type.Object(
-  {},
-  { additionalProperties: false },
-);
+export const EnterpriseRolesListParamsSchema = Type.Object({}, { additionalProperties: false });
 export const EnterpriseRolesListResultSchema = Type.Object(
   { roles: Type.Array(RbacRoleSchema) },
   { additionalProperties: false },
@@ -148,7 +145,7 @@ export const EnterpriseSessionsListResultSchema = Type.Object(
 
 export const EnterpriseSessionRevokeParamsSchema = Type.Object(
   {
-    jti: Type.Optional(NonEmptyString),      // revoke a specific session
+    jti: Type.Optional(NonEmptyString), // revoke a specific session
     subjectId: Type.Optional(NonEmptyString), // revoke ALL sessions for a user
   },
   { additionalProperties: false },
@@ -167,8 +164,8 @@ export const EnterpriseAuditQueryParamsSchema = Type.Object(
     action: Type.Optional(NonEmptyString),
     outcome: Type.Optional(NonEmptyString),
     tenantId: Type.Optional(NonEmptyString),
-    from: Type.Optional(NonEmptyString),    // ISO 8601
-    until: Type.Optional(NonEmptyString),   // ISO 8601
+    from: Type.Optional(NonEmptyString), // ISO 8601
+    until: Type.Optional(NonEmptyString), // ISO 8601
     search: Type.Optional(NonEmptyString),
     limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 1000, default: 50 })),
     offset: Type.Optional(Type.Integer({ minimum: 0, default: 0 })),
@@ -232,7 +229,7 @@ export const EnterpriseMfaEnrollParamsSchema = Type.Object(
 );
 export const EnterpriseMfaEnrollResultSchema = Type.Object(
   {
-    secret: NonEmptyString,    // base32 TOTP secret (show once to user)
+    secret: NonEmptyString, // base32 TOTP secret (show once to user)
     otpauthUri: NonEmptyString, // otpauth:// URI for QR code rendering
   },
   { additionalProperties: false },

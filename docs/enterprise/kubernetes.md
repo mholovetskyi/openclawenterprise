@@ -35,22 +35,22 @@ For Vault-backed secrets, provide Vault credentials instead.
 
 ## Key values
 
-| Value | Default | Description |
-|-------|---------|-------------|
-| `replicaCount` | `1` | Number of replicas |
-| `image.repository` | `ghcr.io/openclaw/openclaw` | Container image |
-| `image.tag` | `latest` | Image tag |
-| `enterprise.enabled` | `false` | Enable enterprise features |
-| `autoscaling.enabled` | `false` | Enable HPA |
-| `autoscaling.minReplicas` | `1` | HPA min |
-| `autoscaling.maxReplicas` | `10` | HPA max |
-| `podDisruptionBudget.enabled` | `false` | Enable PDB |
-| `podDisruptionBudget.minAvailable` | `1` | PDB min available |
-| `networkPolicy.enabled` | `false` | Enable NetworkPolicy |
-| `ingress.enabled` | `false` | Enable Ingress |
-| `monitoring.serviceMonitor.enabled` | `false` | Enable Prometheus ServiceMonitor |
-| `persistence.enabled` | `true` | Mount a PVC for data |
-| `persistence.size` | `10Gi` | PVC size |
+| Value                               | Default                     | Description                      |
+| ----------------------------------- | --------------------------- | -------------------------------- |
+| `replicaCount`                      | `1`                         | Number of replicas               |
+| `image.repository`                  | `ghcr.io/openclaw/openclaw` | Container image                  |
+| `image.tag`                         | `latest`                    | Image tag                        |
+| `enterprise.enabled`                | `false`                     | Enable enterprise features       |
+| `autoscaling.enabled`               | `false`                     | Enable HPA                       |
+| `autoscaling.minReplicas`           | `1`                         | HPA min                          |
+| `autoscaling.maxReplicas`           | `10`                        | HPA max                          |
+| `podDisruptionBudget.enabled`       | `false`                     | Enable PDB                       |
+| `podDisruptionBudget.minAvailable`  | `1`                         | PDB min available                |
+| `networkPolicy.enabled`             | `false`                     | Enable NetworkPolicy             |
+| `ingress.enabled`                   | `false`                     | Enable Ingress                   |
+| `monitoring.serviceMonitor.enabled` | `false`                     | Enable Prometheus ServiceMonitor |
+| `persistence.enabled`               | `true`                      | Mount a PVC for data             |
+| `persistence.size`                  | `10Gi`                      | PVC size                         |
 
 ## Security defaults
 

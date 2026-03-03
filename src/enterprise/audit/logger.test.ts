@@ -6,9 +6,9 @@ import {
   setAuditEnabled,
   getAuditStorage,
 } from "./logger.js";
-import type { AuditStorage } from "./storage/sqlite.js";
 import { verifyEventHash } from "./schema.js";
 import type { AuditEventInput } from "./schema.js";
+import type { AuditStorage } from "./storage/sqlite.js";
 
 const baseInput: AuditEventInput = {
   actor: { type: "user", id: "user-1" },
@@ -17,16 +17,20 @@ const baseInput: AuditEventInput = {
   outcome: "success",
 };
 
-function makeMockStorage(): AuditStorage & { events: unknown[] } {
+function makeMockStorage() {
   const events: unknown[] = [];
-  return {
+  const appendFn = vi.fn(async (event: unknown) => {
+    events.push(event);
+  });
+  const storage: AuditStorage & { events: unknown[] } = {
     events,
-    append: vi.fn(async (event) => { events.push(event); }),
+    append: appendFn,
     query: vi.fn(async () => ({ events: [], total: 0 })),
     getLastHash: vi.fn(async () => undefined),
     count: vi.fn(async () => 0),
     shutdown: vi.fn(async () => {}),
   };
+  return { storage, appendFn };
 }
 
 describe("auditLog", () => {
@@ -35,12 +39,12 @@ describe("auditLog", () => {
   });
 
   it("returns null when audit is disabled", async () => {
-    const storage = makeMockStorage();
+    const { storage, appendFn } = makeMockStorage();
     setAuditStorage(storage);
     setAuditEnabled(false);
     const result = await auditLog(baseInput);
     expect(result).toBeNull();
-    expect(storage.append).not.toHaveBeenCalled();
+    expect(appendFn).not.toHaveBeenCalled();
   });
 
   it("returns null when no storage is configured", async () => {
@@ -51,16 +55,16 @@ describe("auditLog", () => {
   });
 
   it("writes an event and returns it when enabled", async () => {
-    const storage = makeMockStorage();
+    const { storage, appendFn } = makeMockStorage();
     setAuditStorage(storage);
     const event = await auditLog(baseInput);
     expect(event).not.toBeNull();
-    expect(storage.append).toHaveBeenCalledOnce();
-    expect(storage.append).toHaveBeenCalledWith(event);
+    expect(appendFn).toHaveBeenCalledOnce();
+    expect(appendFn).toHaveBeenCalledWith(event);
   });
 
   it("returned event passes hash verification", async () => {
-    const storage = makeMockStorage();
+    const { storage } = makeMockStorage();
     setAuditStorage(storage);
     const event = await auditLog(baseInput);
     expect(event).not.toBeNull();
@@ -68,7 +72,7 @@ describe("auditLog", () => {
   });
 
   it("event contains the input fields", async () => {
-    const storage = makeMockStorage();
+    const { storage } = makeMockStorage();
     setAuditStorage(storage);
     const event = await auditLog(baseInput);
     expect(event!.actor.id).toBe("user-1");
@@ -77,7 +81,7 @@ describe("auditLog", () => {
   });
 
   it("chains previousHash between consecutive events", async () => {
-    const storage = makeMockStorage();
+    const { storage } = makeMockStorage();
     setAuditStorage(storage);
     const e1 = await auditLog(baseInput);
     const e2 = await auditLog(baseInput);
@@ -86,7 +90,9 @@ describe("auditLog", () => {
 
   it("swallows storage errors without crashing", async () => {
     const errStorage: AuditStorage = {
-      append: vi.fn(async () => { throw new Error("disk full"); }),
+      append: vi.fn(async () => {
+        throw new Error("disk full");
+      }),
       query: vi.fn(async () => ({ events: [], total: 0 })),
       getLastHash: vi.fn(async () => undefined),
       count: vi.fn(async () => 0),
@@ -105,7 +111,7 @@ describe("auditLogSync", () => {
   });
 
   it("does nothing when disabled", () => {
-    const storage = makeMockStorage();
+    const { storage } = makeMockStorage();
     setAuditStorage(storage);
     setAuditEnabled(false);
     auditLogSync(baseInput);
@@ -113,18 +119,18 @@ describe("auditLogSync", () => {
   });
 
   it("fires and forgets when enabled", async () => {
-    const storage = makeMockStorage();
+    const { storage, appendFn } = makeMockStorage();
     setAuditStorage(storage);
     auditLogSync(baseInput);
     // Give the async operation time to complete
     await new Promise((r) => setTimeout(r, 10));
-    expect(storage.append).toHaveBeenCalled();
+    expect(appendFn).toHaveBeenCalled();
   });
 });
 
 describe("getAuditStorage", () => {
   it("returns the configured storage", () => {
-    const storage = makeMockStorage();
+    const { storage } = makeMockStorage();
     setAuditStorage(storage);
     expect(getAuditStorage()).toBe(storage);
   });

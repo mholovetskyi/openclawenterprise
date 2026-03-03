@@ -1,8 +1,8 @@
 import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import type { WebSocket } from "ws";
-import { auditLog } from "../../../enterprise/audit/logger.js";
 import { loadConfig } from "../../../config/config.js";
+import { auditLog } from "../../../enterprise/audit/logger.js";
 import {
   deriveDeviceIdFromPublicKey,
   normalizeDevicePublicKeyBase64Url,

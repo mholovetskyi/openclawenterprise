@@ -6,29 +6,36 @@
  * Revocation via SQLite token blacklist.
  */
 
-import { createHmac, createSign, createVerify, generateKeyPairSync, randomBytes, createHash } from "node:crypto";
+import {
+  createHmac,
+  createSign,
+  createVerify,
+  generateKeyPairSync,
+  randomBytes,
+  createHash,
+} from "node:crypto";
 import type { User, AgentIdentity } from "../iam/rbac/model.js";
 
 export type JWTAlgorithm = "RS256" | "HS256";
 
 export type JWTConfig = {
   algorithm: JWTAlgorithm;
-  secret?: string;        // HS256: shared secret
-  privateKey?: string;    // RS256: PEM private key
-  publicKey?: string;     // RS256: PEM public key
-  accessTokenTtlMs?: number;   // default 900_000 (15 min)
-  refreshTokenTtlMs?: number;  // default 604_800_000 (7 days)
+  secret?: string; // HS256: shared secret
+  privateKey?: string; // RS256: PEM private key
+  publicKey?: string; // RS256: PEM public key
+  accessTokenTtlMs?: number; // default 900_000 (15 min)
+  refreshTokenTtlMs?: number; // default 604_800_000 (7 days)
   issuer?: string;
   audience?: string;
 };
 
 export type JWTPayload = {
-  sub: string;           // subject: user or agent ID
-  iss?: string;          // issuer
-  aud?: string;          // audience
-  iat: number;           // issued at (seconds)
-  exp: number;           // expiry (seconds)
-  jti: string;           // JWT ID (unique per token)
+  sub: string; // subject: user or agent ID
+  iss?: string; // issuer
+  aud?: string; // audience
+  iat: number; // issued at (seconds)
+  exp: number; // expiry (seconds)
+  jti: string; // JWT ID (unique per token)
   type: "access" | "refresh";
   identityType: "user" | "agent";
   roles?: string[];
@@ -45,7 +52,7 @@ export type JWTKeyPair = {
 export type IssueTokenResult = {
   accessToken: string;
   refreshToken: string;
-  expiresIn: number;   // seconds until access token expires
+  expiresIn: number; // seconds until access token expires
   tokenType: "Bearer";
 };
 
@@ -81,7 +88,9 @@ function sign(data: string, config: JWTConfig): string {
     return b64url(createHmac("sha256", secret).update(data).digest());
   }
   // RS256
-  if (!config.privateKey) throw new Error("RS256 requires privateKey in JWTConfig");
+  if (!config.privateKey) {
+    throw new Error("RS256 requires privateKey in JWTConfig");
+  }
   const signer = createSign("RSA-SHA256");
   signer.update(data);
   return b64url(signer.sign(config.privateKey));
@@ -90,9 +99,15 @@ function sign(data: string, config: JWTConfig): string {
 function verify(header: string, payload: string, signature: string, config: JWTConfig): boolean {
   const data = `${header}.${payload}`;
   if (config.algorithm === "HS256") {
-    const expected = b64url(createHmac("sha256", config.secret ?? "").update(data).digest());
+    const expected = b64url(
+      createHmac("sha256", config.secret ?? "")
+        .update(data)
+        .digest(),
+    );
     // Timing-safe comparison
-    if (signature.length !== expected.length) return false;
+    if (signature.length !== expected.length) {
+      return false;
+    }
     let diff = 0;
     for (let i = 0; i < signature.length; i++) {
       diff |= signature.charCodeAt(i) ^ expected.charCodeAt(i);
@@ -100,7 +115,9 @@ function verify(header: string, payload: string, signature: string, config: JWTC
     return diff === 0;
   }
   // RS256
-  if (!config.publicKey) throw new Error("RS256 requires publicKey in JWTConfig");
+  if (!config.publicKey) {
+    throw new Error("RS256 requires publicKey in JWTConfig");
+  }
   const verifier = createVerify("RSA-SHA256");
   verifier.update(data);
   try {
@@ -149,7 +166,9 @@ export class JWTService {
     });
   }
 
-  issue(claims: Omit<JWTPayload, "iat" | "exp" | "jti" | "iss" | "aud" | "type">): IssueTokenResult {
+  issue(
+    claims: Omit<JWTPayload, "iat" | "exp" | "jti" | "iss" | "aud" | "type">,
+  ): IssueTokenResult {
     const now = Math.floor(Date.now() / 1000);
     const accessTtlSec = Math.floor((this.config.accessTokenTtlMs ?? 900_000) / 1000);
     const refreshTtlSec = Math.floor((this.config.refreshTokenTtlMs ?? 604_800_000) / 1000);
@@ -188,10 +207,14 @@ export class JWTService {
    */
   decode(token: string): JWTPayload | null {
     const parts = token.split(".");
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {
+      return null;
+    }
     const [header, payload, signature] = parts;
 
-    if (!verify(header, payload, signature, this.config)) return null;
+    if (!verify(header, payload, signature, this.config)) {
+      return null;
+    }
 
     let decoded: JWTPayload;
     try {
@@ -201,7 +224,9 @@ export class JWTService {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    if (decoded.exp < now) return null; // expired
+    if (decoded.exp < now) {
+      return null;
+    } // expired
 
     return decoded;
   }

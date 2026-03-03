@@ -22,10 +22,10 @@ enterprise:
   audit:
     enabled: true
     storage:
-      driver: sqlite          # sqlite (default) | postgresql (roadmap)
+      driver: sqlite # sqlite (default) | postgresql (roadmap)
       path: ~/.openclaw/audit.db
     retention:
-      days: 365               # auto-purge events older than N days
+      days: 365 # auto-purge events older than N days
 ```
 
 ## Hash chain verification
@@ -47,24 +47,24 @@ if (!result.valid) {
 
 ## Well-known audit actions
 
-| Action | Description |
-|--------|-------------|
-| `auth.login` | Successful authentication |
-| `auth.logout` | Session terminated |
-| `auth.failed` | Authentication failure |
-| `agent.run.start` | Agent task started |
-| `agent.run.complete` | Agent task completed |
-| `agent.run.error` | Agent task errored |
-| `skill.install` | Skill installed |
-| `skill.invoke` | Skill invoked |
-| `skill.blocked` | Skill blocked by SAST/signing |
-| `guardrail.warn` | Guardrail warning emitted |
-| `guardrail.block` | Action blocked by guardrail |
-| `config.read` | Config accessed |
-| `config.write` | Config modified |
-| `user.create` | IAM user created |
-| `user.delete` | IAM user deleted |
-| `role.assign` | Role assigned to user |
+| Action               | Description                   |
+| -------------------- | ----------------------------- |
+| `auth.login`         | Successful authentication     |
+| `auth.logout`        | Session terminated            |
+| `auth.failed`        | Authentication failure        |
+| `agent.run.start`    | Agent task started            |
+| `agent.run.complete` | Agent task completed          |
+| `agent.run.error`    | Agent task errored            |
+| `skill.install`      | Skill installed               |
+| `skill.invoke`       | Skill invoked                 |
+| `skill.blocked`      | Skill blocked by SAST/signing |
+| `guardrail.warn`     | Guardrail warning emitted     |
+| `guardrail.block`    | Action blocked by guardrail   |
+| `config.read`        | Config accessed               |
+| `config.write`       | Config modified               |
+| `user.create`        | IAM user created              |
+| `user.delete`        | IAM user deleted              |
+| `role.assign`        | Role assigned to user         |
 
 ## Compliance use cases
 

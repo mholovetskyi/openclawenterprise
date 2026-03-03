@@ -2,11 +2,11 @@
  * Code-signing tests.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import crypto from "node:crypto";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   generateSigningKeyPair,
   hashDirectory,
@@ -30,7 +30,11 @@ function populateSkillDir(dir: string): void {
  */
 function edSign(contentHash: string, privateKeyBase64: string): string {
   const privateKeyDer = Buffer.from(privateKeyBase64, "base64url");
-  const privateKeyObj = crypto.createPrivateKey({ key: privateKeyDer, format: "der", type: "pkcs8" });
+  const privateKeyObj = crypto.createPrivateKey({
+    key: privateKeyDer,
+    format: "der",
+    type: "pkcs8",
+  });
   return crypto.sign(null, Buffer.from(contentHash), privateKeyObj).toString("base64url");
 }
 
@@ -95,8 +99,12 @@ describe("generateSigningKeyPair", () => {
 describe("hashDirectory", () => {
   let tmpDir: string;
 
-  beforeEach(() => { tmpDir = makeTmpDir(); });
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("returns a 64-char hex SHA-256 hash", () => {
     populateSkillDir(tmpDir);
@@ -130,8 +138,12 @@ describe("hashDirectory", () => {
 describe("hashFile", () => {
   let tmpDir: string;
 
-  beforeEach(() => { tmpDir = makeTmpDir(); });
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("returns a 64-char hex hash", () => {
     const file = path.join(tmpDir, "test.txt");
@@ -156,7 +168,9 @@ describe("verifySkillSignature", () => {
     keyPair = generateSigningKeyPair();
   });
 
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("returns valid for a correctly signed directory", () => {
     const sig = makeSignature(tmpDir, keyPair);

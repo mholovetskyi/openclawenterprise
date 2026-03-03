@@ -21,6 +21,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
   const prefix = opts.prefix ?? "openclaw/";
 
   // Lazy-load @aws-sdk/client-secrets-manager
+  // eslint-disable-next-line @typescript-eslint/no-redundant-type-constituents -- optional dep may resolve to any
   let client: import("@aws-sdk/client-secrets-manager").SecretsManagerClient | null = null;
 
   async function getClient() {
@@ -53,16 +54,16 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
         return res.SecretString ?? null;
       } catch (err: unknown) {
         const code = (err as { name?: string }).name;
-        if (code === "ResourceNotFoundException") return null;
+        if (code === "ResourceNotFoundException") {
+          return null;
+        }
         throw err;
       }
     },
 
     async set(ref: string, value: string, meta?: SecretMetadata): Promise<void> {
-      const {
-        CreateSecretCommand,
-        UpdateSecretCommand,
-      } = await import("@aws-sdk/client-secrets-manager");
+      const { CreateSecretCommand, UpdateSecretCommand } =
+        await import("@aws-sdk/client-secrets-manager");
       const c = await getClient();
       const id = secretId(ref);
       try {
@@ -92,7 +93,9 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
         );
       } catch (err: unknown) {
         const code = (err as { name?: string }).name;
-        if (code === "ResourceNotFoundException") return;
+        if (code === "ResourceNotFoundException") {
+          return;
+        }
         throw err;
       }
     },
@@ -104,10 +107,15 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
       let nextToken: string | undefined;
       do {
         const res = await c.send(
-          new ListSecretsCommand({ Filters: [{ Key: "name", Values: [prefix] }], NextToken: nextToken }),
+          new ListSecretsCommand({
+            Filters: [{ Key: "name", Values: [prefix] }],
+            NextToken: nextToken,
+          }),
         );
         for (const s of res.SecretList ?? []) {
-          if (s.Name) secrets.push(s.Name.replace(new RegExp(`^${prefix}`), ""));
+          if (s.Name) {
+            secrets.push(s.Name.replace(new RegExp(`^${prefix}`), ""));
+          }
         }
         nextToken = res.NextToken;
       } while (nextToken);

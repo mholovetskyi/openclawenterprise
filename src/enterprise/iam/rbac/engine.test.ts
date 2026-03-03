@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { RBACEngine, legacyScopesToPermissions, checkLegacyScopePermission } from "./engine.js";
-import { InMemoryRBACStore } from "./store.js";
 import type { User, AgentIdentity, Role, Group } from "./model.js";
+import { InMemoryRBACStore } from "./store.js";
 
 function makeUser(id: string, roles: string[], groups: string[] = []): User {
   return {
@@ -112,19 +112,19 @@ describe("RBACEngine.canAll", () => {
 
   it("returns allowed when user has all permissions", async () => {
     const user = makeUser("u", ["admin"]);
-    const result = await engine.canAll(
-      { identity: user, identityType: "user" },
-      ["agents.list", "agents.run"],
-    );
+    const result = await engine.canAll({ identity: user, identityType: "user" }, [
+      "agents.list",
+      "agents.run",
+    ]);
     expect(result.allowed).toBe(true);
   });
 
   it("returns denied when user lacks one permission", async () => {
     const user = makeUser("u", ["viewer"]);
-    const result = await engine.canAll(
-      { identity: user, identityType: "user" },
-      ["sessions.list", "users.delete"],
-    );
+    const result = await engine.canAll({ identity: user, identityType: "user" }, [
+      "sessions.list",
+      "users.delete",
+    ]);
     expect(result.allowed).toBe(false);
     expect("missingPermission" in result && result.missingPermission).toBe("users.delete");
   });
@@ -145,19 +145,19 @@ describe("RBACEngine.canAny", () => {
 
   it("returns allowed when user has at least one permission", async () => {
     const user = makeUser("u", ["viewer"]); // has sessions.list but not users.delete
-    const result = await engine.canAny(
-      { identity: user, identityType: "user" },
-      ["users.delete", "sessions.list"],
-    );
+    const result = await engine.canAny({ identity: user, identityType: "user" }, [
+      "users.delete",
+      "sessions.list",
+    ]);
     expect(result.allowed).toBe(true);
   });
 
   it("returns denied when user has none of the permissions", async () => {
     const user = makeUser("u", ["viewer"]);
-    const result = await engine.canAny(
-      { identity: user, identityType: "user" },
-      ["users.delete", "config.write"],
-    );
+    const result = await engine.canAny({ identity: user, identityType: "user" }, [
+      "users.delete",
+      "config.write",
+    ]);
     expect(result.allowed).toBe(false);
   });
 });

@@ -12,8 +12,8 @@ export function renderEnterpriseCluster(props: EnterpriseAdminProps) {
         <div class="ent-empty-icon">🔗</div>
         <div class="ent-empty-title">Cluster &amp; tenancy not enabled</div>
         <div class="ent-empty-body">
-          Enable <code>enterprise.cluster.enabled: true</code> for distributed multi-node mode
-          and <code>enterprise.tenancy.enabled: true</code> for multi-tenant isolation.
+          Enable <code>enterprise.cluster.enabled: true</code> for distributed multi-node mode and
+          <code>enterprise.tenancy.enabled: true</code> for multi-tenant isolation.
         </div>
       </div>
     `;
@@ -21,8 +21,9 @@ export function renderEnterpriseCluster(props: EnterpriseAdminProps) {
 
   return html`
     <div class="ent-cluster">
-      ${clusterEnabled
-        ? html`
+      ${
+        clusterEnabled
+          ? html`
             <section class="ent-section">
               <h3 class="ent-section-title">Cluster</h3>
               <div class="ent-kv-grid">
@@ -32,24 +33,34 @@ export function renderEnterpriseCluster(props: EnterpriseAdminProps) {
                 <span class="ent-kv-val">${metrics?.clusterNodeCount ?? "—"}</span>
                 <span class="ent-kv-key">Message bus</span>
                 <span class="ent-kv-val">
-                  ${status?.subsystems.cluster.healthy
-                    ? html`<span class="ent-badge ent-badge--ok">connected</span>`
-                    : html`<span class="ent-badge ent-badge--error">disconnected</span>`}
+                  ${
+                    status?.subsystems.cluster.healthy
+                      ? html`
+                          <span class="ent-badge ent-badge--ok">connected</span>
+                        `
+                      : html`
+                          <span class="ent-badge ent-badge--error">disconnected</span>
+                        `
+                  }
                 </span>
               </div>
-              ${status?.subsystems.cluster.detail
-                ? html`
+              ${
+                status?.subsystems.cluster.detail
+                  ? html`
                     <div class="muted" style="margin-top:8px;font-size:12px">
                       ${status.subsystems.cluster.detail}
                     </div>
                   `
-                : nothing}
+                  : nothing
+              }
             </section>
           `
-        : nothing}
+          : nothing
+      }
 
-      ${tenancyEnabled
-        ? html`
+      ${
+        tenancyEnabled
+          ? html`
             <section class="ent-section" style="margin-top:24px">
               <h3 class="ent-section-title">Multi-tenancy</h3>
               <div class="ent-kv-grid">
@@ -65,7 +76,8 @@ export function renderEnterpriseCluster(props: EnterpriseAdminProps) {
               </div>
             </section>
           `
-        : nothing}
+          : nothing
+      }
     </div>
   `;
 }

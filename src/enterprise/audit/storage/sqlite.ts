@@ -14,7 +14,7 @@ export type AuditQueryOptions = {
   action?: string;
   outcome?: string;
   tenantId?: string;
-  from?: string;  // ISO 8601
+  from?: string; // ISO 8601
   until?: string; // ISO 8601
   search?: string;
 };
@@ -52,7 +52,7 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
     // Use createRequire so TypeScript doesn't statically resolve this optional dep
     const _req = createRequire(import.meta.url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = _req("better-sqlite3") as any;
+    const mod = _req("better-sqlite3");
     Database = mod.default ?? mod;
   } catch {
     throw new Error(
@@ -107,9 +107,7 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
        @previous_hash, @hash, @metadata, @raw)
   `);
 
-  const lastHashStmt = db.prepare(
-    "SELECT hash FROM audit_events ORDER BY timestamp DESC LIMIT 1",
-  );
+  const lastHashStmt = db.prepare("SELECT hash FROM audit_events ORDER BY timestamp DESC LIMIT 1");
 
   return {
     async append(event: AuditEvent): Promise<void> {
@@ -138,13 +136,34 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
       const conditions: string[] = [];
       const params: Record<string, unknown> = {};
 
-      if (opts.actorId) { conditions.push("actor_id = @actorId"); params.actorId = opts.actorId; }
-      if (opts.category) { conditions.push("category = @category"); params.category = opts.category; }
-      if (opts.action) { conditions.push("action LIKE @action"); params.action = `%${opts.action}%`; }
-      if (opts.outcome) { conditions.push("outcome = @outcome"); params.outcome = opts.outcome; }
-      if (opts.tenantId) { conditions.push("tenant_id = @tenantId"); params.tenantId = opts.tenantId; }
-      if (opts.from) { conditions.push("timestamp >= @from"); params.from = opts.from; }
-      if (opts.until) { conditions.push("timestamp <= @until"); params.until = opts.until; }
+      if (opts.actorId) {
+        conditions.push("actor_id = @actorId");
+        params.actorId = opts.actorId;
+      }
+      if (opts.category) {
+        conditions.push("category = @category");
+        params.category = opts.category;
+      }
+      if (opts.action) {
+        conditions.push("action LIKE @action");
+        params.action = `%${opts.action}%`;
+      }
+      if (opts.outcome) {
+        conditions.push("outcome = @outcome");
+        params.outcome = opts.outcome;
+      }
+      if (opts.tenantId) {
+        conditions.push("tenant_id = @tenantId");
+        params.tenantId = opts.tenantId;
+      }
+      if (opts.from) {
+        conditions.push("timestamp >= @from");
+        params.from = opts.from;
+      }
+      if (opts.until) {
+        conditions.push("timestamp <= @until");
+        params.until = opts.until;
+      }
       if (opts.search) {
         conditions.push("(action LIKE @search OR actor_id LIKE @search OR raw LIKE @search)");
         params.search = `%${opts.search}%`;
@@ -154,10 +173,14 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
       const limit = opts.limit ?? 50;
       const offset = opts.offset ?? 0;
 
-      const countRow = db.prepare(`SELECT COUNT(*) as c FROM audit_events ${where}`).get(params) as { c: number };
-      const rows = db.prepare(
-        `SELECT raw FROM audit_events ${where} ORDER BY timestamp DESC LIMIT @limit OFFSET @offset`,
-      ).all({ ...params, limit, offset }) as Array<{ raw: string }>;
+      const countRow = db
+        .prepare(`SELECT COUNT(*) as c FROM audit_events ${where}`)
+        .get(params) as { c: number };
+      const rows = db
+        .prepare(
+          `SELECT raw FROM audit_events ${where} ORDER BY timestamp DESC LIMIT @limit OFFSET @offset`,
+        )
+        .all({ ...params, limit, offset }) as Array<{ raw: string }>;
 
       return {
         events: rows.map((r) => JSON.parse(r.raw) as AuditEvent),

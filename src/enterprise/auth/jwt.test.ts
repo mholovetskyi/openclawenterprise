@@ -1,12 +1,6 @@
 import { describe, it, expect } from "vitest";
-import {
-  JWTService,
-  generateRS256KeyPair,
-  generateApiKey,
-  hashApiKey,
-  type JWTConfig,
-} from "./jwt.js";
 import type { User, AgentIdentity } from "../iam/rbac/model.js";
+import { JWTService, generateRS256KeyPair, generateApiKey, hashApiKey } from "./jwt.js";
 
 const testUser: User = {
   id: "user-123",

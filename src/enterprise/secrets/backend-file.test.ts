@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createFileBackend } from "./backend-file.js";
 import { deriveKeyFromPassphrase } from "./encryption.js";
 
@@ -55,7 +55,7 @@ describe("createFileBackend", () => {
     await backend.set("b", "2");
     await backend.set("c", "3");
     const keys = await backend.list();
-    expect(keys.sort()).toEqual(["a", "b", "c"]);
+    expect(keys.toSorted()).toEqual(["a", "b", "c"]);
   });
 
   it("list returns empty array when no secrets exist", async () => {

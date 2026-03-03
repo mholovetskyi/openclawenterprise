@@ -38,7 +38,9 @@ function base32Decode(encoded: string): Buffer {
   const bytes: number[] = [];
   for (const char of input) {
     const idx = BASE32_CHARS.indexOf(char);
-    if (idx === -1) continue;
+    if (idx === -1) {
+      continue;
+    }
     value = (value << 5) | idx;
     bits += 5;
     if (bits >= 8) {
@@ -57,12 +59,12 @@ function hotp(secret: string, counter: bigint, digits = 6): string {
   const counterBuf = Buffer.alloc(8);
   counterBuf.writeBigUInt64BE(counter);
   const hmac = createHmac("sha1", key).update(counterBuf).digest();
-  const offset = hmac[hmac.length - 1]! & 0x0f;
+  const offset = hmac[hmac.length - 1] & 0x0f;
   const code =
-    (((hmac[offset]! & 0x7f) << 24) |
-      ((hmac[offset + 1]! & 0xff) << 16) |
-      ((hmac[offset + 2]! & 0xff) << 8) |
-      (hmac[offset + 3]! & 0xff)) %
+    (((hmac[offset] & 0x7f) << 24) |
+      ((hmac[offset + 1] & 0xff) << 16) |
+      ((hmac[offset + 2] & 0xff) << 8) |
+      (hmac[offset + 3] & 0xff)) %
     Math.pow(10, digits);
   return String(code).padStart(digits, "0");
 }
@@ -94,8 +96,7 @@ export class MfaService {
     const secret = base32Encode(randomBytes(20));
     const account = encodeURIComponent(userEmail ?? userId);
     const iss = encodeURIComponent(issuer);
-    const otpauthUri =
-      `otpauth://totp/${iss}:${account}?secret=${secret}&issuer=${iss}&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SEC}`;
+    const otpauthUri = `otpauth://totp/${iss}:${account}?secret=${secret}&issuer=${iss}&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SEC}`;
     return { secret, otpauthUri };
   }
 
@@ -106,7 +107,9 @@ export class MfaService {
   static verify(secret: string, code: string, nowSec?: number): boolean {
     const now = nowSec ?? Math.floor(Date.now() / 1000);
     for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
-      if (totpAt(secret, now + i * TOTP_STEP_SEC) === code) return true;
+      if (totpAt(secret, now + i * TOTP_STEP_SEC) === code) {
+        return true;
+      }
     }
     return false;
   }

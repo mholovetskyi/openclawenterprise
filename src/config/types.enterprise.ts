@@ -81,11 +81,11 @@ export type EnterpriseIAMConfig = {
 
   jwt?: {
     algorithm?: "RS256" | "HS256";
-    secret?: string;               // HS256 only
-    privateKeyPath?: string;       // RS256 — auto-generated if absent
-    publicKeyPath?: string;        // RS256
-    expiresIn?: string;            // e.g. "15m"
-    refreshExpiresIn?: string;     // e.g. "7d"
+    secret?: string; // HS256 only
+    privateKeyPath?: string; // RS256 — auto-generated if absent
+    publicKeyPath?: string; // RS256
+    expiresIn?: string; // e.g. "15m"
+    refreshExpiresIn?: string; // e.g. "7d"
     issuer?: string;
   };
 
@@ -105,8 +105,8 @@ export type EnterpriseAuditConfig = {
 
   storage?: {
     driver?: "sqlite" | "postgresql";
-    path?: string;         // sqlite
-    url?: string;          // postgresql — use env:// reference
+    path?: string; // sqlite
+    url?: string; // postgresql — use env:// reference
   };
 
   retention?: {
@@ -145,7 +145,7 @@ export type EnterpriseClusterConfig = {
   enabled?: boolean;
 
   redis?: {
-    url?: string;   // use env:// reference
+    url?: string; // use env:// reference
     keyPrefix?: string;
   };
 

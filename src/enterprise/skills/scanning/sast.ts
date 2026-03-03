@@ -13,7 +13,7 @@ export type EnterpriseSkillScanRule = {
   message: string;
   pattern: RegExp;
   description: string;
-  cwe?: string;   // CWE reference
+  cwe?: string; // CWE reference
   owasp?: string; // OWASP category
 };
 
@@ -147,9 +147,7 @@ export type EnterpriseSkillScanResult = {
     critical: number;
     warn: number;
     info: number;
-    findings: Array<
-      SkillScanFinding & { cwe?: string; owasp?: string; description: string }
-    >;
+    findings: Array<SkillScanFinding & { cwe?: string; owasp?: string; description: string }>;
   };
   riskScore: number; // 0-100
   recommendation: "approve" | "review" | "reject";
@@ -158,9 +156,7 @@ export type EnterpriseSkillScanResult = {
 /**
  * Run enterprise SAST on a skill directory.
  */
-export async function runEnterpriseScan(
-  skillDir: string,
-): Promise<EnterpriseSkillScanResult> {
+export async function runEnterpriseScan(skillDir: string): Promise<EnterpriseSkillScanResult> {
   // Run base scanner first
   const { scanDirectoryWithSummary } = await import("../../../security/skill-scanner.js");
   const base = await scanDirectoryWithSummary(skillDir);
@@ -182,7 +178,9 @@ export async function runEnterpriseScan(
           results.push(full);
         }
       }
-    } catch { /* ignore */ }
+    } catch {
+      /* ignore */
+    }
     return results;
   }
 
@@ -190,7 +188,11 @@ export async function runEnterpriseScan(
   for (const file of walkFiles(skillDir)) {
     if (!scriptExts.has(extname(file).toLowerCase())) continue;
     let content: string;
-    try { content = readFileSync(file, "utf8"); } catch { continue; }
+    try {
+      content = readFileSync(file, "utf8");
+    } catch {
+      continue;
+    }
 
     const lines = content.split("\n");
     for (const rule of ENTERPRISE_SCAN_RULES) {
@@ -216,7 +218,8 @@ export async function runEnterpriseScan(
     }
   }
 
-  const critical = base.critical + enterpriseFindings.filter((f) => f.severity === "critical").length;
+  const critical =
+    base.critical + enterpriseFindings.filter((f) => f.severity === "critical").length;
   const warn = base.warn + enterpriseFindings.filter((f) => f.severity === "warn").length;
   const info = base.info + enterpriseFindings.filter((f) => f.severity === "info").length;
 

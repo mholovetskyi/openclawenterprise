@@ -65,10 +65,7 @@ export function runWithTenant<T>(ctx: TenantContext, fn: () => T): T {
 /**
  * Run an async function within a specific tenant context.
  */
-export async function runWithTenantAsync<T>(
-  ctx: TenantContext,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function runWithTenantAsync<T>(ctx: TenantContext, fn: () => Promise<T>): Promise<T> {
   return tenantStorage.run(ctx, fn);
 }
 

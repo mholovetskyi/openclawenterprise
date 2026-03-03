@@ -3,12 +3,7 @@
  * Uses a 256-bit key, random 96-bit IV, and a 128-bit auth tag.
  */
 
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-  createHash,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 
 const ALGORITHM = "aes-256-gcm" as const;
 const IV_BYTES = 12; // 96-bit IV for GCM
@@ -36,12 +31,7 @@ export function encrypt(plaintext: string, key: Buffer): EncryptedBlob {
   const tag = cipher.getAuthTag();
 
   // Envelope: version(1) | iv(12) | tag(16) | ciphertext(n)
-  const envelope = Buffer.concat([
-    Buffer.from([VERSION_BYTE]),
-    iv,
-    tag,
-    encrypted,
-  ]);
+  const envelope = Buffer.concat([Buffer.from([VERSION_BYTE]), iv, tag, encrypted]);
 
   return {
     data: envelope.toString("base64"),

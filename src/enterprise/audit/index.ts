@@ -2,8 +2,8 @@
  * Enterprise audit subsystem initialization.
  */
 
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 import type { OpenClawConfig } from "../../config/config.js";
 import { setAuditStorage, setAuditEnabled } from "./logger.js";
 import type { AuditStorage } from "./storage/sqlite.js";
@@ -23,9 +23,7 @@ export async function initAudit(cfg: OpenClawConfig): Promise<AuditHandle> {
     case "sqlite":
     default: {
       const { createSQLiteAuditStorage } = await import("./storage/sqlite.js");
-      const dbPath =
-        auditCfg?.sqlitePath ??
-        path.join(os.homedir(), ".openclaw", "audit.db");
+      const dbPath = auditCfg?.sqlitePath ?? path.join(os.homedir(), ".openclaw", "audit.db");
       storage = await createSQLiteAuditStorage(dbPath);
       break;
     }

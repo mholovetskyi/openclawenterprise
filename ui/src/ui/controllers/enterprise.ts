@@ -139,10 +139,7 @@ export async function confirmMfaEnrollment(
   return client.request("enterprise.mfa.confirm-enroll", { userId, secret, code });
 }
 
-export async function disableMfa(
-  client: GatewayBrowserClient,
-  userId: string,
-): Promise<void> {
+export async function disableMfa(client: GatewayBrowserClient, userId: string): Promise<void> {
   await client.request("enterprise.mfa.disable", { userId });
 }
 

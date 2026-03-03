@@ -49,23 +49,23 @@ jobs:
 
 ## Inputs
 
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `task` | No | | Natural language task description |
-| `skill` | No | | Specific skill to invoke |
-| `config` | No | `.openclaw/config.yaml` | Path to config file |
-| `version` | No | `latest` | OpenClaw version |
-| `anthropic-api-key` | No | | Anthropic API key |
-| `openai-api-key` | No | | OpenAI API key |
-| `working-directory` | No | `.` | Working directory |
-| `output-file` | No | | Write output to file |
-| `fail-on-error` | No | `true` | Fail workflow on agent error |
-| `timeout-minutes` | No | `10` | Max run time in minutes |
+| Input               | Required | Default                 | Description                       |
+| ------------------- | -------- | ----------------------- | --------------------------------- |
+| `task`              | No       |                         | Natural language task description |
+| `skill`             | No       |                         | Specific skill to invoke          |
+| `config`            | No       | `.openclaw/config.yaml` | Path to config file               |
+| `version`           | No       | `latest`                | OpenClaw version                  |
+| `anthropic-api-key` | No       |                         | Anthropic API key                 |
+| `openai-api-key`    | No       |                         | OpenAI API key                    |
+| `working-directory` | No       | `.`                     | Working directory                 |
+| `output-file`       | No       |                         | Write output to file              |
+| `fail-on-error`     | No       | `true`                  | Fail workflow on agent error      |
+| `timeout-minutes`   | No       | `10`                    | Max run time in minutes           |
 
 ## Outputs
 
-| Output | Description |
-|--------|-------------|
-| `result` | Agent stdout output |
-| `exit-code` | Process exit code |
+| Output        | Description                  |
+| ------------- | ---------------------------- |
+| `result`      | Agent stdout output          |
+| `exit-code`   | Process exit code            |
 | `output-file` | Path to output file (if set) |

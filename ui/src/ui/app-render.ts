@@ -7,11 +7,6 @@ import { renderChatControls, renderTab, renderThemeToggle } from "./app-render.h
 import type { AppViewState } from "./app-view-state.ts";
 import { loadAgentFileContent, loadAgentFiles, saveAgentFile } from "./controllers/agent-files.ts";
 import { loadAgentIdentities, loadAgentIdentity } from "./controllers/agent-identity.ts";
-import {
-  loadEnterpriseUsers,
-  loadEnterpriseAudit,
-  upsertEnterpriseUser,
-} from "./controllers/enterprise.ts";
 import { loadAgentSkills } from "./controllers/agent-skills.ts";
 import { loadAgents } from "./controllers/agents.ts";
 import { loadChannels } from "./controllers/channels.ts";
@@ -41,6 +36,11 @@ import {
   rotateDeviceToken,
 } from "./controllers/devices.ts";
 import {
+  loadEnterpriseUsers,
+  loadEnterpriseAudit,
+  upsertEnterpriseUser,
+} from "./controllers/enterprise.ts";
+import {
   loadExecApprovals,
   removeExecApprovalsFormValue,
   saveExecApprovals,
@@ -65,6 +65,7 @@ import { renderChat } from "./views/chat.ts";
 import { renderConfig } from "./views/config.ts";
 import { renderCron } from "./views/cron.ts";
 import { renderDebug } from "./views/debug.ts";
+import { renderEnterprise } from "./views/enterprise/enterprise.js";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderInstances } from "./views/instances.ts";
@@ -73,7 +74,6 @@ import { renderNodes } from "./views/nodes.ts";
 import { renderOverview } from "./views/overview.ts";
 import { renderSessions } from "./views/sessions.ts";
 import { renderSkills } from "./views/skills.ts";
-import { renderEnterprise } from "./views/enterprise/enterprise.js";
 
 const AVATAR_DATA_RE = /^data:/i;
 const AVATAR_HTTP_RE = /^https?:\/\//i;
@@ -981,7 +981,9 @@ export function renderApp(state: AppViewState) {
                   // Metrics come from Prometheus /metrics — displayed via the overview tab
                 },
                 onRefreshAudit: () => {
-                  if (!state.client) return;
+                  if (!state.client) {
+                    return;
+                  }
                   state.enterpriseAuditLoading = true;
                   state.requestUpdate?.();
                   void loadEnterpriseAudit(state.client, { limit: 100 })
@@ -996,7 +998,9 @@ export function renderApp(state: AppViewState) {
                     });
                 },
                 onRefreshUsers: () => {
-                  if (!state.client) return;
+                  if (!state.client) {
+                    return;
+                  }
                   state.enterpriseUsersLoading = true;
                   state.requestUpdate?.();
                   void loadEnterpriseUsers(state.client)
@@ -1022,13 +1026,21 @@ export function renderApp(state: AppViewState) {
                 onEditUserRolesChange: (roles) => (state.enterpriseUserEditRoles = roles),
                 onEditUserActiveChange: (active) => (state.enterpriseUserEditActive = active),
                 onSaveUserEdit: (userId) => {
-                  if (!state.client) return;
+                  if (!state.client) {
+                    return;
+                  }
                   const user = state.enterpriseUsers.find((u) => u.id === userId);
-                  if (!user) return;
+                  if (!user) {
+                    return;
+                  }
                   // Optimistic local update
                   state.enterpriseUsers = state.enterpriseUsers.map((u) =>
                     u.id === userId
-                      ? { ...u, roles: state.enterpriseUserEditRoles, active: state.enterpriseUserEditActive }
+                      ? {
+                          ...u,
+                          roles: state.enterpriseUserEditRoles,
+                          active: state.enterpriseUserEditActive,
+                        }
                       : u,
                   );
                   state.enterpriseUserEditingId = null;

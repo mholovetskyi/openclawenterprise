@@ -1,4 +1,4 @@
-import { html, nothing } from "lit";
+import { html } from "lit";
 import type { EnterpriseAdminProps } from "./types.js";
 
 export function renderEnterpriseSecurity(props: EnterpriseAdminProps) {
@@ -12,8 +12,9 @@ export function renderEnterpriseSecurity(props: EnterpriseAdminProps) {
 
       <!-- Alert cards -->
       <div class="ent-alert-row">
-        ${authFailures > 0
-          ? html`
+        ${
+          authFailures > 0
+            ? html`
               <div class="ent-alert ent-alert--warn">
                 <span class="ent-alert-icon">⚠️</span>
                 <span class="ent-alert-msg">
@@ -22,14 +23,16 @@ export function renderEnterpriseSecurity(props: EnterpriseAdminProps) {
                 </span>
               </div>
             `
-          : html`
-              <div class="ent-alert ent-alert--ok">
-                <span class="ent-alert-icon">✓</span>
-                <span class="ent-alert-msg">No authentication failures</span>
-              </div>
-            `}
-        ${guardrailBlocks > 0
-          ? html`
+            : html`
+                <div class="ent-alert ent-alert--ok">
+                  <span class="ent-alert-icon">✓</span>
+                  <span class="ent-alert-msg">No authentication failures</span>
+                </div>
+              `
+        }
+        ${
+          guardrailBlocks > 0
+            ? html`
               <div class="ent-alert ent-alert--info">
                 <span class="ent-alert-icon">🛡️</span>
                 <span class="ent-alert-msg">
@@ -38,12 +41,13 @@ export function renderEnterpriseSecurity(props: EnterpriseAdminProps) {
                 </span>
               </div>
             `
-          : html`
-              <div class="ent-alert ent-alert--ok">
-                <span class="ent-alert-icon">✓</span>
-                <span class="ent-alert-msg">No guardrail blocks</span>
-              </div>
-            `}
+            : html`
+                <div class="ent-alert ent-alert--ok">
+                  <span class="ent-alert-icon">✓</span>
+                  <span class="ent-alert-msg">No guardrail blocks</span>
+                </div>
+              `
+        }
       </div>
 
       <!-- Feature status -->
@@ -141,9 +145,15 @@ function defenseRow(icon: string, label: string, active: boolean, description: s
         <span class="ent-defense-desc muted">${description}</span>
       </div>
       <span class="ent-defense-state">
-        ${active
-          ? html`<span class="ent-badge ent-badge--ok">active</span>`
-          : html`<span class="ent-badge ent-badge--disabled">inactive</span>`}
+        ${
+          active
+            ? html`
+                <span class="ent-badge ent-badge--ok">active</span>
+              `
+            : html`
+                <span class="ent-badge ent-badge--disabled">inactive</span>
+              `
+        }
       </span>
     </div>
   `;

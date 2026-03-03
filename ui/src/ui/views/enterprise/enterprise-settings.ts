@@ -75,9 +75,9 @@ export function renderEnterpriseSettings(props: EnterpriseAdminProps) {
           Custom roles can be defined in <code>enterprise.iam.roles[]</code> in your config.
         </p>
         <div class="ent-defense-list">
-          ${roleRow("admin",    "Full access — can manage config, users, agents, and all settings.")}
+          ${roleRow("admin", "Full access — can manage config, users, agents, and all settings.")}
           ${roleRow("operator", "Can run agents, manage sessions, cron jobs, and channels. Cannot change IAM or config.")}
-          ${roleRow("viewer",   "Read-only access to sessions, usage stats, and audit log.")}
+          ${roleRow("viewer", "Read-only access to sessions, usage stats, and audit log.")}
         </div>
       </section>
 

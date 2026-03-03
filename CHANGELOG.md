@@ -2,7 +2,28 @@
 
 Docs: https://docs.openclaw.ai
 
-## 2026.2.22 (Unreleased)
+## 2026.3.3
+
+### Dependencies
+
+- Upgrade `@mariozechner/pi-agent-core`, `pi-ai`, `pi-coding-agent`, `pi-tui` from 0.54.0 to 0.55.4.
+- Upgrade `@buape/carbon` from 0.0.0-beta to 0.14.0 (stable).
+- Upgrade `@aws-sdk/client-bedrock` from 3.995.0 to 3.1000.0.
+- Upgrade `grammy` from 1.40.0 to 1.41.1.
+- Upgrade `pdfjs-dist` from 5.4.624 to 5.5.207.
+- Upgrade `opusscript` from 0.0.8 to 0.1.1.
+- Upgrade `oxlint` from 1.49.0 to 1.51.0, `oxfmt` from 0.34.0 to 0.36.0, `oxlint-tsgolint` from 0.14.2 to 0.15.0.
+- Upgrade `@typescript/native-preview` to 7.0.0-dev.20260302.1.
+- Upgrade `@types/node` from 25.3.0 to 25.3.3, `@grammyjs/types` from 3.24.0 to 3.25.0.
+
+### Fixes
+
+- Lint: fix 212 lint violations surfaced by oxlint 1.51.0 upgrade — add curly braces to single-statement `if`/`else` blocks, remove unused imports and variables, fix unbound-method references in tests, suppress intentional control-char regex patterns, and fix template expression safety.
+- Enterprise/Security: remove unused `wrapWithTrustBoundary` and `getGuardrailEngine` imports from gateway chat handler.
+- Enterprise/Audit: fix unbound mock method references in audit logger tests by extracting separate mock function handles.
+- Enterprise/Auth: export `decodeJwtPayload` to satisfy dead-code lint, add `String()` coercion to unknown-typed template expressions in OIDC and audit logger error messages.
+
+## 2026.2.22
 
 ### Changes
 

@@ -3,9 +3,15 @@ import type { EnterpriseAdminProps, AuditEventRow } from "./types.js";
 
 function outcomeChip(outcome: AuditEventRow["outcome"]) {
   const map = {
-    success: html`<span class="ent-badge ent-badge--ok">success</span>`,
-    failure: html`<span class="ent-badge ent-badge--error">failure</span>`,
-    blocked: html`<span class="ent-badge ent-badge--warn">blocked</span>`,
+    success: html`
+      <span class="ent-badge ent-badge--ok">success</span>
+    `,
+    failure: html`
+      <span class="ent-badge ent-badge--error">failure</span>
+    `,
+    blocked: html`
+      <span class="ent-badge ent-badge--warn">blocked</span>
+    `,
   };
   return map[outcome] ?? nothing;
 }
@@ -26,21 +32,28 @@ export function renderEnterpriseAudit(props: EnterpriseAdminProps) {
         </button>
       </div>
 
-      ${auditLoading && auditEvents.length === 0
-        ? html`<div class="ent-loading">Loading audit events…</div>`
-        : nothing}
-      ${!auditLoading && auditEvents.length === 0
-        ? html`
-            <div class="ent-empty">
-              <div class="ent-empty-title">No audit events yet</div>
-              <div class="ent-empty-body">
-                Events are recorded as you use OpenClaw with enterprise audit logging enabled.
+      ${
+        auditLoading && auditEvents.length === 0
+          ? html`
+              <div class="ent-loading">Loading audit events…</div>
+            `
+          : nothing
+      }
+      ${
+        !auditLoading && auditEvents.length === 0
+          ? html`
+              <div class="ent-empty">
+                <div class="ent-empty-title">No audit events yet</div>
+                <div class="ent-empty-body">
+                  Events are recorded as you use OpenClaw with enterprise audit logging enabled.
+                </div>
               </div>
-            </div>
-          `
-        : nothing}
-      ${auditEvents.length > 0
-        ? html`
+            `
+          : nothing
+      }
+      ${
+        auditEvents.length > 0
+          ? html`
             <div class="ent-table-wrap">
               <table class="ent-table">
                 <thead>
@@ -49,9 +62,13 @@ export function renderEnterpriseAudit(props: EnterpriseAdminProps) {
                     <th>Action</th>
                     <th>Actor</th>
                     <th>Resource</th>
-                    ${auditEvents.some((e) => e.tenantId)
-                      ? html`<th>Tenant</th>`
-                      : nothing}
+                    ${
+                      auditEvents.some((e) => e.tenantId)
+                        ? html`
+                            <th>Tenant</th>
+                          `
+                        : nothing
+                    }
                     <th>Outcome</th>
                     <th>IP</th>
                   </tr>
@@ -64,9 +81,11 @@ export function renderEnterpriseAudit(props: EnterpriseAdminProps) {
                         <td class="mono">${ev.action}</td>
                         <td class="ent-td-truncate">${ev.actor}</td>
                         <td class="ent-td-truncate muted">${ev.resource ?? "—"}</td>
-                        ${auditEvents.some((e) => e.tenantId)
-                          ? html`<td class="muted">${ev.tenantId ?? "—"}</td>`
-                          : nothing}
+                        ${
+                          auditEvents.some((e) => e.tenantId)
+                            ? html`<td class="muted">${ev.tenantId ?? "—"}</td>`
+                            : nothing
+                        }
                         <td>${outcomeChip(ev.outcome)}</td>
                         <td class="mono muted">${ev.ip ?? "—"}</td>
                       </tr>
@@ -80,7 +99,8 @@ export function renderEnterpriseAudit(props: EnterpriseAdminProps) {
               <code>~/.openclaw/audit.db</code>
             </div>
           `
-        : nothing}
+          : nothing
+      }
     </div>
   `;
 }

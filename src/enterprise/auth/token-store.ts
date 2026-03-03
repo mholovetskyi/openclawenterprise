@@ -7,8 +7,8 @@
  * Storage: SQLite via better-sqlite3 (same dependency as audit + RBAC).
  */
 
-import { createRequire } from "node:module";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 
 type DB = {
   pragma(key: string): unknown;
@@ -27,23 +27,21 @@ function loadDB(): DBCtor {
   try {
     const req = createRequire(import.meta.url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = req("better-sqlite3") as any;
+    const mod = req("better-sqlite3");
     return mod.default ?? mod;
   } catch {
-    throw new Error(
-      "Token store requires better-sqlite3. Run: npm install better-sqlite3",
-    );
+    throw new Error("Token store requires better-sqlite3. Run: npm install better-sqlite3");
   }
 }
 
 export type StoredRefreshToken = {
-  jti: string;          // JWT ID (the token's unique identifier)
-  subjectId: string;    // user or agent ID
-  tokenHash: string;    // SHA-256(raw refresh token)
-  issuedAt: number;     // unix seconds
-  expiresAt: number;    // unix seconds
+  jti: string; // JWT ID (the token's unique identifier)
+  subjectId: string; // user or agent ID
+  tokenHash: string; // SHA-256(raw refresh token)
+  issuedAt: number; // unix seconds
+  expiresAt: number; // unix seconds
   revoked: boolean;
-  revokedAt?: number;   // unix seconds
+  revokedAt?: number; // unix seconds
   userAgent?: string;
   ipAddress?: string;
 };
@@ -152,7 +150,9 @@ export class TokenStore {
         }
       | undefined;
 
-    if (!row) return null;
+    if (!row) {
+      return null;
+    }
 
     return {
       jti: row.jti,
@@ -174,9 +174,7 @@ export class TokenStore {
   revokeRefreshToken(jti: string): void {
     const now = Math.floor(Date.now() / 1000);
     this.db
-      .prepare(
-        "UPDATE refresh_tokens SET revoked = 1, revoked_at = @now WHERE jti = @jti",
-      )
+      .prepare("UPDATE refresh_tokens SET revoked = 1, revoked_at = @now WHERE jti = @jti")
       .run({ jti, now });
   }
 
@@ -242,9 +240,7 @@ export class TokenStore {
   isAccessTokenRevoked(jti: string): boolean {
     const now = Math.floor(Date.now() / 1000);
     const row = this.db
-      .prepare(
-        "SELECT 1 FROM revoked_access_tokens WHERE jti = @jti AND expires_at > @now",
-      )
+      .prepare("SELECT 1 FROM revoked_access_tokens WHERE jti = @jti AND expires_at > @now")
       .get({ jti, now });
     return row !== undefined;
   }

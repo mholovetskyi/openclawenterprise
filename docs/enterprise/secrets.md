@@ -10,10 +10,11 @@ OpenClaw enterprise replaces all plaintext credential files with encrypted secre
 enterprise:
   secrets:
     backend: file
-    filePath: ~/.openclaw/secrets.enc   # optional override
+    filePath: ~/.openclaw/secrets.enc # optional override
 ```
 
 Uses AES-256-GCM with a 32-byte master key. The key is stored in:
+
 - macOS: Keychain (`security find-generic-password -s openclaw-master-key`)
 - Windows: `~/.openclaw/.master-key` (DPAPI integration roadmap)
 - Linux: `~/.openclaw/.master-key` (mode 0600)
@@ -28,14 +29,15 @@ enterprise:
     backend: vault
     vault:
       address: https://vault.example.com
-      authMethod: kubernetes    # kubernetes | approle | token
-      role: openclaw            # for kubernetes auth
-      mount: secret             # KV v2 mount
-      prefix: openclaw/         # key prefix
-      namespace: admin          # Vault Enterprise namespace (optional)
+      authMethod: kubernetes # kubernetes | approle | token
+      role: openclaw # for kubernetes auth
+      mount: secret # KV v2 mount
+      prefix: openclaw/ # key prefix
+      namespace: admin # Vault Enterprise namespace (optional)
 ```
 
 **AppRole auth:**
+
 ```yaml
 vault:
   appRole:
@@ -44,6 +46,7 @@ vault:
 ```
 
 **Kubernetes auth** (for in-cluster pods):
+
 ```yaml
 vault:
   authMethod: kubernetes
@@ -60,8 +63,8 @@ enterprise:
   secrets:
     backend: aws-sm
     awsSm:
-      region: us-east-1         # optional, defaults to AWS_REGION env
-      prefix: openclaw/         # key prefix filter
+      region: us-east-1 # optional, defaults to AWS_REGION env
+      prefix: openclaw/ # key prefix filter
 ```
 
 Uses the standard AWS SDK credential chain (env vars, EC2 metadata, ECS task role, etc.).

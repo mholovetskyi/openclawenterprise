@@ -52,7 +52,8 @@ export const en: TranslationMap = {
     config: "Edit ~/.openclaw/openclaw.json safely.",
     debug: "Gateway snapshots, events, and manual RPC calls.",
     logs: "Live tail of the gateway file logs.",
-    enterprise: "IAM users & roles, tamper-evident audit log, security controls, and cluster management.",
+    enterprise:
+      "IAM users & roles, tamper-evident audit log, security controls, and cluster management.",
   },
   overview: {
     access: {

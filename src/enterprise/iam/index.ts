@@ -2,14 +2,14 @@
  * Enterprise IAM subsystem initialization.
  */
 
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
 import type { OpenClawConfig } from "../../config/config.js";
-import { InMemoryRBACStore } from "./rbac/store.js";
-import { createSQLiteRBACStore } from "./rbac/store-sqlite.js";
-import { RBACEngine } from "./rbac/engine.js";
 import { JWTService, generateRS256KeyPair } from "../auth/jwt.js";
 import { TokenStore } from "../auth/token-store.js";
+import { RBACEngine } from "./rbac/engine.js";
+import { createSQLiteRBACStore } from "./rbac/store-sqlite.js";
+import { InMemoryRBACStore } from "./rbac/store.js";
 import type { RBACStore } from "./rbac/store.js";
 
 export type IAMHandle = {

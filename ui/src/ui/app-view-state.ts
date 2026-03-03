@@ -33,7 +33,6 @@ import type {
 } from "./types.ts";
 import type { ChatAttachment, ChatQueueItem, CronFormState } from "./ui-types.ts";
 import type { NostrProfileFormState } from "./views/channels.nostr-profile-form.ts";
-import type { SessionLogEntry } from "./views/usage.ts";
 import type {
   EnterpriseStatus,
   MetricSnapshot,
@@ -41,6 +40,7 @@ import type {
   RbacUser,
   EnterpriseTab,
 } from "./views/enterprise/types.js";
+import type { SessionLogEntry } from "./views/usage.ts";
 
 export type AppViewState = {
   settings: UiSettings;

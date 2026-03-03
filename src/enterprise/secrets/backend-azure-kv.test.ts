@@ -18,14 +18,11 @@ vi.mock("@azure/keyvault-secrets", () => ({
     setSecret = mockAzureClient.setSecret;
     beginDeleteSecret = mockAzureClient.beginDeleteSecret;
     listPropertiesOfSecrets = mockAzureClient.listPropertiesOfSecrets;
-    constructor(_vaultUrl: unknown, _credential: unknown) {}
   },
 }));
 
 vi.mock("@azure/identity", () => ({
-  DefaultAzureCredential: class {
-    constructor() {}
-  },
+  DefaultAzureCredential: class {},
 }));
 
 import { createAzureKeyVaultBackend } from "./backend-azure-kv.js";
@@ -166,10 +163,7 @@ describe("createAzureKeyVaultBackend — operations", () => {
 
   it("list — returns keys with prefix stripped", async () => {
     mockAzureClient.listPropertiesOfSecrets.mockReturnValueOnce(
-      asyncOf(
-        { name: "openclaw-key-a", enabled: true },
-        { name: "openclaw-key-b", enabled: true },
-      ),
+      asyncOf({ name: "openclaw-key-a", enabled: true }, { name: "openclaw-key-b", enabled: true }),
     );
     const keys = await backend.list();
     expect(keys).toEqual(["key-a", "key-b"]);
@@ -187,10 +181,7 @@ describe("createAzureKeyVaultBackend — operations", () => {
 
   it("list — skips entries with no name", async () => {
     mockAzureClient.listPropertiesOfSecrets.mockReturnValueOnce(
-      asyncOf(
-        { name: "openclaw-key-a", enabled: true },
-        { enabled: true },
-      ),
+      asyncOf({ name: "openclaw-key-a", enabled: true }, { enabled: true }),
     );
     expect(await backend.list()).toEqual(["key-a"]);
   });

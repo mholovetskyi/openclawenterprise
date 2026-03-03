@@ -1,10 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  permissionGranted,
-  expandRolePermissions,
-  BUILT_IN_ROLES,
-  type Role,
-} from "./model.js";
+import { permissionGranted, expandRolePermissions, BUILT_IN_ROLES, type Role } from "./model.js";
 
 describe("permissionGranted", () => {
   it("returns true for exact match", () => {

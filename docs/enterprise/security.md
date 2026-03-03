@@ -8,7 +8,7 @@ OpenClaw's gateway **never silently binds to `0.0.0.0`**. The default is `loopba
 
 ```yaml
 gateway:
-  bind: loopback   # default — only 127.0.0.1
+  bind: loopback # default — only 127.0.0.1
   # bind: lan       # WARNING: exposes to all network interfaces
   # bind: tailnet   # Tailscale IP only (recommended for remote access)
   # bind: custom
@@ -19,12 +19,12 @@ When `bind: lan` or any non-loopback config is detected, OpenClaw emits a promin
 
 ## Auth modes
 
-| Mode | When to use |
-|------|------------|
-| `none` | Local loopback only — acceptable for personal use |
-| `token` | Static bearer token — simple shared secret |
-| `password` | Password auth — required for Funnel |
-| `jwt` | Enterprise JWT (RS256/HS256) — recommended for multi-user |
+| Mode       | When to use                                               |
+| ---------- | --------------------------------------------------------- |
+| `none`     | Local loopback only — acceptable for personal use         |
+| `token`    | Static bearer token — simple shared secret                |
+| `password` | Password auth — required for Funnel                       |
+| `jwt`      | Enterprise JWT (RS256/HS256) — recommended for multi-user |
 
 > **Never use `auth.mode: none` with a non-loopback bind.** OpenClaw will warn loudly if this is detected.
 
@@ -35,7 +35,7 @@ Enterprise mode replaces all plaintext credential files with AES-256-GCM encrypt
 ```yaml
 enterprise:
   secrets:
-    backend: file       # encrypted local file (default enterprise)
+    backend: file # encrypted local file (default enterprise)
     # backend: vault    # HashiCorp Vault
     # backend: aws-sm   # AWS Secrets Manager
     # backend: gcp-sm   # GCP Secret Manager
@@ -59,13 +59,13 @@ All external content (channel messages, webhook payloads, tool results) passes t
 
 The guardrail engine evaluates every tool invocation against a rule set:
 
-| Rule | Action |
-|------|--------|
+| Rule                                                  | Action             |
+| ----------------------------------------------------- | ------------------ |
 | Credential harvest (reading `~/.ssh`, `~/.aws`, etc.) | `require-approval` |
-| Reverse shell patterns | `block` |
-| Mass delete (`rm -rf /`, `DROP TABLE`) | `require-approval` |
-| SSN pattern in output | `warn` |
-| Credit card number in output | `warn` |
+| Reverse shell patterns                                | `block`            |
+| Mass delete (`rm -rf /`, `DROP TABLE`)                | `require-approval` |
+| SSN pattern in output                                 | `warn`             |
+| Credit card number in output                          | `warn`             |
 
 Custom rules can be added via `enterprise.guardrails.rules` in config.
 

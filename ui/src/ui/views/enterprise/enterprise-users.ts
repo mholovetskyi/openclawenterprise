@@ -14,22 +14,29 @@ export function renderEnterpriseUsers(props: EnterpriseAdminProps) {
         </button>
       </div>
 
-      ${usersLoading && users.length === 0
-        ? html`<div class="ent-loading">Loading users…</div>`
-        : nothing}
-      ${!usersLoading && users.length === 0
-        ? html`
-            <div class="ent-empty">
-              <div class="ent-empty-title">No users configured</div>
-              <div class="ent-empty-body">
-                Users and roles are managed via <code>enterprise.iam</code> in your config, or
-                provisioned programmatically through the IAM API.
+      ${
+        usersLoading && users.length === 0
+          ? html`
+              <div class="ent-loading">Loading users…</div>
+            `
+          : nothing
+      }
+      ${
+        !usersLoading && users.length === 0
+          ? html`
+              <div class="ent-empty">
+                <div class="ent-empty-title">No users configured</div>
+                <div class="ent-empty-body">
+                  Users and roles are managed via <code>enterprise.iam</code> in your config, or provisioned
+                  programmatically through the IAM API.
+                </div>
               </div>
-            </div>
-          `
-        : nothing}
-      ${users.length > 0
-        ? html`
+            `
+          : nothing
+      }
+      ${
+        users.length > 0
+          ? html`
             <div class="ent-table-wrap">
               <table class="ent-table">
                 <thead>
@@ -45,9 +52,7 @@ export function renderEnterpriseUsers(props: EnterpriseAdminProps) {
                 </thead>
                 <tbody>
                   ${users.map((u) =>
-                    editingUserId === u.id
-                      ? renderEditRow(u, props)
-                      : renderViewRow(u, props),
+                    editingUserId === u.id ? renderEditRow(u, props) : renderViewRow(u, props),
                   )}
                 </tbody>
               </table>
@@ -57,7 +62,8 @@ export function renderEnterpriseUsers(props: EnterpriseAdminProps) {
               Changes are written to the gateway via the IAM API when connected.
             </p>
           `
-        : nothing}
+          : nothing
+      }
     </div>
   `;
 }
@@ -66,14 +72,25 @@ function renderViewRow(u: RbacUser, props: EnterpriseAdminProps) {
   return html`
     <tr class=${u.active ? "" : "ent-row--inactive"}>
       <td class="mono ent-td-truncate">${u.id}</td>
-      <td>${u.displayName ?? html`<span class="muted">—</span>`}</td>
+      <td>${
+        u.displayName ??
+        html`
+          <span class="muted">—</span>
+        `
+      }</td>
       <td class="muted">${u.email ?? "—"}</td>
       <td>${renderPillList(u.roles, "role")}</td>
       <td>${renderPillList(u.groups, "group")}</td>
       <td>
-        ${u.active
-          ? html`<span class="ent-badge ent-badge--ok">active</span>`
-          : html`<span class="ent-badge ent-badge--disabled">inactive</span>`}
+        ${
+          u.active
+            ? html`
+                <span class="ent-badge ent-badge--ok">active</span>
+              `
+            : html`
+                <span class="ent-badge ent-badge--disabled">inactive</span>
+              `
+        }
       </td>
       <td>
         <button
@@ -101,7 +118,12 @@ function renderEditRow(u: RbacUser, props: EnterpriseAdminProps) {
   return html`
     <tr class="ent-edit-row">
       <td class="mono ent-td-truncate">${u.id}</td>
-      <td>${u.displayName ?? html`<span class="muted">—</span>`}</td>
+      <td>${
+        u.displayName ??
+        html`
+          <span class="muted">—</span>
+        `
+      }</td>
       <td class="muted">${u.email ?? "—"}</td>
       <td>
         <div class="ent-role-checkboxes">
@@ -154,12 +176,14 @@ function renderEditRow(u: RbacUser, props: EnterpriseAdminProps) {
 }
 
 function renderPillList(items: string[], type: string) {
-  if (items.length === 0) return html`<span class="muted">—</span>`;
+  if (items.length === 0) {
+    return html`
+      <span class="muted">—</span>
+    `;
+  }
   return html`
     <span class="ent-pill-list">
-      ${items.map(
-        (item) => html`<span class="ent-pill ent-pill--${type}">${item}</span>`,
-      )}
+      ${items.map((item) => html`<span class="ent-pill ent-pill--${type}">${item}</span>`)}
     </span>
   `;
 }

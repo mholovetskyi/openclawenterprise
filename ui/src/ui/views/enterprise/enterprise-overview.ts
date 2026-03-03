@@ -3,12 +3,18 @@ import type { EnterpriseAdminProps, SubsystemStatus } from "./types.js";
 
 function statusBadge(s: SubsystemStatus) {
   if (!s.enabled) {
-    return html`<span class="ent-badge ent-badge--disabled">disabled</span>`;
+    return html`
+      <span class="ent-badge ent-badge--disabled">disabled</span>
+    `;
   }
   if (!s.healthy) {
-    return html`<span class="ent-badge ent-badge--error">unhealthy</span>`;
+    return html`
+      <span class="ent-badge ent-badge--error">unhealthy</span>
+    `;
   }
-  return html`<span class="ent-badge ent-badge--ok">ok</span>`;
+  return html`
+    <span class="ent-badge ent-badge--ok">ok</span>
+  `;
 }
 
 function metricCard(label: string, value: string | number, sub?: string) {
@@ -30,8 +36,8 @@ export function renderEnterpriseOverview(props: EnterpriseAdminProps) {
         <div class="ent-empty-icon">🏢</div>
         <div class="ent-empty-title">Enterprise features are not enabled</div>
         <div class="ent-empty-body">
-          Set <code>enterprise.enabled: true</code> in your <code>config.yaml</code> to activate
-          IAM, audit logging, Prometheus metrics, multi-tenancy, and more.
+          Set <code>enterprise.enabled: true</code> in your <code>config.yaml</code> to activate IAM,
+          audit logging, Prometheus metrics, multi-tenancy, and more.
         </div>
         <a
           class="ent-link"
@@ -62,8 +68,9 @@ export function renderEnterpriseOverview(props: EnterpriseAdminProps) {
       </section>
 
       <!-- Metrics cards -->
-      ${metrics
-        ? html`
+      ${
+        metrics
+          ? html`
             <section class="ent-section">
               <div class="ent-section-header">
                 <h3 class="ent-section-title">Live metrics</h3>
@@ -86,16 +93,17 @@ export function renderEnterpriseOverview(props: EnterpriseAdminProps) {
                 )}
                 ${metricCard("Audit events", metrics.auditEventsTotal.toLocaleString())}
                 ${metricCard("Guardrail blocks", metrics.guardrailBlocksTotal.toLocaleString())}
-                ${ss.tenancy.enabled
-                  ? metricCard("Tenants", metrics.tenantCount)
-                  : nothing}
-                ${ss.cluster.enabled
-                  ? metricCard("Cluster nodes", metrics.clusterNodeCount)
-                  : nothing}
+                ${ss.tenancy.enabled ? metricCard("Tenants", metrics.tenantCount) : nothing}
+                ${
+                  ss.cluster.enabled
+                    ? metricCard("Cluster nodes", metrics.clusterNodeCount)
+                    : nothing
+                }
               </div>
             </section>
           `
-        : nothing}
+          : nothing
+      }
 
       <!-- Node info -->
       <section class="ent-section">

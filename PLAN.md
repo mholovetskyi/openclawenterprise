@@ -3,6 +3,7 @@
 ## Executive Summary
 
 Transform OpenClaw from a single-user personal AI assistant into a **dual-mode platform** that is simultaneously:
+
 1. **The most viral open-source AI agent** (< 30s wow factor, one-command install, shareable demos)
 2. **Fortune 500 production-ready** (zero-trust security, SOC 2/HIPAA/GDPR compliance, multi-tenancy, Kubernetes-native)
 
@@ -10,7 +11,7 @@ All changes remain MIT-licensed. No subscriptions. No pricing. Ever.
 
 ### Architecture Philosophy
 
-**"Enterprise is a layer, not a fork."** Every enterprise feature is an *opt-in module* that activates via configuration. The single-user local-first experience remains the default. Enterprise features compose on top without breaking backwards compatibility.
+**"Enterprise is a layer, not a fork."** Every enterprise feature is an _opt-in module_ that activates via configuration. The single-user local-first experience remains the default. Enterprise features compose on top without breaking backwards compatibility.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -29,12 +30,14 @@ All changes remain MIT-licensed. No subscriptions. No pricing. Ever.
 **Problem:** Default `0.0.0.0` binding on `lan` mode exposes gateway to all interfaces. Tens of thousands of instances exposed.
 
 **Files to modify:**
+
 - `src/gateway/net.ts` — Change `resolveGatewayBindHost()`
 - `src/gateway/server.impl.ts` — Add startup security warnings
 - `src/config/types.gateway.ts` — Add `dangerouslyBindAllInterfaces` flag
 - `src/config/defaults.ts` — Default to `loopback`
 
 **Changes:**
+
 ```
 src/gateway/net.ts:
   - Change "lan" mode: require explicit `dangerouslyBindAllInterfaces: true`
@@ -54,6 +57,7 @@ src/config/defaults.ts:
 ```
 
 **New files:**
+
 ```
 src/enterprise/
   ├── index.ts                    — Enterprise feature gate (checks config.enterprise.enabled)
@@ -71,12 +75,14 @@ src/enterprise/
 **Problem:** Plaintext secrets in `~/.openclaw/credentials` and config files. Environment variables visible in `ps`.
 
 **Files to modify:**
+
 - `src/agents/cli-credentials.ts` — Replace plaintext file I/O with pluggable secret backend
 - `src/config/io.ts` — Add secret reference resolution (`vault://`, `aws-sm://`, `gcp-sm://`)
 - `src/config/env-preserve.ts` — Never write resolved secrets back to disk
 - `src/infra/shell-env.js` — Add deprecation warning for shell-env secret loading
 
 **New files:**
+
 ```
 src/enterprise/secrets/
   ├── index.ts                    — Secret manager interface + factory
@@ -94,6 +100,7 @@ src/enterprise/secrets/
 ```
 
 **Config syntax for secret references:**
+
 ```yaml
 # config.yaml - secrets never stored in plaintext
 models:
@@ -108,6 +115,7 @@ models:
 ```
 
 **Migration flow on upgrade:**
+
 ```
 1. Detect ~/.openclaw/credentials (plaintext JSON)
 2. Prompt: "Migrate secrets to encrypted storage? [Y/n]"
@@ -124,6 +132,7 @@ models:
 **Problem:** Skills and agent bash commands run with full host access. No isolation between agents.
 
 **Files to modify:**
+
 - `src/agents/sandbox/config.ts` — Enhance with gVisor/Kata runtime support
 - `src/agents/sandbox/docker.ts` — Add security options (seccomp, AppArmor, read-only rootfs)
 - `src/agents/sandbox/types.ts` — Add `SandboxIsolationLevel` type
@@ -132,6 +141,7 @@ models:
 - `src/agents/bash-tools.exec.ts` — Add command allowlist/denylist enforcement
 
 **New files:**
+
 ```
 src/enterprise/sandbox/
   ├── isolation.ts                — Isolation level resolution (none → container → gVisor → Kata)
@@ -149,10 +159,11 @@ src/enterprise/sandbox/
 ```
 
 **Isolation levels (configurable per agent):**
+
 ```yaml
 enterprise:
   sandbox:
-    defaultIsolation: "container"  # none | container | gvisor | kata
+    defaultIsolation: "container" # none | container | gvisor | kata
     agents:
       default:
         isolation: "container"
@@ -162,7 +173,7 @@ enterprise:
           diskMb: 5120
           networkEgress:
             allow: ["api.openai.com", "api.anthropic.com"]
-            deny: ["*"]  # deny-by-default
+            deny: ["*"] # deny-by-default
         seccompProfile: "default"
         readOnlyRootfs: true
         noNewPrivileges: true
@@ -173,6 +184,7 @@ enterprise:
 **Problem:** High susceptibility to prompt injection attacks via channel messages, skill content, web content.
 
 **New files:**
+
 ```
 src/enterprise/security/
   ├── input-sanitizer.ts          — Sanitize user inputs before LLM processing
@@ -195,6 +207,7 @@ src/enterprise/security/
 ```
 
 **Integration points:**
+
 - `src/agents/bash-tools.exec.ts` — Pre-execution guardrail check
 - `src/auto-reply/` — Input sanitizer before LLM call
 - `src/browser/` — Output filter on browser action results
@@ -209,6 +222,7 @@ src/enterprise/security/
 **Problem:** 7+ scattered permission systems across channels. No unified identity. No enterprise IdP integration.
 
 **New directory structure:**
+
 ```
 src/enterprise/iam/
   ├── index.ts                    — IAM subsystem initialization
@@ -241,19 +255,21 @@ src/enterprise/iam/
 ```
 
 **Files to modify:**
+
 - `src/gateway/method-scopes.ts` — Replace flat scope model with RBAC permission checks
 - `src/gateway/auth.ts` — Add IAM provider resolution before scope assignment
 - `src/gateway/server/ws-connection/message-handler.ts` — Inject IAM identity into connection context
 - All `extensions/*/src/channel.ts` — Add identity resolver hook
 
 **RBAC Model:**
+
 ```typescript
 // Roles (built-in, extensible)
 const BUILT_IN_ROLES = {
   "super-admin": { permissions: ["*"] },
-  "admin": { permissions: ["agents.*", "skills.*", "config.*", "users.*", "audit.read"] },
-  "operator": { permissions: ["agents.run", "agents.list", "sessions.*", "send", "chat.*"] },
-  "viewer": { permissions: ["agents.list", "sessions.list", "health", "status"] },
+  admin: { permissions: ["agents.*", "skills.*", "config.*", "users.*", "audit.read"] },
+  operator: { permissions: ["agents.run", "agents.list", "sessions.*", "send", "chat.*"] },
+  viewer: { permissions: ["agents.list", "sessions.list", "health", "status"] },
   "agent-service": { permissions: ["agent", "send", "tools.*"] },
 };
 
@@ -265,6 +281,7 @@ const BUILT_IN_ROLES = {
 ```
 
 **Integration with existing scopes:**
+
 ```
 Current:  operator.admin | operator.read | operator.write | operator.approvals | operator.pairing
 New:      Maps to RBAC roles: super-admin → operator.admin, operator → operator.write, etc.
@@ -274,6 +291,7 @@ New:      Maps to RBAC roles: super-admin → operator.admin, operator → opera
 ### 2.2 JWT Authentication
 
 **New files:**
+
 ```
 src/enterprise/auth/
   ├── jwt.ts                      — JWT creation, validation, refresh
@@ -284,6 +302,7 @@ src/enterprise/auth/
 ```
 
 **Auth flow:**
+
 ```
 1. User authenticates via IdP (SAML/OIDC/LDAP/local)
 2. Gateway issues JWT (access token: 15min, refresh token: 7d)
@@ -302,6 +321,7 @@ src/enterprise/auth/
 **Problem:** Minimal logging. No tamper-evident audit trail. No compliance support.
 
 **New files:**
+
 ```
 src/enterprise/audit/
   ├── index.ts                    — Audit subsystem initialization
@@ -325,10 +345,11 @@ src/enterprise/audit/
 ```
 
 **Audit event schema:**
+
 ```typescript
 type AuditEvent = {
-  id: string;                    // ULID (sortable unique ID)
-  timestamp: string;             // ISO 8601
+  id: string; // ULID (sortable unique ID)
+  timestamp: string; // ISO 8601
   version: 1;
   // WHO
   actor: {
@@ -340,11 +361,11 @@ type AuditEvent = {
     tenantId?: string;
   };
   // WHAT
-  action: string;                // e.g., "agent.run", "skill.install", "config.update"
+  action: string; // e.g., "agent.run", "skill.install", "config.update"
   category: "auth" | "agent" | "skill" | "config" | "admin" | "data" | "system";
   // WHERE
   resource: {
-    type: string;                // e.g., "agent", "skill", "session", "user"
+    type: string; // e.g., "agent", "skill", "session", "user"
     id: string;
   };
   // RESULT
@@ -352,12 +373,13 @@ type AuditEvent = {
   // DETAILS
   metadata: Record<string, unknown>;
   // INTEGRITY
-  previousHash?: string;         // Hash of previous event (chain)
-  hash: string;                  // SHA-256 of this event
+  previousHash?: string; // Hash of previous event (chain)
+  hash: string; // SHA-256 of this event
 };
 ```
 
 **Integration points (instrument existing code):**
+
 - `src/gateway/server-methods.ts` — Wrap all RPC method handlers with audit decorator
 - `src/agents/bash-tools.exec.ts` — Log all command executions
 - `src/agents/skills-install.ts` — Log all skill installations
@@ -368,6 +390,7 @@ type AuditEvent = {
 ### 3.2 Data Governance
 
 **New files:**
+
 ```
 src/enterprise/governance/
   ├── data-classification.ts      — Tag data sensitivity levels (public/internal/confidential/restricted)
@@ -388,6 +411,7 @@ src/enterprise/governance/
 **Problem:** Single-user architecture. No tenant isolation. All data in one SQLite database.
 
 **New files:**
+
 ```
 src/enterprise/tenancy/
   ├── index.ts                    — Tenant subsystem initialization
@@ -405,6 +429,7 @@ src/enterprise/tenancy/
 ```
 
 **Tenant context propagation:**
+
 ```typescript
 // Uses Node.js AsyncLocalStorage for zero-boilerplate tenant context
 import { AsyncLocalStorage } from "node:async_hooks";
@@ -427,6 +452,7 @@ export function getTenantContext(): TenantContext {
 ```
 
 **Data isolation strategy:**
+
 ```
 Single-node:  SQLite database per tenant (~/.openclaw/tenants/<tenantId>/data.db)
 Multi-node:   PostgreSQL with schema-per-tenant (tenant_<id>.*)
@@ -438,6 +464,7 @@ Multi-node:   PostgreSQL with schema-per-tenant (tenant_<id>.*)
 **Problem:** Single-node. No horizontal scaling. No fault tolerance.
 
 **New files:**
+
 ```
 src/enterprise/cluster/
   ├── index.ts                    — Cluster subsystem initialization
@@ -451,6 +478,7 @@ src/enterprise/cluster/
 ```
 
 **Scaling model:**
+
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                    LOAD BALANCER                         │
@@ -472,6 +500,7 @@ src/enterprise/cluster/
 ```
 
 **Channel statefulness handling:**
+
 ```
 Stateful channels (WhatsApp/Baileys, Signal):
   - Pin to single node via coordinator
@@ -486,6 +515,7 @@ Stateless channels (Telegram, Discord, Slack):
 ### 4.3 Kubernetes Support
 
 **New files:**
+
 ```
 k8s/
   ├── helm/
@@ -525,6 +555,7 @@ k8s/
 ```
 
 **Helm values structure:**
+
 ```yaml
 # values.yaml
 replicaCount: 1
@@ -543,7 +574,7 @@ gateway:
     mode: token
   tls:
     enabled: true
-    certManager: true  # Use cert-manager for auto-certs
+    certManager: true # Use cert-manager for auto-certs
 
 persistence:
   enabled: true
@@ -551,12 +582,12 @@ persistence:
   size: 10Gi
 
 postgresql:
-  enabled: false  # Enable for multi-node
+  enabled: false # Enable for multi-node
   auth:
     existingSecret: openclaw-db-secret
 
 redis:
-  enabled: false  # Enable for caching/bus
+  enabled: false # Enable for caching/bus
   auth:
     existingSecret: openclaw-redis-secret
 
@@ -590,6 +621,7 @@ autoscaling:
 ### 5.1 Prometheus Metrics
 
 **New files:**
+
 ```
 src/enterprise/monitoring/
   ├── index.ts                    — Monitoring subsystem init
@@ -618,10 +650,12 @@ src/enterprise/monitoring/
 ```
 
 **Files to modify:**
+
 - `src/gateway/server-http.ts` — Add `/metrics`, `/healthz`, `/readyz`, `/livez` endpoints
 - `src/gateway/server.impl.ts` — Initialize metrics collection on startup
 
 **Key metrics:**
+
 ```
 # Gateway
 openclaw_gateway_connections_total{channel}          counter
@@ -647,6 +681,7 @@ openclaw_audit_events_total{category,action}           counter
 ### 5.2 Backup & Disaster Recovery
 
 **New files:**
+
 ```
 src/enterprise/backup/
   ├── index.ts                    — Backup subsystem
@@ -669,10 +704,12 @@ src/enterprise/backup/
 **Problem:** ~341 malicious/flawed skills in public ClawHub. No code signing. No approval workflow.
 
 **Files to modify:**
+
 - `src/agents/skills-install.ts` — Add signature verification before install
 - `src/security/skill-scanner.ts` — Enhance scan rules (more patterns, severity levels)
 
 **New files:**
+
 ```
 src/enterprise/skills/
   ├── registry/
@@ -699,6 +736,7 @@ src/enterprise/skills/
 ### 6.2 Marketplace API & UI
 
 **New files:**
+
 ```
 src/marketplace/
   ├── api/
@@ -719,6 +757,7 @@ src/marketplace/
 ```
 
 **Files to modify:**
+
 - `ui/src/ui/controllers/skill-controller.ts` — Add marketplace data fetching
 - `ui/src/main.ts` — Add marketplace route
 
@@ -729,6 +768,7 @@ src/marketplace/
 ### 7.1 One-Command Install & Auto-Demo
 
 **New files:**
+
 ```
 scripts/
   ├── install.sh                  — curl | bash one-liner installer
@@ -759,6 +799,7 @@ src/demos/
 ```
 
 **Install one-liners:**
+
 ```bash
 # npm (recommended)
 npm install -g openclaw && openclaw onboard
@@ -774,6 +815,7 @@ podman run -it --rm -v ~/.openclaw:/home/node/.openclaw ghcr.io/openclaw/opencla
 ```
 
 **Auto-demo on first run:**
+
 ```bash
 openclaw onboard --demo
 # 1. Sets up with local model (Ollama) or API key
@@ -789,6 +831,7 @@ openclaw onboard --demo
 ### 7.2 VS Code Extension
 
 **New files:**
+
 ```
 extensions/vscode/
   ├── package.json                — Extension manifest
@@ -810,6 +853,7 @@ extensions/vscode/
 ### 7.3 GitHub Actions Integration
 
 **New files:**
+
 ```
 actions/
   └── openclaw-action/
@@ -825,9 +869,11 @@ actions/
 ### 7.4 Enhanced CLI
 
 **Files to modify:**
+
 - `src/cli/program.js` — Add new commands
 
 **New CLI commands:**
+
 ```bash
 openclaw demo                    # Run interactive demo
 openclaw share                   # Share last demo as GIF/link
@@ -851,6 +897,7 @@ openclaw metrics                 # Show current metrics
 ### 8.1 Enterprise Admin UI
 
 **New files:**
+
 ```
 ui/src/ui/admin/
   ├── admin-app.ts                — Admin dashboard root component
@@ -883,9 +930,11 @@ ui/src/ui/admin/
 ### 9.1 Enhanced CI/CD
 
 **Files to modify:**
+
 - `.github/workflows/ci.yml` — Add enterprise test jobs
 
 **New files:**
+
 ```
 .github/workflows/
   ├── security-scan.yml           — SAST/DAST/dependency scanning
@@ -905,9 +954,11 @@ test/enterprise/
 ### 9.2 Documentation
 
 **Files to modify:**
+
 - `README.md` — Complete rewrite with viral hooks + enterprise sections
 
 **New files:**
+
 ```
 docs/
   ├── enterprise/
@@ -970,24 +1021,25 @@ PARALLEL TRACKS:
 
 # Enterprise activation:
 enterprise:
-  enabled: true            # Activates enterprise subsystems
+  enabled: true # Activates enterprise subsystems
   # Each subsystem is independently configurable
   iam:
     enabled: true
-    provider: "local"      # local | saml | oidc | ldap
+    provider: "local" # local | saml | oidc | ldap
   audit:
     enabled: true
-    storage: "sqlite"      # sqlite | postgres | elasticsearch
+    storage: "sqlite" # sqlite | postgres | elasticsearch
   tenancy:
-    enabled: false          # Only when needed
+    enabled: false # Only when needed
   cluster:
-    enabled: false          # Only for multi-node
+    enabled: false # Only for multi-node
   monitoring:
     enabled: true
     prometheus: true
 ```
 
 **Lazy loading strategy:**
+
 ```typescript
 // Enterprise modules are lazy-loaded to avoid overhead in community mode
 export async function initEnterprise(config: OpenClawConfig) {
@@ -1073,6 +1125,7 @@ C:/Projects/openclawenterprise/
 ## Deployment Guide Outline
 
 ### Local Development (Individual)
+
 ```bash
 npm install -g openclaw
 openclaw onboard
@@ -1080,6 +1133,7 @@ openclaw onboard
 ```
 
 ### Docker (Team)
+
 ```bash
 docker compose up -d
 # Set OPENCLAW_GATEWAY_TOKEN in .env
@@ -1087,6 +1141,7 @@ docker compose up -d
 ```
 
 ### Kubernetes (Enterprise)
+
 ```bash
 helm repo add openclaw https://charts.openclaw.dev
 helm install openclaw openclaw/openclaw \
@@ -1100,6 +1155,7 @@ helm install openclaw openclaw/openclaw \
 ```
 
 ### Enterprise HA Cluster
+
 ```bash
 helm install openclaw openclaw/openclaw \
   --set replicaCount=3 \

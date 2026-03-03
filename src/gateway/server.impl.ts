@@ -18,6 +18,7 @@ import {
   writeConfigFile,
 } from "../config/config.js";
 import { applyPluginAutoEnable } from "../config/plugin-auto-enable.js";
+import { initEnterprise, type EnterpriseHandle } from "../enterprise/index.js";
 import { clearAgentRunContext, onAgentEvent } from "../infra/agent-events.js";
 import {
   ensureControlUiAssetsBuilt,
@@ -47,7 +48,6 @@ import { getTotalQueueSize } from "../process/command-queue.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { runOnboardingWizard } from "../wizard/onboarding.js";
 import { createAuthRateLimiter, type AuthRateLimiter } from "./auth-rate-limit.js";
-import { initEnterprise, type EnterpriseHandle } from "../enterprise/index.js";
 import { startChannelHealthMonitor } from "./channel-health-monitor.js";
 import { startGatewayConfigReloader } from "./config-reload.js";
 import type { ControlUiRootState } from "./control-ui.js";

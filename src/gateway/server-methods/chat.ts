@@ -1,7 +1,4 @@
 import fs from "node:fs";
-import { sanitizeInput, wrapWithTrustBoundary } from "../../enterprise/security/input-sanitizer.js";
-import { getGuardrailEngine } from "../../enterprise/security/guardrails.js";
-import { auditLog } from "../../enterprise/audit/logger.js";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";
 import { resolveSessionAgentId } from "../../agents/agent-scope.js";
@@ -12,6 +9,8 @@ import { createReplyDispatcher } from "../../auto-reply/reply/reply-dispatcher.j
 import type { MsgContext } from "../../auto-reply/templating.js";
 import { createReplyPrefixOptions } from "../../channels/reply-prefix.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
+import { auditLog } from "../../enterprise/audit/logger.js";
+import { sanitizeInput } from "../../enterprise/security/input-sanitizer.js";
 import { resolveSendPolicy } from "../../sessions/send-policy.js";
 import { stripInlineDirectiveTagsForDisplay } from "../../utils/directive-tags.js";
 import { INTERNAL_MESSAGE_CHANNEL } from "../../utils/message-channel.js";
@@ -775,7 +774,10 @@ export const chatHandlers: GatewayRequestHandlers = {
         respond(
           false,
           undefined,
-          errorShape(ErrorCodes.INVALID_REQUEST, "Message rejected: potential prompt injection detected"),
+          errorShape(
+            ErrorCodes.INVALID_REQUEST,
+            "Message rejected: potential prompt injection detected",
+          ),
         );
         return;
       }

@@ -11,29 +11,23 @@
  *     prefix: openclaw/              # optional key prefix filter
  */
 
-import type { SecretBackend } from "./index.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { SecretBackend } from "./index.js";
 
-export async function createGCPSecretManagerBackend(
-  cfg: OpenClawConfig,
-): Promise<SecretBackend> {
+export async function createGCPSecretManagerBackend(cfg: OpenClawConfig): Promise<SecretBackend> {
   const gcpCfg = cfg.enterprise?.secrets?.gcpSm as
     | { projectId: string; prefix?: string }
     | undefined;
 
   if (!gcpCfg?.projectId) {
-    throw new Error(
-      "enterprise.secrets.gcpSm.projectId is required for gcp-sm backend",
-    );
+    throw new Error("enterprise.secrets.gcpSm.projectId is required for gcp-sm backend");
   }
 
   const projectId = gcpCfg.projectId;
   const prefix = gcpCfg.prefix ?? "";
 
   // Lazy import — not bundled unless this backend is explicitly enabled
-  const { SecretManagerServiceClient } = await import(
-    "@google-cloud/secret-manager"
-  ).catch(() => {
+  const { SecretManagerServiceClient } = await import("@google-cloud/secret-manager").catch(() => {
     throw new Error(
       "Package @google-cloud/secret-manager is not installed.\n" +
         "Run: npm install @google-cloud/secret-manager",
@@ -52,7 +46,9 @@ export async function createGCPSecretManagerBackend(
         await client.accessSecretVersion({ name });
         return true;
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return false;
+        if (isNotFoundError(err)) {
+          return false;
+        }
         throw err;
       }
     },
@@ -62,13 +58,15 @@ export async function createGCPSecretManagerBackend(
       try {
         const [version] = await client.accessSecretVersion({ name });
         const payload = version.payload?.data;
-        if (!payload) return null;
-        return typeof payload === "string"
-          ? payload
-          : Buffer.from(payload).toString("utf8");
+        if (!payload) {
+          return null;
+        }
+        return typeof payload === "string" ? payload : Buffer.from(payload).toString("utf8");
       } catch (err: unknown) {
         // Secret not found → return null
-        if (isNotFoundError(err)) return null;
+        if (isNotFoundError(err)) {
+          return null;
+        }
         throw err;
       }
     },
@@ -88,7 +86,9 @@ export async function createGCPSecretManagerBackend(
           },
         });
       } catch (err: unknown) {
-        if (!isAlreadyExistsError(err)) throw err;
+        if (!isAlreadyExistsError(err)) {
+          throw err;
+        }
       }
 
       // Add a new version with the payload
@@ -103,19 +103,21 @@ export async function createGCPSecretManagerBackend(
       try {
         await client.deleteSecret({ name: secretName });
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return;
+        if (isNotFoundError(err)) {
+          return;
+        }
         throw err;
       }
     },
 
     async list(keyPrefix?: string): Promise<string[]> {
-      const filter = keyPrefix
-        ? `name:${encodeSecretId(prefix + keyPrefix)}`
-        : undefined;
+      const filter = keyPrefix ? `name:${encodeSecretId(prefix + keyPrefix)}` : undefined;
       const iterable = client.listSecretsAsync({ parent, filter });
       const names: string[] = [];
       for await (const secret of iterable) {
-        if (!secret.name) continue;
+        if (!secret.name) {
+          continue;
+        }
         // Extract the secret ID from the full resource name
         const id = secret.name.split("/").pop() ?? "";
         const decoded = decodeSecretId(id);
@@ -138,25 +140,17 @@ function encodeSecretId(key: string): string {
 }
 
 function decodeSecretId(id: string): string {
-  return id.replace(/_x([0-9a-f]+)_/g, (_, hex) =>
-    String.fromCodePoint(parseInt(hex, 16)),
-  );
+  return id.replace(/_x([0-9a-f]+)_/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
 function isNotFoundError(err: unknown): boolean {
   return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: number }).code === 5
+    typeof err === "object" && err !== null && "code" in err && (err as { code: number }).code === 5
   );
 }
 
 function isAlreadyExistsError(err: unknown): boolean {
   return (
-    typeof err === "object" &&
-    err !== null &&
-    "code" in err &&
-    (err as { code: number }).code === 6
+    typeof err === "object" && err !== null && "code" in err && (err as { code: number }).code === 6
   );
 }

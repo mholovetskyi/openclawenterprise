@@ -27,12 +27,10 @@ function loadDB(): DBCtor {
   try {
     const req = createRequire(import.meta.url);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = req("better-sqlite3") as any;
+    const mod = req("better-sqlite3");
     return mod.default ?? mod;
   } catch {
-    throw new Error(
-      "SQLite RBAC backend requires better-sqlite3. Run: npm install better-sqlite3",
-    );
+    throw new Error("SQLite RBAC backend requires better-sqlite3. Run: npm install better-sqlite3");
   }
 }
 
@@ -95,8 +93,8 @@ export function createSQLiteRBACStore(dbPath: string): RBACStore {
 
   return {
     async listRoles(): Promise<Role[]> {
-      return (db.prepare("SELECT raw FROM rbac_roles").all() as Array<{ raw: string }>).map(
-        (r) => parseRow<Role>(r),
+      return (db.prepare("SELECT raw FROM rbac_roles").all() as Array<{ raw: string }>).map((r) =>
+        parseRow<Role>(r),
       );
     },
 
@@ -106,9 +104,10 @@ export function createSQLiteRBACStore(dbPath: string): RBACStore {
     },
 
     async upsertRole(role: Role): Promise<void> {
-      db.prepare(
-        "INSERT OR REPLACE INTO rbac_roles (id, raw) VALUES (@id, @raw)",
-      ).run({ id: role.id, raw: JSON.stringify(role) });
+      db.prepare("INSERT OR REPLACE INTO rbac_roles (id, raw) VALUES (@id, @raw)").run({
+        id: role.id,
+        raw: JSON.stringify(role),
+      });
     },
 
     async deleteRole(id: string): Promise<void> {
@@ -141,7 +140,9 @@ export function createSQLiteRBACStore(dbPath: string): RBACStore {
       const rows = db.prepare("SELECT raw FROM rbac_users").all() as Array<{ raw: string }>;
       for (const r of rows) {
         const u = parseRow<User>(r);
-        if (u.externalId === externalId) return u;
+        if (u.externalId === externalId) {
+          return u;
+        }
       }
       return null;
     },
@@ -170,11 +171,9 @@ export function createSQLiteRBACStore(dbPath: string): RBACStore {
       db.prepare("DELETE FROM rbac_user_channels WHERE user_id = @userId").run({ userId: user.id });
       if (user.channelIds) {
         for (const [channel, channelUid] of Object.entries(user.channelIds)) {
-          db
-            .prepare(
-              "INSERT OR REPLACE INTO rbac_user_channels (user_id, channel, channel_uid) VALUES (@userId, @channel, @channelUid)",
-            )
-            .run({ userId: user.id, channel, channelUid });
+          db.prepare(
+            "INSERT OR REPLACE INTO rbac_user_channels (user_id, channel, channel_uid) VALUES (@userId, @channel, @channelUid)",
+          ).run({ userId: user.id, channel, channelUid });
         }
       }
     },

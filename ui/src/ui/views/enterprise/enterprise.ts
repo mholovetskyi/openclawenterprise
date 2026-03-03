@@ -8,13 +8,13 @@
  *   import { renderEnterprise } from "./views/enterprise/enterprise.js";
  */
 import { html, nothing } from "lit";
-import type { EnterpriseAdminProps, EnterpriseTab } from "./types.js";
-import { renderEnterpriseOverview } from "./enterprise-overview.js";
 import { renderEnterpriseAudit } from "./enterprise-audit.js";
-import { renderEnterpriseUsers } from "./enterprise-users.js";
-import { renderEnterpriseSecurity } from "./enterprise-security.js";
 import { renderEnterpriseCluster } from "./enterprise-cluster.js";
+import { renderEnterpriseOverview } from "./enterprise-overview.js";
+import { renderEnterpriseSecurity } from "./enterprise-security.js";
 import { renderEnterpriseSettings } from "./enterprise-settings.js";
+import { renderEnterpriseUsers } from "./enterprise-users.js";
+import type { EnterpriseAdminProps, EnterpriseTab } from "./types.js";
 
 const TABS: Array<{ id: EnterpriseTab; label: string; icon: string }> = [
   { id: "overview", label: "Overview", icon: "🏢" },
@@ -33,9 +33,11 @@ export function renderEnterprise(props: EnterpriseAdminProps) {
       </style>
       <div class="ent-header">
         <span class="ent-header-title">🦞 Enterprise</span>
-        ${props.status?.version
-          ? html`<span class="ent-header-version muted">v${props.status.version}</span>`
-          : nothing}
+        ${
+          props.status?.version
+            ? html`<span class="ent-header-version muted">v${props.status.version}</span>`
+            : nothing
+        }
       </div>
 
       <!-- Sub-tab bar -->

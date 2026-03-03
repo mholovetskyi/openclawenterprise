@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { initCluster, type ClusterHandle } from "./index.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import { initCluster, type ClusterHandle } from "./index.js";
 
 const baseCfg = {
   enterprise: { cluster: { enabled: true, nodeId: "test-node-1" } },
@@ -48,7 +48,9 @@ describe("InMemoryCoordinator (via initCluster)", () => {
   let handle: ClusterHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {
+      await handle.shutdown();
+    }
   });
 
   it("registers the node on init (getLeader returns current node)", async () => {
@@ -90,7 +92,9 @@ describe("InMemoryBus (via initCluster)", () => {
   let handle: ClusterHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {
+      await handle.shutdown();
+    }
   });
 
   it("delivers published messages to subscribers", async () => {
@@ -131,7 +135,9 @@ describe("InMemoryBus (via initCluster)", () => {
 
   it("subscriber errors are swallowed", async () => {
     handle = await initCluster(baseCfg);
-    handle.bus.subscribe("err-ch", () => { throw new Error("subscriber error"); });
+    handle.bus.subscribe("err-ch", () => {
+      throw new Error("subscriber error");
+    });
     await expect(handle.bus.publish("err-ch", "data")).resolves.toBeUndefined();
   });
 });

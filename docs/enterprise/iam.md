@@ -10,24 +10,25 @@ enterprise:
   iam:
     enabled: true
     jwt:
-      algorithm: RS256    # RS256 (default, auto-generates key pair) or HS256
-      expiresIn: 15m      # access token TTL
+      algorithm: RS256 # RS256 (default, auto-generates key pair) or HS256
+      expiresIn: 15m # access token TTL
       refreshExpiresIn: 7d
 ```
 
 On first start, if `algorithm: RS256` is configured, OpenClaw auto-generates an RSA key pair and stores it at:
+
 - `~/.openclaw/enterprise/iam/private.pem`
 - `~/.openclaw/enterprise/iam/public.pem`
 
 ## Built-in roles
 
-| Role | Permissions |
-|------|-------------|
-| `super-admin` | `*` (everything) |
-| `admin` | All except user/role management |
-| `operator` | Agents, skills, channels — no config write |
-| `viewer` | Read-only on all resources |
-| `agent-service` | Scoped to agent execution only |
+| Role            | Permissions                                |
+| --------------- | ------------------------------------------ |
+| `super-admin`   | `*` (everything)                           |
+| `admin`         | All except user/role management            |
+| `operator`      | Agents, skills, channels — no config write |
+| `viewer`        | Read-only on all resources                 |
+| `agent-service` | Scoped to agent execution only             |
 
 ## API keys
 
