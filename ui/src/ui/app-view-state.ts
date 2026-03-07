@@ -240,6 +240,16 @@ export type AppViewState = {
   enterpriseUserEditRoles: string[];
   enterpriseUserEditActive: boolean;
   updateAvailable: import("./types.js").UpdateAvailable | null;
+  // Onboarding wizard state
+  onboardingStep: 0 | 1 | 2 | 3 | 4;
+  onboardingDraftOrgName: string;
+  onboardingDraftTagline: string;
+  onboardingDraftRole: string;
+  onboardingDraftGatewayUrl: string;
+  onboardingDraftToken: string;
+  onboardingConnectionTested: boolean;
+  onboardingConnectionSuccess: boolean | null;
+  onboardingConnectionTesting: boolean;
   client: GatewayBrowserClient | null;
   refreshSessionsAfterChat: Set<string>;
   connect: () => void;
@@ -303,4 +313,8 @@ export type AppViewState = {
   handleOpenSidebar: (content: string) => void;
   handleCloseSidebar: () => void;
   handleSplitRatioChange: (ratio: number) => void;
+  // Onboarding handlers
+  handleOnboardingFinish: () => void;
+  handleOnboardingTestConnection: () => Promise<void>;
+  handleOnboardingSkipConnect: () => void;
 };

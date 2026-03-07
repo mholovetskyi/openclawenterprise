@@ -18,6 +18,11 @@ export type UiSettings = {
   // Enterprise dashboard customization (set from Enterprise → Settings panel)
   enterpriseDashboardTitle?: string;
   enterpriseDashboardTagline?: string;
+  // Enterprise onboarding state
+  onboardingCompleted?: boolean;
+  enterpriseOrgName?: string;
+  enterpriseUserRole?: string; // "admin" | "developer" | "analyst" | "operator"
+  enterpriseWelcomeLogo?: string;
 };
 
 export function loadSettings(): UiSettings {
@@ -91,6 +96,14 @@ export function loadSettings(): UiSettings {
         typeof parsed.enterpriseDashboardTagline === "string"
           ? parsed.enterpriseDashboardTagline
           : undefined,
+      onboardingCompleted:
+        typeof parsed.onboardingCompleted === "boolean" ? parsed.onboardingCompleted : undefined,
+      enterpriseOrgName:
+        typeof parsed.enterpriseOrgName === "string" ? parsed.enterpriseOrgName : undefined,
+      enterpriseUserRole:
+        typeof parsed.enterpriseUserRole === "string" ? parsed.enterpriseUserRole : undefined,
+      enterpriseWelcomeLogo:
+        typeof parsed.enterpriseWelcomeLogo === "string" ? parsed.enterpriseWelcomeLogo : undefined,
     };
   } catch {
     return defaults;

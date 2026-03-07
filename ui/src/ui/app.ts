@@ -113,6 +113,12 @@ export class OpenClawApp extends LitElement {
     if (isSupportedLocale(this.settings.locale)) {
       void i18n.setLocale(this.settings.locale);
     }
+    // Initialize onboarding drafts from persisted settings
+    this.onboardingDraftOrgName = this.settings.enterpriseOrgName ?? "";
+    this.onboardingDraftTagline = this.settings.enterpriseDashboardTagline ?? "";
+    this.onboardingDraftRole = this.settings.enterpriseUserRole ?? "";
+    this.onboardingDraftGatewayUrl = this.settings.gatewayUrl;
+    this.onboardingDraftToken = this.settings.token;
   }
   @state() password = "";
   @state() tab: Tab = "chat";
@@ -314,6 +320,17 @@ export class OpenClawApp extends LitElement {
   @state() enterpriseUserEditActive = true;
 
   @state() updateAvailable: import("./types.js").UpdateAvailable | null = null;
+
+  // Onboarding wizard state
+  @state() onboardingStep: 0 | 1 | 2 | 3 | 4 = 0;
+  @state() onboardingDraftOrgName = "";
+  @state() onboardingDraftTagline = "";
+  @state() onboardingDraftRole = "";
+  @state() onboardingDraftGatewayUrl = "";
+  @state() onboardingDraftToken = "";
+  @state() onboardingConnectionTested = false;
+  @state() onboardingConnectionSuccess: boolean | null = null;
+  @state() onboardingConnectionTesting = false;
 
   @state() skillsLoading = false;
   @state() skillsReport: SkillStatusReport | null = null;
@@ -588,6 +605,63 @@ export class OpenClawApp extends LitElement {
     const newRatio = Math.max(0.4, Math.min(0.7, ratio));
     this.splitRatio = newRatio;
     this.applySettings({ ...this.settings, splitRatio: newRatio });
+  }
+
+  handleOnboardingFinish() {
+    // Persist all onboarding settings
+    const orgName = this.onboardingDraftOrgName.trim();
+    const tagline = this.onboardingDraftTagline.trim();
+    const role = this.onboardingDraftRole || "admin";
+    const gatewayUrl = this.onboardingDraftGatewayUrl.trim();
+    const token = this.onboardingDraftToken.trim();
+
+    this.applySettings({
+      ...this.settings,
+      onboardingCompleted: true,
+      enterpriseOrgName: orgName || undefined,
+      enterpriseUserRole: role,
+      enterpriseDashboardTitle: orgName || this.settings.enterpriseDashboardTitle,
+      enterpriseDashboardTagline: tagline || this.settings.enterpriseDashboardTagline,
+      gatewayUrl: gatewayUrl || this.settings.gatewayUrl,
+      token: token || this.settings.token,
+    });
+
+    // Navigate to chat
+    this.onboarding = false;
+    this.setTab("chat");
+    this.connect();
+  }
+
+  async handleOnboardingTestConnection() {
+    this.onboardingConnectionTesting = true;
+    this.onboardingConnectionSuccess = null;
+    try {
+      const url = this.onboardingDraftGatewayUrl.trim();
+      if (!url) {
+        this.onboardingConnectionSuccess = false;
+        this.onboardingConnectionTesting = false;
+        return;
+      }
+      // Apply the gateway URL and token temporarily to test
+      this.applySettings({
+        ...this.settings,
+        gatewayUrl: url,
+        token: this.onboardingDraftToken.trim(),
+      });
+      this.connect();
+      // Wait a short period for connection
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      this.onboardingConnectionSuccess = this.connected;
+      this.onboardingConnectionTested = true;
+    } catch {
+      this.onboardingConnectionSuccess = false;
+    } finally {
+      this.onboardingConnectionTesting = false;
+    }
+  }
+
+  handleOnboardingSkipConnect() {
+    this.onboardingStep = 3;
   }
 
   render() {

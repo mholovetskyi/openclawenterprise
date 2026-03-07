@@ -1,4 +1,4 @@
-import { html } from "lit";
+import { html, nothing } from "lit";
 import { t, i18n, type Locale } from "../../i18n/index.ts";
 import { formatRelativeTimestamp, formatDurationHuman } from "../format.ts";
 import type { GatewayHelloOk } from "../gateway.ts";
@@ -130,7 +130,21 @@ export function renderOverview(props: OverviewProps) {
 
   const currentLocale = i18n.getLocale();
 
+  const orgName = props.settings.enterpriseOrgName?.trim();
+  const userRole = props.settings.enterpriseUserRole?.trim();
+
   return html`
+    ${orgName
+      ? html`
+          <div class="overview-greeting">
+            <div class="overview-greeting__title">Welcome back, ${orgName}</div>
+            <p class="overview-greeting__sub">Your OpenClaw Enterprise gateway dashboard.</p>
+            ${userRole
+              ? html`<span class="overview-greeting__role">${userRole.charAt(0).toUpperCase() + userRole.slice(1)}</span>`
+              : nothing}
+          </div>
+        `
+      : nothing}
     <section class="grid grid-cols-2">
       <div class="card">
         <div class="card-title">${t("overview.access.title")}</div>

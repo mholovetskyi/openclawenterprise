@@ -74,6 +74,8 @@ import { renderOverview } from "./views/overview.ts";
 import { renderSessions } from "./views/sessions.ts";
 import { renderSkills } from "./views/skills.ts";
 import { renderEnterprise } from "./views/enterprise/enterprise.js";
+import { renderOnboarding } from "./views/onboarding.ts";
+import type { OnboardingStep } from "./views/onboarding.ts";
 
 const AVATAR_DATA_RE = /^data:/i;
 const AVATAR_HTTP_RE = /^https?:\/\//i;
@@ -1057,6 +1059,36 @@ export function renderApp(state: AppViewState) {
                     enterpriseDashboardTagline: tagline || undefined,
                   });
                 },
+              })
+            : nothing
+        }
+
+        ${
+          state.tab === "onboarding"
+            ? renderOnboarding({
+                step: state.onboardingStep,
+                settings: state.settings,
+                connected: state.connected,
+                draftOrgName: state.onboardingDraftOrgName,
+                draftTagline: state.onboardingDraftTagline,
+                draftRole: state.onboardingDraftRole,
+                draftGatewayUrl: state.onboardingDraftGatewayUrl,
+                draftToken: state.onboardingDraftToken,
+                connectionTested: state.onboardingConnectionTested,
+                connectionSuccess: state.onboardingConnectionSuccess,
+                connectionTesting: state.onboardingConnectionTesting,
+                onStepChange: (step: OnboardingStep) => (state.onboardingStep = step),
+                onDraftOrgNameChange: (v: string) => (state.onboardingDraftOrgName = v),
+                onDraftTaglineChange: (v: string) => (state.onboardingDraftTagline = v),
+                onDraftRoleChange: (v: string) => (state.onboardingDraftRole = v),
+                onDraftGatewayUrlChange: (v: string) => (state.onboardingDraftGatewayUrl = v),
+                onDraftTokenChange: (v: string) => (state.onboardingDraftToken = v),
+                onTestConnection: () => state.handleOnboardingTestConnection(),
+                onThemeChange: (theme) => state.setTheme(theme),
+                onFinish: () => state.handleOnboardingFinish(),
+                onSkipConnect: () => state.handleOnboardingSkipConnect(),
+                basePath,
+                theme: state.theme,
               })
             : nothing
         }

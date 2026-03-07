@@ -18,10 +18,12 @@ import {
 } from "./app-settings.ts";
 import { loadControlUiBootstrapConfig } from "./controllers/control-ui-bootstrap.ts";
 import type { Tab } from "./navigation.ts";
+import { loadSettings } from "./storage.ts";
 
 type LifecycleHost = {
   basePath: string;
   tab: Tab;
+  onboarding: boolean;
   assistantName: string;
   assistantAvatar: string | null;
   assistantAgentId: string | null;
@@ -46,6 +48,14 @@ export function handleConnected(host: LifecycleHost) {
   syncThemeWithSettings(host as unknown as Parameters<typeof syncThemeWithSettings>[0]);
   attachThemeListener(host as unknown as Parameters<typeof attachThemeListener>[0]);
   window.addEventListener("popstate", host.popStateHandler);
+
+  // Auto-detect first visit: redirect to onboarding if not completed and not already on onboarding
+  const settings = loadSettings();
+  if (!settings.onboardingCompleted && host.tab !== "onboarding" && !host.onboarding) {
+    host.tab = "onboarding";
+    host.onboarding = true;
+  }
+
   connectGateway(host as unknown as Parameters<typeof connectGateway>[0]);
   startNodesPolling(host as unknown as Parameters<typeof startNodesPolling>[0]);
   if (host.tab === "logs") {
