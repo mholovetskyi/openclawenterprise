@@ -1,0 +1,23 @@
+{{- if .Values.nvidia.nim.enabled }}
+# ── NIM Sidecar Configuration ──────────────────────────────────────────────
+# Adds NVIDIA NIM inference container as a sidecar in the OpenClaw pod.
+# NIM shares the network namespace with the main container, accessible at localhost:{{ .Values.nvidia.nim.port }}.
+---
+{{- if .Values.nvidia.nim.modelCache.enabled }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "openclaw.fullname" . }}-nim-cache
+  labels:
+    {{- include "openclaw.labels" . | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.nvidia.nim.modelCache.storageClass }}
+  storageClassName: {{ .Values.nvidia.nim.modelCache.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.nvidia.nim.modelCache.size | default "50Gi" }}
+{{- end }}
+{{- end }}

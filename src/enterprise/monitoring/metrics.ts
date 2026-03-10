@@ -211,6 +211,61 @@ function buildMetrics() {
       "Total channel errors",
       ["channel", "error_type"],
     ),
+
+    // NVIDIA NIM
+    nimRequests: makeCounter(
+      "openclaw_nim_requests_total",
+      "Total NIM inference requests",
+      ["model", "status"],
+    ),
+    nimLatency: makeHistogram(
+      "openclaw_nim_latency_seconds",
+      "NIM inference request latency",
+      ["model"],
+      [0.1, 0.5, 1, 2, 5, 10, 30, 60],
+    ),
+    nimTokens: makeCounter(
+      "openclaw_nim_tokens_total",
+      "Total NIM tokens consumed",
+      ["model", "direction"],
+    ),
+    nimHealthStatus: makeGauge(
+      "openclaw_nim_health_status",
+      "NIM endpoint health (0=unhealthy, 1=healthy)",
+      ["endpoint"],
+    ),
+
+    // NVIDIA GPU
+    gpuUtilization: makeGauge(
+      "openclaw_nvidia_gpu_utilization_percent",
+      "GPU utilization percentage",
+      ["gpu_index", "gpu_name"],
+    ),
+    gpuMemoryUsed: makeGauge(
+      "openclaw_nvidia_gpu_memory_used_bytes",
+      "GPU memory used in bytes",
+      ["gpu_index", "gpu_name"],
+    ),
+    gpuMemoryTotal: makeGauge(
+      "openclaw_nvidia_gpu_memory_total_bytes",
+      "GPU total memory in bytes",
+      ["gpu_index", "gpu_name"],
+    ),
+    gpuTemperature: makeGauge(
+      "openclaw_nvidia_gpu_temperature_celsius",
+      "GPU temperature in Celsius",
+      ["gpu_index", "gpu_name"],
+    ),
+    gpuPowerDraw: makeGauge(
+      "openclaw_nvidia_gpu_power_watts",
+      "GPU power draw in watts",
+      ["gpu_index", "gpu_name"],
+    ),
+    gpuPowerLimit: makeGauge(
+      "openclaw_nvidia_gpu_power_limit_watts",
+      "GPU power limit in watts",
+      ["gpu_index", "gpu_name"],
+    ),
   };
 }
 

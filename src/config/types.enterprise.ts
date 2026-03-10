@@ -32,6 +32,88 @@ export type EnterpriseConfig = {
 
   /** Skill supply chain security. */
   skills?: EnterpriseSkillsConfig;
+
+  /** NVIDIA NIM + GPU integration. */
+  nvidia?: EnterpriseNvidiaConfig;
+};
+
+// ── NVIDIA ────────────────────────────────────────────────────────────────
+
+export type NimModelCapability =
+  | "chat"
+  | "tool-calling"
+  | "reasoning"
+  | "multi-agent";
+
+export type NimModelConfig = {
+  id: string;
+  displayName?: string;
+  contextWindow?: number;
+  maxOutputTokens?: number;
+  capabilities?: NimModelCapability[];
+  /** Nemotron 3 Nano thinking budget mode. */
+  thinkingBudget?: "configurable" | "none";
+};
+
+export type EnterpriseNimConfig = {
+  enabled?: boolean;
+  /** NIM endpoint URL — NVIDIA hosted or self-hosted. */
+  endpoint?: string;
+  /** API key — use secret references (env://, vault://, etc.). */
+  apiKey?: string;
+  /** Default model ID for requests. */
+  defaultModel?: string;
+  /** Fallback model provider when NIM is unreachable. */
+  fallbackModel?: string;
+  /** Registered NIM models. */
+  models?: NimModelConfig[];
+  healthCheck?: {
+    enabled?: boolean;
+    intervalMs?: number;
+    endpoint?: string;
+  };
+  retry?: {
+    maxRetries?: number;
+    backoffMs?: number;
+    maxBackoffMs?: number;
+  };
+};
+
+export type NvidiaGpuMetricsConfig = {
+  enabled?: boolean;
+  pollIntervalMs?: number;
+  alertThresholds?: {
+    gpuUtilization?: number;
+    memoryUtilization?: number;
+    temperature?: number;
+    powerDraw?: number;
+  };
+};
+
+export type NvidiaGuardrailsConfig = {
+  thinkingBudgetLimit?: {
+    enabled?: boolean;
+    maxThinkingTokens?: number;
+    action?: "block" | "require-approval" | "warn";
+  };
+  costGuard?: {
+    enabled?: boolean;
+    limits?: Array<{
+      scope: "per-user" | "per-tenant";
+      period: "hourly" | "daily";
+      maxTokens: number;
+      action: "block" | "require-approval" | "warn";
+    }>;
+  };
+  modelRoutingPolicy?: {
+    enabled?: boolean;
+    roleModelMap?: Record<string, string[]>;
+  };
+};
+
+export type EnterpriseNvidiaConfig = {
+  nim?: EnterpriseNimConfig;
+  gpuMetrics?: NvidiaGpuMetricsConfig;
 };
 
 // ── Secrets ────────────────────────────────────────────────────────────────
@@ -165,6 +247,9 @@ export type EnterpriseGuardrailsConfig = {
     action: "allow" | "warn" | "block" | "require-approval";
     scope?: "tool-input" | "tool-output" | "message";
   }>;
+
+  /** NVIDIA-specific guardrail rules. */
+  nvidia?: NvidiaGuardrailsConfig;
 };
 
 // ── Skills ────────────────────────────────────────────────────────────────
