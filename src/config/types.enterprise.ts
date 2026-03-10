@@ -35,15 +35,17 @@ export type EnterpriseConfig = {
 
   /** NVIDIA NIM + GPU integration. */
   nvidia?: EnterpriseNvidiaConfig;
+
+  /** Palantir Foundry integration. */
+  palantir?: EnterprisePalantirConfig;
+
+  /** Authentication configuration (OIDC, MFA). */
+  auth?: EnterpriseAuthConfig;
 };
 
 // ── NVIDIA ────────────────────────────────────────────────────────────────
 
-export type NimModelCapability =
-  | "chat"
-  | "tool-calling"
-  | "reasoning"
-  | "multi-agent";
+export type NimModelCapability = "chat" | "tool-calling" | "reasoning" | "multi-agent";
 
 export type NimModelConfig = {
   id: string;
@@ -163,11 +165,11 @@ export type EnterpriseIAMConfig = {
 
   jwt?: {
     algorithm?: "RS256" | "HS256";
-    secret?: string;               // HS256 only
-    privateKeyPath?: string;       // RS256 — auto-generated if absent
-    publicKeyPath?: string;        // RS256
-    expiresIn?: string;            // e.g. "15m"
-    refreshExpiresIn?: string;     // e.g. "7d"
+    secret?: string; // HS256 only
+    privateKeyPath?: string; // RS256 — auto-generated if absent
+    publicKeyPath?: string; // RS256
+    expiresIn?: string; // e.g. "15m"
+    refreshExpiresIn?: string; // e.g. "7d"
     issuer?: string;
   };
 
@@ -187,9 +189,12 @@ export type EnterpriseAuditConfig = {
 
   storage?: {
     driver?: "sqlite" | "postgresql";
-    path?: string;         // sqlite
-    url?: string;          // postgresql — use env:// reference
+    path?: string; // sqlite
+    url?: string; // postgresql — use env:// reference
   };
+
+  /** External audit sinks (syslog, webhook, palantir-foundry). */
+  sinks?: AuditSinkConfig[];
 
   retention?: {
     /** Auto-purge events older than this many days. 0 = no purge. */
@@ -227,7 +232,7 @@ export type EnterpriseClusterConfig = {
   enabled?: boolean;
 
   redis?: {
-    url?: string;   // use env:// reference
+    url?: string; // use env:// reference
     keyPrefix?: string;
   };
 
@@ -251,6 +256,90 @@ export type EnterpriseGuardrailsConfig = {
   /** NVIDIA-specific guardrail rules. */
   nvidia?: NvidiaGuardrailsConfig;
 };
+
+// ── Palantir Foundry ──────────────────────────────────────────────────────
+
+export type PalantirFoundrySinkConfig = {
+  type: "palantir-foundry";
+  /** Foundry stack URL, e.g. https://myorg.palantirfoundry.com. Supports secret refs. */
+  stackUrl: string;
+  /** Developer Console app client ID. Supports secret refs. */
+  clientId: string;
+  /** Confidential OAuth client secret. Supports secret refs. */
+  clientSecret: string;
+  /** Ontology RID. Supports secret refs. */
+  ontologyRid: string;
+  /** Target streaming dataset RID. */
+  streamRid: string;
+  /** Events per write batch. Default: 50. */
+  batchSize?: number;
+  /** Max wait before flush in ms. Default: 5000. */
+  flushIntervalMs?: number;
+  /** Retries on transient failure. Default: 3. */
+  retryAttempts?: number;
+  /** Initial backoff between retries in ms. Default: 1000. */
+  retryBackoffMs?: number;
+  /** Max events in in-memory buffer. Default: 10000. */
+  maxBufferSize?: number;
+};
+
+export type EnterprisePalantirConfig = {
+  enabled?: boolean;
+};
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+export type OidcProviderPreset = "palantir" | "okta" | "azure-ad" | "google" | "auth0" | "keycloak";
+
+export type EnterpriseOidcConfig = {
+  enabled?: boolean;
+  /** OIDC provider preset — auto-constructs discoveryUrl. */
+  provider?: OidcProviderPreset;
+  /** Stack URL for provider preset. Supports secret refs. */
+  stackUrl?: string;
+  /** Azure AD tenant ID (required for azure-ad preset). */
+  tenantId?: string;
+  /** Keycloak realm (required for keycloak preset). */
+  realm?: string;
+  /** Explicit discovery URL. Takes precedence over provider preset. */
+  discoveryUrl?: string;
+  issuer?: string;
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  scopes?: string[];
+  groupsClaim?: string;
+  roleMap?: Record<string, string>;
+  defaultRole?: string;
+};
+
+export type EnterpriseAuthConfig = {
+  oidc?: EnterpriseOidcConfig;
+  mfa?: {
+    enabled?: boolean;
+    requireForRoles?: string[];
+  };
+};
+
+// ── Audit sinks ──────────────────────────────────────────────────────────
+
+export type AuditSinkConfig =
+  | {
+      type: "syslog";
+      host: string;
+      port?: number;
+      protocol?: "udp" | "tcp";
+      facility?: number;
+      appName?: string;
+    }
+  | {
+      type: "webhook";
+      url: string;
+      headers?: Record<string, string>;
+      batchSize?: number;
+      flushIntervalMs?: number;
+    }
+  | PalantirFoundrySinkConfig;
 
 // ── Skills ────────────────────────────────────────────────────────────────
 

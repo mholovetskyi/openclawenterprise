@@ -1,0 +1,84 @@
+# ── Palantir Foundry Compute Module Dockerfile ─────────────────────────────────
+#
+# Builds an OpenClaw Enterprise image that meets all Palantir Foundry
+# Compute Module container requirements:
+#   - linux/amd64 platform
+#   - Non-root numeric user (UID 5000)
+#   - /bin/sh available
+#   - Ports between 1024–65535 (uses 3284)
+#   - No :latest tag (use explicit version tags)
+#
+# Deployment steps:
+#   1. Build:   docker build --platform linux/amd64 -f Dockerfile.foundry -t openclaw-enterprise:v1.0.0 .
+#   2. Tag:     docker tag openclaw-enterprise:v1.0.0 <foundry-artifact-registry>/openclaw-enterprise:v1.0.0
+#   3. Push:    docker push <foundry-artifact-registry>/openclaw-enterprise:v1.0.0
+#   4. In Foundry: Create Compute Module → select image → configure sources
+#   5. Start Compute Module → verify via /healthz
+#
+# Environment variables (configure via Compute Module source config):
+#   PALANTIR_STACK_URL       – Foundry stack URL
+#   PALANTIR_CLIENT_ID       – OAuth client ID (Developer Console app)
+#   PALANTIR_CLIENT_SECRET   – OAuth client secret
+#   OPENCLAW_MASTER_KEY      – Encryption master key (base64, 32 bytes)
+#   ANTHROPIC_API_KEY        – Anthropic LLM provider key
+#   OPENAI_API_KEY           – OpenAI LLM provider key (alternative)
+#
+# Validation:
+#   docker build --platform linux/amd64 -f Dockerfile.foundry -t test-foundry .
+#   docker run --rm test-foundry id               # uid=5000
+#   docker run --rm test-foundry /bin/sh -c "echo ok"  # /bin/sh exists
+#   docker run --rm -d -p 3284:3284 test-foundry && sleep 5 && curl http://localhost:3284/healthz
+# ───────────────────────────────────────────────────────────────────────────────
+
+# ── Stage 1: Builder ──────────────────────────────────────────────────────────
+FROM --platform=linux/amd64 node:22-slim AS builder
+
+RUN corepack enable
+WORKDIR /app
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY patches ./patches
+COPY scripts ./scripts
+
+RUN pnpm install --frozen-lockfile --prod=false
+
+COPY . .
+RUN pnpm build
+
+# Prune dev dependencies for production
+RUN pnpm install --frozen-lockfile --prod
+
+# ── Stage 2: Production ──────────────────────────────────────────────────────
+FROM --platform=linux/amd64 node:22-slim
+
+LABEL org.opencontainers.image.title="openclaw-enterprise"
+LABEL org.opencontainers.image.description="OpenClaw Enterprise - Foundry Compute Module"
+LABEL org.opencontainers.image.source="https://github.com/mholovetskyi/openclawenterprise"
+
+# Foundry requires non-root numeric user (not UID 0)
+RUN useradd --uid 5000 --create-home --shell /bin/sh openclaw
+
+WORKDIR /app
+
+# Copy built artifacts and production node_modules
+COPY --from=builder --chown=5000:5000 /app/dist ./dist
+COPY --from=builder --chown=5000:5000 /app/node_modules ./node_modules
+COPY --from=builder --chown=5000:5000 /app/package.json ./package.json
+COPY --from=builder --chown=5000:5000 /app/openclaw.mjs ./openclaw.mjs
+
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV NODE_ENV=production
+
+# Foundry: ports must be between 1024–65535 (excluding 8945, 8946)
+EXPOSE 3284
+
+USER 5000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:3284/healthz || exit 1
+
+ENTRYPOINT ["node", "openclaw.mjs"]
+CMD ["gateway", "run", "--bind", "0.0.0.0", "--port", "3284"]
