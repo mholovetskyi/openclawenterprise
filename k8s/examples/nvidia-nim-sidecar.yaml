@@ -1,0 +1,89 @@
+# OpenClaw Enterprise + NVIDIA NIM Sidecar
+# 1-GPU deployment with Nemotron Nano 8B inference sidecar.
+#
+# Prerequisites:
+#   1. Create NGC pull secret:
+#      kubectl create secret docker-registry ngc-secret \
+#        --docker-server=nvcr.io \
+#        --docker-username='$oauthtoken' \
+#        --docker-password='<NGC_API_KEY>'
+#
+#   2. Ensure GPU nodes have NVIDIA device plugin installed:
+#      kubectl apply -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.17.0/deployments/static/nvidia-device-plugin.yml
+#
+#   3. Deploy:
+#      helm install openclaw ./k8s/helm/openclaw -f k8s/examples/nvidia-nim-sidecar.yaml
+#
+# Verification:
+#   kubectl exec -it deploy/openclaw -c nim -- curl -s localhost:8000/v1/health/ready
+#   kubectl exec -it deploy/openclaw -c openclaw -- curl -s localhost:8000/v1/models
+
+replicaCount: 1
+
+# ── Enterprise features ────────────────────────────────────────────────────────
+enterprise:
+  enabled: true
+
+  secrets:
+    backend: env
+
+  iam:
+    enabled: true
+    provider: local
+
+  audit:
+    enabled: true
+    storage: sqlite
+    sqlitePath: /data/audit.db
+
+  monitoring:
+    enabled: true
+    prometheus: true
+
+# ── NVIDIA NIM Sidecar ────────────────────────────────────────────────────────
+nvidia:
+  nim:
+    enabled: true
+    image:
+      repository: nvcr.io/nim/nvidia/llama-3.1-nemotron-nano-8b-v1
+      tag: "1.8.6"
+    model: "nemotron-nano-8b"
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+      requests:
+        nvidia.com/gpu: 1
+    env:
+      - name: NIM_SERVED_MODEL_NAME
+        value: "nemotron-nano-8b"
+      - name: NIM_GUIDED_DECODING_BACKEND
+        value: "fast_outlines"
+    port: 8000
+    healthCheck:
+      path: /v1/health/ready
+      initialDelaySeconds: 120
+      periodSeconds: 30
+      failureThreshold: 30
+    modelCache:
+      enabled: true
+      size: 50Gi
+    imagePullSecrets:
+      - name: ngc-secret
+    runtimeClassName: nvidia
+    nodeSelector:
+      nvidia.com/gpu.present: "true"
+    tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+
+# ── Monitoring ────────────────────────────────────────────────────────────────
+monitoring:
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+
+# ── Persistence ───────────────────────────────────────────────────────────────
+persistence:
+  enabled: true
+  size: 10Gi

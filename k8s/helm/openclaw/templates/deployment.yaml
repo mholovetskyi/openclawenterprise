@@ -23,9 +23,14 @@ spec:
       labels:
         {{- include "openclaw.selectorLabels" . | nindent 8 }}
     spec:
-      {{- with .Values.image.pullSecrets }}
+      {{- if or .Values.image.pullSecrets .Values.nvidia.nim.imagePullSecrets }}
       imagePullSecrets:
+        {{- with .Values.image.pullSecrets }}
         {{- toYaml . | nindent 8 }}
+        {{- end }}
+        {{- with .Values.nvidia.nim.imagePullSecrets }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- end }}
       serviceAccountName: {{ include "openclaw.serviceAccountName" . }}
       securityContext:
@@ -99,6 +104,57 @@ spec:
         {{- with .Values.extraContainers }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
+        {{- if .Values.nvidia.nim.enabled }}
+        - name: nim
+          image: "{{ .Values.nvidia.nim.image.repository }}:{{ .Values.nvidia.nim.image.tag }}"
+          imagePullPolicy: {{ .Values.nvidia.nim.image.pullPolicy | default "IfNotPresent" }}
+          ports:
+            - name: nim-http
+              containerPort: {{ .Values.nvidia.nim.port }}
+              protocol: TCP
+          env:
+            {{- with .Values.nvidia.nim.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.nvidia.nim.resources | nindent 12 }}
+          {{- if .Values.nvidia.nim.modelCache.enabled }}
+          volumeMounts:
+            - name: nim-cache
+              mountPath: /opt/nim/.cache
+          {{- end }}
+          {{- with .Values.nvidia.nim.volumeMounts }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          startupProbe:
+            httpGet:
+              path: {{ .Values.nvidia.nim.healthCheck.path }}
+              port: {{ .Values.nvidia.nim.port }}
+            initialDelaySeconds: {{ .Values.nvidia.nim.healthCheck.initialDelaySeconds }}
+            periodSeconds: {{ .Values.nvidia.nim.healthCheck.periodSeconds }}
+            failureThreshold: {{ .Values.nvidia.nim.healthCheck.failureThreshold | default 30 }}
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.nvidia.nim.healthCheck.path }}
+              port: {{ .Values.nvidia.nim.port }}
+            periodSeconds: {{ .Values.nvidia.nim.healthCheck.periodSeconds }}
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.nvidia.nim.healthCheck.path }}
+              port: {{ .Values.nvidia.nim.port }}
+            periodSeconds: 10
+            failureThreshold: 3
+          {{- with .Values.nvidia.nim.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        {{- end }}
+      {{- if .Values.nvidia.nim.enabled }}
+      {{- with .Values.nvidia.nim.runtimeClassName }}
+      runtimeClassName: {{ . }}
+      {{- end }}
+      {{- end }}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -110,6 +166,11 @@ spec:
         - name: config
           configMap:
             name: {{ include "openclaw.fullname" . }}-config
+        {{- if and .Values.nvidia.nim.enabled .Values.nvidia.nim.modelCache.enabled }}
+        - name: nim-cache
+          persistentVolumeClaim:
+            claimName: {{ include "openclaw.fullname" . }}-nim-cache
+        {{- end }}
         {{- with .Values.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}

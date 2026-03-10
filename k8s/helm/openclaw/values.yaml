@@ -134,6 +134,43 @@ enterprise:
     enabled: false
     backend: memory  # memory | redis
 
+# ── NVIDIA NIM Sidecar ────────────────────────────────────────────────────────
+nvidia:
+  nim:
+    enabled: false
+    image:
+      repository: nvcr.io/nim/nvidia/llama-3.1-nemotron-nano-8b-v1
+      tag: "1.8.6"
+      pullPolicy: IfNotPresent
+    model: "nemotron-nano-8b"
+    resources:
+      limits:
+        nvidia.com/gpu: 1
+      requests:
+        nvidia.com/gpu: 1
+    env:
+      - name: NIM_SERVED_MODEL_NAME
+        value: "nemotron-nano-8b"
+      - name: NIM_GUIDED_DECODING_BACKEND
+        value: "fast_outlines"
+    port: 8000
+    healthCheck:
+      path: /v1/health/ready
+      initialDelaySeconds: 120
+      periodSeconds: 30
+      failureThreshold: 30
+    modelCache:
+      enabled: false
+      size: 50Gi
+      storageClass: ""
+    volumeMounts: []
+    imagePullSecrets: []
+    # - name: ngc-secret
+    tolerations: []
+    nodeSelector: {}
+    runtimeClassName: ""
+    securityContext: {}
+
 # ── PostgreSQL (for multi-node / enterprise) ──────────────────────────────────
 postgresql:
   enabled: false

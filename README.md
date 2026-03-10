@@ -44,6 +44,7 @@
   <a href="#distributed-cluster">Cluster</a> ·
   <a href="#kubernetes">Kubernetes</a> ·
   <a href="#connecting-to-enterprise-messaging">Channels</a> ·
+  <a href="#nvidia-ai-infrastructure">NVIDIA</a> ·
   <a href="#test-suite--quality-assurance">Tests</a> ·
   <a href="docs/enterprise/">Docs</a>
 </p>
@@ -196,6 +197,19 @@ OpenClaw's config type had no `enterprise` key — enterprise config was silentl
                           │  KUBERNETES (Helm chart)                           │  │  Zero-boilerplate    │
                           │  HPA · PDB · NetworkPolicy · ServiceMonitor        │  │  propagation         │
                           │  Rolling updates · Non-root · ReadOnlyRootFS       │  └──────────────────────┘
+                          └────────────────────────────────────────────────────┘
+
+                          ┌────────────────────────────────────────────────────┐
+                          │  NVIDIA AI INFRASTRUCTURE                          │
+                          │                                                    │
+                          │  ┌──────────────┐  ┌─────────────────────────────┐ │  ┌──────────────────────┐
+                          │  │ NIM Provider  │  │  NIM Container (sidecar)   │ │  │  GPU MONITORING      │
+                          │  │              │  │  Nemotron 3 Nano/Super     │ │  │                      │
+                          │  │ Hosted NIM   │  │  localhost:8000/v1         │ │  │  nvidia-smi polling  │
+                          │  │ or sidecar   │  │  GPU-accelerated inference │ │  │  Prometheus gauges   │
+                          │  └──────────────┘  └─────────────────────────────┘ │  │  Threshold alerts    │
+                          │                                                    │  └──────────────────────┘
+                          │  Guardrails: thinking budget · cost guard · RBAC   │
                           └────────────────────────────────────────────────────┘
 ```
 
@@ -1374,6 +1388,38 @@ gateway:
 
 ---
 
+## NVIDIA AI infrastructure
+
+OpenClaw Enterprise integrates natively with NVIDIA's agentic AI stack. Run Nemotron 3 models via NIM for GPU-accelerated inference, monitor GPU health with Prometheus, enforce thinking budgets and model routing policies, and deploy NIM as a Kubernetes sidecar.
+
+```yaml
+enterprise:
+  nvidia:
+    nim:
+      enabled: true
+      endpoint: "https://integrate.api.nvidia.com/v1"
+      apiKey: env://NIM_API_KEY
+      defaultModel: "nvidia/nemotron-3-nano-30b-a3b"
+    gpuMetrics:
+      enabled: true
+      pollIntervalMs: 15000
+  guardrails:
+    nvidia:
+      thinkingBudgetLimit:
+        enabled: true
+        maxThinkingTokens: 4096
+      modelRoutingPolicy:
+        enabled: true
+        roleModelMap:
+          viewer: ["nvidia/llama-3.1-nemotron-nano-8b-v1"]
+          operator: ["nvidia/llama-3.1-nemotron-nano-8b-v1", "nvidia/nemotron-3-nano-30b-a3b"]
+          admin: ["*"]
+```
+
+See [docs/enterprise/nvidia.md](docs/enterprise/nvidia.md) for full configuration reference, Kubernetes sidecar setup, and troubleshooting.
+
+---
+
 ## Feature matrix
 
 | | Community | Enterprise |
@@ -1444,6 +1490,14 @@ gateway:
 | SBOM attestation (syft SPDX-JSON) | — | ✅ |
 | Vulnerability scanning (Trivy → GitHub Security) | — | ✅ |
 | npm one-command install | ✅ | ✅ |
+| **NVIDIA AI Infrastructure** | | |
+| NVIDIA NIM model provider | — | ✅ |
+| Nemotron 3 model family support | — | ✅ |
+| NVIDIA GPU monitoring (Prometheus) | — | ✅ |
+| NIM Kubernetes sidecar | — | ✅ |
+| Thinking budget guardrails | — | ✅ |
+| Model routing policy (RBAC) | — | ✅ |
+| NIM cost guard | — | ✅ |
 
 ---
 
