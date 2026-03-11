@@ -101,7 +101,7 @@ OpenClaw's gateway binds to all interfaces (`0.0.0.0`) in LAN mode — the right
 
 OpenClaw stores API keys, OAuth tokens, and webhook secrets in `~/.openclaw/credentials` — a plaintext file, which is the right trade-off for a personal tool where simplicity beats vault complexity. On a shared server or a machine that generates bug reports, plaintext secrets are a liability.
 
-**Enterprise adds:** AES-256-GCM encrypted file backend with the master key in the OS keychain. HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault are all supported. Existing credentials auto-migrate. (`src/enterprise/secrets/`)
+**Enterprise adds:** AES-256-GCM encrypted file backend with the master key in the OS keychain. HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, and OCI Vault are all supported. Existing credentials auto-migrate. (`src/enterprise/secrets/`)
 
 ### 3. Not every client should have full operator access
 
@@ -229,7 +229,7 @@ The gateway is the heart of OpenClaw. In the original, it would silently bind to
 
 ```yaml
 gateway:
-  bind: loopback        # Default — only 127.0.0.1:port is reachable
+  bind: loopback # Default — only 127.0.0.1:port is reachable
   # bind: lan           # ⚠ ALL interfaces (0.0.0.0) — explicit warning emitted
   # bind: tailnet       # Tailscale IP only — recommended for remote access
   # bind: custom
@@ -238,8 +238,9 @@ gateway:
   port: 3284
 
   auth:
-    mode: jwt           # jwt | token | password | none
-                        # ⚠ 'none' on non-loopback emits security warning
+    mode:
+      jwt # jwt | token | password | none
+      # ⚠ 'none' on non-loopback emits security warning
 ```
 
 **TLS.** TLS termination is expected at the ingress layer (nginx, Caddy, ALB). The Helm chart configures cert-manager + Let's Encrypt by default. WebSocket connections use `wss://` automatically when TLS is active.
@@ -268,6 +269,7 @@ anthropicApiKey: azure-kv://anthropic-api-key
 ### Encrypted file backend (default)
 
 For local and single-server deployments. Uses **AES-256-GCM** with a 32-byte random key stored in:
+
 - **macOS**: Keychain (`security find-generic-password -s openclaw-master-key`)
 - **Linux**: `~/.openclaw/.master-key` (mode `0600`)
 - **Windows**: `~/.openclaw/.master-key` (DPAPI integration roadmap)
@@ -277,7 +279,7 @@ For local and single-server deployments. Uses **AES-256-GCM** with a 32-byte ran
 enterprise:
   secrets:
     backend: file
-    filePath: ~/.openclaw/secrets.enc   # optional override
+    filePath: ~/.openclaw/secrets.enc # optional override
 ```
 
 The encryption envelope format: `version(1B) | iv(12B) | auth-tag(16B) | ciphertext(nB)`. The auth tag detects tampering before decryption is attempted.
@@ -294,22 +296,24 @@ enterprise:
     backend: vault
     vault:
       address: https://vault.example.com
-      authMethod: kubernetes    # token | approle | kubernetes
+      authMethod: kubernetes # token | approle | kubernetes
       role: openclaw
-      mount: secret             # KV v2 mount path
-      prefix: openclaw/         # key namespace prefix
-      namespace: admin          # Vault Enterprise namespace (optional)
+      mount: secret # KV v2 mount path
+      prefix: openclaw/ # key namespace prefix
+      namespace: admin # Vault Enterprise namespace (optional)
 ```
 
 **AppRole** (for CI/CD pipelines):
+
 ```yaml
 vault:
   appRole:
     roleId: <role-id>
-    secretId: env://VAULT_SECRET_ID   # secret never in config file
+    secretId: env://VAULT_SECRET_ID # secret never in config file
 ```
 
 **Kubernetes** (for in-cluster pods — zero credential management):
+
 ```yaml
 vault:
   authMethod: kubernetes
@@ -393,12 +397,12 @@ AgentIdentity ──────────────────────
 
 ### Built-in roles
 
-| Role | Permissions |
-|------|-------------|
-| `super-admin` | `*` — everything |
-| `admin` | All resources except user/role management |
-| `operator` | Agents, skills, channels, sessions — no config write |
-| `viewer` | Read-only on all resources |
+| Role            | Permissions                                           |
+| --------------- | ----------------------------------------------------- |
+| `super-admin`   | `*` — everything                                      |
+| `admin`         | All resources except user/role management             |
+| `operator`      | Agents, skills, channels, sessions — no config write  |
+| `viewer`        | Read-only on all resources                            |
 | `agent-service` | Scoped to agent execution only — for service accounts |
 
 Custom roles can be defined with any combination of permissions. Roles can inherit from other roles. Cycles are detected and rejected.
@@ -412,13 +416,14 @@ enterprise:
   iam:
     enabled: true
     jwt:
-      algorithm: RS256         # RS256 (default) or HS256
-      expiresIn: 15m           # access token TTL
-      refreshExpiresIn: 7d     # refresh token TTL
-      issuer: openclaw         # JWT iss claim
+      algorithm: RS256 # RS256 (default) or HS256
+      expiresIn: 15m # access token TTL
+      refreshExpiresIn: 7d # refresh token TTL
+      issuer: openclaw # JWT iss claim
 ```
 
 Token lifecycle:
+
 - **Access tokens**: 15 minutes, signed RS256, contain `sub` (user/agent ID), `roles`, `scopes`
 - **Refresh tokens**: 7 days, single-use, rotated on each refresh
 - **API keys**: `oc_<base64url-random>` format, SHA-256 hash stored (never the raw key), shown once at generation
@@ -437,23 +442,23 @@ enterprise:
     oidc:
       discoveryUrl: https://your-org.okta.com/.well-known/openid-configuration
       clientId: 0oa...
-      clientSecret: env://OIDC_CLIENT_SECRET  # never inline
+      clientSecret: env://OIDC_CLIENT_SECRET # never inline
       redirectUri: https://openclaw.example.com/auth/oidc/callback
       scopes: [openid, email, profile, groups]
-      groupsClaim: groups          # JWT claim that contains IdP groups
+      groupsClaim: groups # JWT claim that contains IdP groups
       roleMap:
-        Engineering: operator      # IdP group name → OpenClaw RBAC role ID
+        Engineering: operator # IdP group name → OpenClaw RBAC role ID
         Admins: admin
         SRE: admin
-      defaultRole: viewer          # role for users not matched by roleMap
+      defaultRole: viewer # role for users not matched by roleMap
 ```
 
 **Endpoints registered automatically:**
 
-| Endpoint | Description |
-|----------|-------------|
-| `GET /auth/oidc/login` | Redirect to IdP authorization endpoint with PKCE challenge |
-| `GET /auth/oidc/callback` | Exchange code, verify ID token, issue OpenClaw JWTs |
+| Endpoint                  | Description                                                |
+| ------------------------- | ---------------------------------------------------------- |
+| `GET /auth/oidc/login`    | Redirect to IdP authorization endpoint with PKCE challenge |
+| `GET /auth/oidc/callback` | Exchange code, verify ID token, issue OpenClaw JWTs        |
 
 **How it works:**
 
@@ -478,18 +483,18 @@ enterprise:
   auth:
     mfa:
       enabled: true
-      issuer: "My Company OpenClaw"       # label shown in authenticator apps
-      requireForRoles: [admin, super-admin]  # enforce MFA for these roles
+      issuer: "My Company OpenClaw" # label shown in authenticator apps
+      requireForRoles: [admin, super-admin] # enforce MFA for these roles
 ```
 
 **Gateway RPC methods:**
 
-| Method | Description |
-|--------|-------------|
-| `enterprise.mfa.enroll` | Generate TOTP secret + `otpauth://` URI for QR code display |
-| `enterprise.mfa.confirm-enroll` | Confirm enrollment with first valid code |
-| `enterprise.mfa.verify` | Verify a code (login step-up) |
-| `enterprise.mfa.disable` | Revoke MFA for a user (admin action) |
+| Method                          | Description                                                 |
+| ------------------------------- | ----------------------------------------------------------- |
+| `enterprise.mfa.enroll`         | Generate TOTP secret + `otpauth://` URI for QR code display |
+| `enterprise.mfa.confirm-enroll` | Confirm enrollment with first valid code                    |
+| `enterprise.mfa.verify`         | Verify a code (login step-up)                               |
+| `enterprise.mfa.disable`        | Revoke MFA for a user (admin action)                        |
 
 (`src/enterprise/auth/mfa.ts`)
 
@@ -505,9 +510,9 @@ Refresh tokens are persisted in SQLite and can be individually or bulk-revoked:
 
 Refresh tokens are stored as **SHA-256 hashes** — the raw token is never written to disk. On each use the token is rotated (single-use): old token revoked, new token issued.
 
-| Method | Description |
-|--------|-------------|
-| `enterprise.sessions.list` | List active sessions for a user |
+| Method                       | Description                      |
+| ---------------------------- | -------------------------------- |
+| `enterprise.sessions.list`   | List active sessions for a user  |
 | `enterprise.sessions.revoke` | Revoke a specific session by JTI |
 
 (`src/enterprise/auth/token-store.ts`)
@@ -521,9 +526,9 @@ Per-user CIDR allowlists restrict which IP addresses may authenticate as a given
 ```yaml
 # Set via admin API or enterprise.users RPC on the user record:
 allowedCidrs:
-  - "10.0.0.0/8"       # corporate VPN range
-  - "192.168.1.0/24"   # office subnet
-  - "203.0.113.5/32"   # specific IP
+  - "10.0.0.0/8" # corporate VPN range
+  - "192.168.1.0/24" # office subnet
+  - "203.0.113.5/32" # specific IP
 ```
 
 Supports full IPv4 CIDR matching and IPv6 CIDR matching (via BigInt expansion for the full 128-bit address space). Empty `allowedCidrs` means no restriction — the feature is opt-in per user.
@@ -534,7 +539,7 @@ Supports full IPv4 CIDR matching and IPv6 CIDR matching (via BigInt expansion fo
 
 ## Audit logging & compliance
 
-Without an audit log, you cannot answer: *who ran this command, when, from where, and what did it do?* SOC 2, HIPAA §164.312(b), and PCI DSS all require this. The original OpenClaw had no audit capability whatsoever.
+Without an audit log, you cannot answer: _who ran this command, when, from where, and what did it do?_ SOC 2, HIPAA §164.312(b), and PCI DSS all require this. The original OpenClaw had no audit capability whatsoever.
 
 ### How the hash chain works
 
@@ -556,23 +561,23 @@ If event #2 is modified or deleted, `event3.prevHash` no longer matches `sha256(
 
 Every significant event is automatically captured:
 
-| Event | Trigger |
-|-------|---------|
-| `auth.login` | Successful WebSocket gateway connection |
-| `auth.failed` | Authentication failure (wrong token, expired, rate-limited) |
-| `auth.logout` | Session terminated |
-| `agent.run.start` | Inbound message dispatched to agent |
-| `agent.run.complete` | Agent task finished successfully |
-| `agent.run.error` | Agent task failed with error |
-| `security.injection_detected` | Prompt injection pattern found in message |
-| `guardrail.block` | Tool call blocked by guardrail engine |
-| `guardrail.warn` | Tool call flagged but allowed |
-| `skill.install` | Skill installed |
-| `skill.invoke` | Skill invoked by agent |
-| `skill.blocked` | Skill rejected by SAST or code signing |
-| `config.read` / `config.write` | Configuration accessed or modified |
-| `user.create` / `user.delete` | IAM user lifecycle |
-| `role.assign` | Role assigned to user |
+| Event                          | Trigger                                                     |
+| ------------------------------ | ----------------------------------------------------------- |
+| `auth.login`                   | Successful WebSocket gateway connection                     |
+| `auth.failed`                  | Authentication failure (wrong token, expired, rate-limited) |
+| `auth.logout`                  | Session terminated                                          |
+| `agent.run.start`              | Inbound message dispatched to agent                         |
+| `agent.run.complete`           | Agent task finished successfully                            |
+| `agent.run.error`              | Agent task failed with error                                |
+| `security.injection_detected`  | Prompt injection pattern found in message                   |
+| `guardrail.block`              | Tool call blocked by guardrail engine                       |
+| `guardrail.warn`               | Tool call flagged but allowed                               |
+| `skill.install`                | Skill installed                                             |
+| `skill.invoke`                 | Skill invoked by agent                                      |
+| `skill.blocked`                | Skill rejected by SAST or code signing                      |
+| `config.read` / `config.write` | Configuration accessed or modified                          |
+| `user.create` / `user.delete`  | IAM user lifecycle                                          |
+| `role.assign`                  | Role assigned to user                                       |
 
 ### Storage
 
@@ -581,10 +586,10 @@ enterprise:
   audit:
     enabled: true
     storage:
-      driver: sqlite             # default — no external dependencies
+      driver: sqlite # default — no external dependencies
       path: ~/.openclaw/audit.db # WAL mode, indexed by timestamp + actor
     retention:
-      days: 365                  # auto-purge; 0 = keep forever
+      days: 365 # auto-purge; 0 = keep forever
 ```
 
 SQLite in WAL mode provides concurrent read access and crash-safe writes. The audit DB is independent of the main config and can be backed up independently.
@@ -615,7 +620,7 @@ enterprise:
   audit:
     storage:
       driver: postgres
-      connectionString: env://AUDIT_POSTGRES_URL  # never inline credentials
+      connectionString: env://AUDIT_POSTGRES_URL # never inline credentials
       maxConnections: 10
       idleTimeoutMs: 30000
       connectionTimeoutMs: 5000
@@ -640,10 +645,10 @@ enterprise:
   audit:
     sinks:
       - type: syslog
-        protocol: udp           # udp (default) or tcp
+        protocol: udp # udp (default) or tcp
         host: siem.example.com
         port: 514
-        facility: 16            # local0
+        facility: 16 # local0
         appName: openclaw
 ```
 
@@ -657,8 +662,8 @@ enterprise:
     sinks:
       - type: webhook
         url: https://logs.example.com/ingest
-        batchSize: 100          # events per POST
-        flushIntervalMs: 5000   # max wait before flush
+        batchSize: 100 # events per POST
+        flushIntervalMs: 5000 # max wait before flush
         headers:
           Authorization: env://LOG_INGEST_TOKEN
 ```
@@ -686,6 +691,7 @@ POST enterprise.gdpr.erase { userId }    # requires super-admin role
 ```
 
 Erasure steps:
+
 1. Revokes all active refresh tokens (sessions terminated immediately)
 2. Pseudonymizes all audit log entries referencing the user — actor ID and email replaced with `[erased-{sha256}]`. **The audit chain remains intact and verifiable** — event content is updated, hash chain is not broken
 3. Deletes the user profile from the RBAC store
@@ -696,15 +702,15 @@ Erasure steps:
 
 ### Compliance mapping
 
-| Standard | Requirement | How it's met |
-|----------|-------------|--------------|
-| SOC 2 CC6 | Logical access control | Auth events, role assignments, failed logins |
-| SOC 2 CC7 | System operations | Agent runs, tool executions, config changes |
-| HIPAA §164.312(b) | Audit controls | Full event log with actor, resource, outcome, IP |
-| GDPR Art. 17 | Right to erasure | `gdprEraseUser` — pseudonymize + delete |
-| GDPR Art. 20 | Right to portability | `gdprExportUser` — full JSON export |
-| GDPR Art. 30 | Records of processing | Actor + resource on every event; GDPR retention config |
-| PCI DSS 10 | Audit log review | Hash chain + retention policy + centralized storage |
+| Standard          | Requirement            | How it's met                                           |
+| ----------------- | ---------------------- | ------------------------------------------------------ |
+| SOC 2 CC6         | Logical access control | Auth events, role assignments, failed logins           |
+| SOC 2 CC7         | System operations      | Agent runs, tool executions, config changes            |
+| HIPAA §164.312(b) | Audit controls         | Full event log with actor, resource, outcome, IP       |
+| GDPR Art. 17      | Right to erasure       | `gdprEraseUser` — pseudonymize + delete                |
+| GDPR Art. 20      | Right to portability   | `gdprExportUser` — full JSON export                    |
+| GDPR Art. 30      | Records of processing  | Actor + resource on every event; GDPR retention config |
+| PCI DSS 10        | Audit log review       | Hash chain + retention policy + centralized storage    |
 
 ---
 
@@ -754,13 +760,13 @@ If injection is detected, the request is rejected with an audit event logged. Th
 
 Runtime guardrails evaluate **every tool call** before execution. They run inside `runBeforeToolCallHook()`, which is called by the agent runtime before any tool — bash, browser, file system, or skill — executes.
 
-| Rule | Pattern | Action |
-|------|---------|--------|
-| Credential harvest | `cat ~/.ssh/id_rsa`, reading `.aws/credentials`, `.npmrc` | `require-approval` |
-| Reverse shell | `bash -i >& /dev/tcp/...`, `nc -e /bin/bash` | `block` |
-| Mass delete | `rm -rf /`, `DROP TABLE`, `DELETE FROM ... WHERE 1=1` | `require-approval` |
-| SSN in output | `\b\d{3}-\d{2}-\d{4}\b` | `warn` + audit event |
-| Credit card in output | Luhn-valid 13–16 digit sequences | `warn` + audit event |
+| Rule                  | Pattern                                                   | Action               |
+| --------------------- | --------------------------------------------------------- | -------------------- |
+| Credential harvest    | `cat ~/.ssh/id_rsa`, reading `.aws/credentials`, `.npmrc` | `require-approval`   |
+| Reverse shell         | `bash -i >& /dev/tcp/...`, `nc -e /bin/bash`              | `block`              |
+| Mass delete           | `rm -rf /`, `DROP TABLE`, `DELETE FROM ... WHERE 1=1`     | `require-approval`   |
+| SSN in output         | `\b\d{3}-\d{2}-\d{4}\b`                                   | `warn` + audit event |
+| Credit card in output | Luhn-valid 13–16 digit sequences                          | `warn` + audit event |
 
 **Pluggable rules** — add your own:
 
@@ -801,33 +807,34 @@ enterprise:
   skills:
     requireSigning: true
     trustedKeys:
-      - "base64-ed25519-pubkey=="   # your organization's key
+      - "base64-ed25519-pubkey==" # your organization's key
     requireSast: true
-    maxRiskScore: 40               # 0=safest, 100=reject-all above
+    maxRiskScore: 40 # 0=safest, 100=reject-all above
 ```
 
 ### Enterprise SAST (14 rules)
 
 Before any skill is installed, a static analysis pass checks for:
 
-| Rule | CWE | OWASP |
-|------|-----|-------|
-| Credential harvest | CWE-522 | A02 Cryptographic Failures |
-| Reverse shell | CWE-78 | A03 Injection |
-| Persistence (crontab, launchd, systemd) | CWE-912 | A08 Software Integrity |
-| Code injection (eval, Function()) | CWE-94 | A03 Injection |
-| Prototype pollution | CWE-1321 | A03 Injection |
-| Dangerous deserialization | CWE-502 | A08 Software Integrity |
-| Path traversal | CWE-22 | A01 Access Control |
-| Data exfiltration (curl to external IPs) | CWE-200 | A02 Cryptographic Failures |
-| Supply chain (dynamic require, obfuscation) | CWE-506 | A08 Software Integrity |
-| XSS in skill output | CWE-79 | A03 Injection |
-| Unvalidated redirect | CWE-601 | A01 Access Control |
-| Hardcoded secrets | CWE-798 | A07 Auth Failures |
-| Insecure randomness | CWE-338 | A02 Cryptographic Failures |
-| SSRF patterns | CWE-918 | A10 SSRF |
+| Rule                                        | CWE      | OWASP                      |
+| ------------------------------------------- | -------- | -------------------------- |
+| Credential harvest                          | CWE-522  | A02 Cryptographic Failures |
+| Reverse shell                               | CWE-78   | A03 Injection              |
+| Persistence (crontab, launchd, systemd)     | CWE-912  | A08 Software Integrity     |
+| Code injection (eval, Function())           | CWE-94   | A03 Injection              |
+| Prototype pollution                         | CWE-1321 | A03 Injection              |
+| Dangerous deserialization                   | CWE-502  | A08 Software Integrity     |
+| Path traversal                              | CWE-22   | A01 Access Control         |
+| Data exfiltration (curl to external IPs)    | CWE-200  | A02 Cryptographic Failures |
+| Supply chain (dynamic require, obfuscation) | CWE-506  | A08 Software Integrity     |
+| XSS in skill output                         | CWE-79   | A03 Injection              |
+| Unvalidated redirect                        | CWE-601  | A01 Access Control         |
+| Hardcoded secrets                           | CWE-798  | A07 Auth Failures          |
+| Insecure randomness                         | CWE-338  | A02 Cryptographic Failures |
+| SSRF patterns                               | CWE-918  | A10 SSRF                   |
 
 Each finding adds to a **risk score (0–100)**. The scanner returns a recommendation:
+
 - `approve` — risk score < 40
 - `review` — risk score 40–70 (human sign-off required)
 - `reject` — risk score > 70 (auto-blocked)
@@ -840,13 +847,13 @@ The original OpenClaw had no metrics and no health probes — it was impossible 
 
 ### Endpoints
 
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /metrics` | Prometheus text format — scrape with `prometheus.io/scrape: "true"` |
-| `GET /healthz` | Combined liveness + readiness — returns 200 or 503 with JSON detail |
-| `GET /livez` | Liveness — is the process alive? |
-| `GET /readyz` | Readiness — is the gateway ready to serve traffic? |
-| `GET /startupz` | Startup probe — returns 503 until fully initialized |
+| Endpoint        | Purpose                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| `GET /metrics`  | Prometheus text format — scrape with `prometheus.io/scrape: "true"` |
+| `GET /healthz`  | Combined liveness + readiness — returns 200 or 503 with JSON detail |
+| `GET /livez`    | Liveness — is the process alive?                                    |
+| `GET /readyz`   | Readiness — is the gateway ready to serve traffic?                  |
+| `GET /startupz` | Startup probe — returns 503 until fully initialized                 |
 
 All probe endpoints are **unauthenticated** (required for Kubernetes probes). They expose no sensitive data — only binary up/down status and aggregate counts.
 
@@ -907,7 +914,7 @@ await runWithTenantAsync({ tenantId: "acme-corp", name: "ACME Corp" }, async () 
   // Everything called here — including deeply nested async code,
   // tool executions, and audit logs — automatically has tenant context.
   const ctx = getTenantContext(); // { tenantId: "acme-corp", name: "ACME Corp" }
-  await agent.run(message);       // audit events get tenantId automatically
+  await agent.run(message); // audit events get tenantId automatically
 });
 ```
 
@@ -978,9 +985,9 @@ enterprise:
   security:
     rateLimiting:
       enabled: true
-      redisUrl: env://REDIS_URL   # same Redis as cluster.redis.url
-      windowMs: 60000             # 1-minute window
-      maxRequests: 1000           # per subject per window
+      redisUrl: env://REDIS_URL # same Redis as cluster.redis.url
+      windowMs: 60000 # 1-minute window
+      maxRequests: 1000 # per subject per window
 ```
 
 The Redis implementation uses sorted sets: each request adds a timestamped entry with `ZADD`, removes expired entries with `ZREMRANGEBYSCORE`, and counts active entries with `ZCARD`. If Redis is unavailable, the limiter falls back to per-node in-memory windows with an automatic stderr warning.
@@ -997,11 +1004,11 @@ The full production Helm chart lives in [`k8s/helm/openclaw/`](k8s/helm/openclaw
 
 ```yaml
 securityContext:
-  runAsNonRoot: true          # UID 1001
+  runAsNonRoot: true # UID 1001
   runAsUser: 1001
   allowPrivilegeEscalation: false
   capabilities:
-    drop: ["ALL"]             # no Linux capabilities
+    drop: ["ALL"] # no Linux capabilities
   readOnlyRootFilesystem: true
 automountServiceAccountToken: false
 ```
@@ -1026,23 +1033,24 @@ helm install openclaw k8s/helm/openclaw/ \
 
 ### What's included in the Helm chart
 
-| Template | Description |
-|----------|-------------|
-| `deployment.yaml` | Rolling update, all 3 probes, config checksum annotation |
-| `service.yaml` | ClusterIP service |
-| `ingress.yaml` | Multi-version (networking.k8s.io/v1 / v1beta1 / extensions) |
-| `hpa.yaml` | HPA v2 with CPU + memory metrics |
-| `pdb.yaml` | PodDisruptionBudget (policy/v1 + v1beta1 fallback) |
-| `networkpolicy.yaml` | Ingress from ingress-controller + Prometheus; Egress DNS + HTTPS |
-| `serviceaccount.yaml` | Dedicated SA, `automountServiceAccountToken: false` |
-| `servicemonitor.yaml` | Prometheus Operator ServiceMonitor |
-| `configmap.yaml` | Config from Helm values, conditional enterprise blocks |
-| `pvc.yaml` | Persistent volume for data |
-| `NOTES.txt` | Post-install instructions with detected config |
+| Template              | Description                                                      |
+| --------------------- | ---------------------------------------------------------------- |
+| `deployment.yaml`     | Rolling update, all 3 probes, config checksum annotation         |
+| `service.yaml`        | ClusterIP service                                                |
+| `ingress.yaml`        | Multi-version (networking.k8s.io/v1 / v1beta1 / extensions)      |
+| `hpa.yaml`            | HPA v2 with CPU + memory metrics                                 |
+| `pdb.yaml`            | PodDisruptionBudget (policy/v1 + v1beta1 fallback)               |
+| `networkpolicy.yaml`  | Ingress from ingress-controller + Prometheus; Egress DNS + HTTPS |
+| `serviceaccount.yaml` | Dedicated SA, `automountServiceAccountToken: false`              |
+| `servicemonitor.yaml` | Prometheus Operator ServiceMonitor                               |
+| `configmap.yaml`      | Config from Helm values, conditional enterprise blocks           |
+| `pvc.yaml`            | Persistent volume for data                                       |
+| `NOTES.txt`           | Post-install instructions with detected config                   |
 
 ### High-availability values
 
 See [`k8s/examples/enterprise-ha.yaml`](k8s/examples/enterprise-ha.yaml) for a production-ready overlay including:
+
 - 3 replicas with pod anti-affinity (spread across nodes)
 - HPA: 3–20 replicas, CPU 70% / memory 80%
 - PDB: `minAvailable: 2`
@@ -1077,11 +1085,19 @@ Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** �
   "oauth_config": {
     "scopes": {
       "bot": [
-        "chat:write", "channels:history", "channels:read",
-        "groups:history", "im:history", "mpim:history",
-        "users:read", "app_mentions:read",
-        "reactions:read", "reactions:write",
-        "files:read", "files:write", "commands"
+        "chat:write",
+        "channels:history",
+        "channels:read",
+        "groups:history",
+        "im:history",
+        "mpim:history",
+        "users:read",
+        "app_mentions:read",
+        "reactions:read",
+        "reactions:write",
+        "files:read",
+        "files:write",
+        "commands"
       ]
     }
   },
@@ -1089,9 +1105,13 @@ Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** �
     "socket_mode_enabled": true,
     "event_subscriptions": {
       "bot_events": [
-        "app_mention", "message.channels", "message.groups",
-        "message.im", "message.mpim",
-        "reaction_added", "reaction_removed"
+        "app_mention",
+        "message.channels",
+        "message.groups",
+        "message.im",
+        "message.mpim",
+        "reaction_added",
+        "reaction_removed"
       ]
     }
   }
@@ -1108,13 +1128,13 @@ Go to [api.slack.com/apps](https://api.slack.com/apps) → **Create New App** �
 channels:
   slack:
     enabled: true
-    botToken: xoxb-...       # or env: SLACK_BOT_TOKEN
-    appToken: xapp-...       # or env: SLACK_APP_TOKEN
-    requireMention: true     # require @mention in channels (default)
-    dmPolicy: pairing        # pairing | open | allowlist
-    groupPolicy: allowlist   # allowlist channels explicitly
+    botToken: xoxb-... # or env: SLACK_BOT_TOKEN
+    appToken: xapp-... # or env: SLACK_APP_TOKEN
+    requireMention: true # require @mention in channels (default)
+    dmPolicy: pairing # pairing | open | allowlist
+    groupPolicy: allowlist # allowlist channels explicitly
     channels:
-      C0123456789:           # Slack channel ID
+      C0123456789: # Slack channel ID
         allow: true
 ```
 
@@ -1158,15 +1178,15 @@ pnpm openclaw plugins install ./extensions/msteams
 channels:
   msteams:
     enabled: true
-    appId: "<Azure App ID>"           # or env: MSTEAMS_APP_ID
-    appPassword: "<Client Secret>"    # or env: MSTEAMS_APP_PASSWORD
-    tenantId: "<Azure AD Tenant ID>"  # omit for multi-tenant
+    appId: "<Azure App ID>" # or env: MSTEAMS_APP_ID
+    appPassword: "<Client Secret>" # or env: MSTEAMS_APP_PASSWORD
+    tenantId: "<Azure AD Tenant ID>" # omit for multi-tenant
     webhook:
       port: 3978
       path: /api/messages
-    requireMention: true              # require @mention in channels
-    dmPolicy: pairing                 # pairing | open | allowlist
-    replyStyle: thread                # thread | top-level
+    requireMention: true # require @mention in channels
+    dmPolicy: pairing # pairing | open | allowlist
+    replyStyle: thread # thread | top-level
 ```
 
 **Step 4 — Install the Teams app**
@@ -1234,8 +1254,8 @@ In Mattermost: **System Console** → **Integrations** → **Bot Accounts** → 
 channels:
   mattermost:
     enabled: true
-    botToken: "<mattermost-bot-token>"  # or env: MATTERMOST_BOT_TOKEN
-    baseUrl: https://chat.example.com   # your Mattermost server URL
+    botToken: "<mattermost-bot-token>" # or env: MATTERMOST_BOT_TOKEN
+    baseUrl: https://chat.example.com # your Mattermost server URL
     dmPolicy: pairing
     requireMention: true
 ```
@@ -1248,15 +1268,15 @@ In Mattermost, invite the bot user to any channel with `/invite @openclaw`. It w
 
 ### Channel overview
 
-| Channel | Auth required | Plugin needed | DMs | Group channels |
-|---------|--------------|---------------|-----|----------------|
-| Slack | Bot token + App token | No | ✅ | ✅ |
-| Microsoft Teams | Azure App ID + Secret | Yes (`@openclaw/msteams`) | ✅ | ✅ |
-| Google Chat | GCP service account JSON | No | ✅ | ✅ (spaces) |
-| Mattermost | Bot token | Yes (`@openclaw/mattermost`) | ✅ | ✅ |
-| Discord | Bot token | No | ✅ | ✅ |
-| Telegram | Bot token (BotFather) | No | ✅ | ✅ |
-| WhatsApp | QR pairing (Baileys) | No | ✅ | ✅ |
+| Channel         | Auth required            | Plugin needed                | DMs | Group channels |
+| --------------- | ------------------------ | ---------------------------- | --- | -------------- |
+| Slack           | Bot token + App token    | No                           | ✅  | ✅             |
+| Microsoft Teams | Azure App ID + Secret    | Yes (`@openclaw/msteams`)    | ✅  | ✅             |
+| Google Chat     | GCP service account JSON | No                           | ✅  | ✅ (spaces)    |
+| Mattermost      | Bot token                | Yes (`@openclaw/mattermost`) | ✅  | ✅             |
+| Discord         | Bot token                | No                           | ✅  | ✅             |
+| Telegram        | Bot token (BotFather)    | No                           | ✅  | ✅             |
+| WhatsApp        | QR pairing (Baileys)     | No                           | ✅  | ✅             |
 
 > **Outlook / Exchange email** is not a chat channel. For email-triggered automation, see [Gmail Pub/Sub hooks](#community-features) in the community edition.
 
@@ -1283,12 +1303,12 @@ cosign verify-attestation \
 
 **CI workflow (`.github/workflows/container.yml`):**
 
-| Job | Tool | Output |
-|-----|------|--------|
-| `build` | Docker Buildx | Multi-platform image (linux/amd64, linux/arm64) pushed to ghcr.io |
-| `sign` | cosign keyless | Transparency log entry; no private key or secrets required |
-| `sbom` | syft + cosign | SPDX-JSON SBOM generated and attested to image digest |
-| `vulnerability-scan` | Trivy | Findings uploaded to GitHub Security tab as SARIF |
+| Job                  | Tool           | Output                                                            |
+| -------------------- | -------------- | ----------------------------------------------------------------- |
+| `build`              | Docker Buildx  | Multi-platform image (linux/amd64, linux/arm64) pushed to ghcr.io |
+| `sign`               | cosign keyless | Transparency log entry; no private key or secrets required        |
+| `sbom`               | syft + cosign  | SPDX-JSON SBOM generated and attested to image digest             |
+| `vulnerability-scan` | Trivy          | Findings uploaded to GitHub Security tab as SARIF                 |
 
 The SBOM is also uploaded as a workflow artifact (90-day retention) for offline inspection. Vulnerability scan results appear in the **Security → Code scanning** tab of the repository.
 
@@ -1304,7 +1324,7 @@ enterprise:
 
   # ── Secrets ──────────────────────────────────────────────────────
   secrets:
-    backend: vault          # file | vault | aws-sm | gcp-sm | azure-kv
+    backend: vault # file | vault | aws-sm | gcp-sm | azure-kv
     vault:
       address: https://vault.example.com
       authMethod: kubernetes
@@ -1316,7 +1336,7 @@ enterprise:
   iam:
     enabled: true
     jwt:
-      algorithm: RS256      # auto-generates key pair on first start
+      algorithm: RS256 # auto-generates key pair on first start
       expiresIn: 15m
       refreshExpiresIn: 7d
 
@@ -1346,7 +1366,7 @@ enterprise:
 
   # ── Monitoring ───────────────────────────────────────────────────
   monitoring:
-    enabled: true           # /metrics + /healthz + /livez + /readyz + /startupz
+    enabled: true # /metrics + /healthz + /livez + /readyz + /startupz
 
   # ── Guardrails (defaults are safe — override to customize) ────────
   guardrails:
@@ -1373,13 +1393,13 @@ enterprise:
   security:
     rateLimiting:
       enabled: true
-      redisUrl: env://REDIS_URL   # shared with cluster if enabled
+      redisUrl: env://REDIS_URL # shared with cluster if enabled
 
 # ── Gateway ───────────────────────────────────────────────────────
 gateway:
-  bind: loopback            # NEVER silent 0.0.0.0
+  bind: loopback # NEVER silent 0.0.0.0
   auth:
-    mode: jwt               # requires enterprise.iam.enabled: true
+    mode: jwt # requires enterprise.iam.enabled: true
   port: 3284
 
 # ── Agent model ──────────────────────────────────────────────────
@@ -1420,84 +1440,181 @@ See [docs/enterprise/nvidia.md](docs/enterprise/nvidia.md) for full configuratio
 
 ---
 
+## Palantir Foundry integration
+
+OpenClaw Enterprise integrates with Palantir Foundry for unified audit visibility, SSO authentication, and Compute Module deployment. Stream audit events into Foundry streaming datasets, authenticate via Palantir OIDC, and deploy directly as a Foundry Compute Module.
+
+```yaml
+enterprise:
+  # ── Palantir Foundry (optional) ──────────────────────────────────
+  # audit:
+  #   sinks:
+  #     - type: palantir-foundry
+  #       stackUrl: env://PALANTIR_STACK_URL
+  #       clientId: env://PALANTIR_CLIENT_ID
+  #       clientSecret: env://PALANTIR_CLIENT_SECRET
+  #       ontologyRid: env://PALANTIR_ONTOLOGY_RID
+  #       streamRid: "ri.foundry.main.dataset.abc123"
+
+  # ── Palantir OIDC/SSO (optional) ────────────────────────────────
+  # auth:
+  #   oidc:
+  #     provider: palantir
+  #     stackUrl: env://PALANTIR_STACK_URL
+  #     clientId: env://PALANTIR_OIDC_CLIENT_ID
+  #     clientSecret: env://PALANTIR_OIDC_CLIENT_SECRET
+  #     roleMap:
+  #       Foundry-Admins: admin
+  #       Foundry-Operators: operator
+```
+
+See [docs/enterprise/palantir.md](docs/enterprise/palantir.md) for full configuration, Compute Module deployment, and ontology-aware guardrails.
+
+---
+
+## Oracle Cloud Infrastructure integration
+
+OpenClaw Enterprise integrates with Oracle Cloud Infrastructure for secret management (OCI Vault), audit log streaming (OCI Streaming), database connectivity (Oracle MCP bridge), and portable agent configuration export (Agent Spec JSON).
+
+```yaml
+enterprise:
+  # ── OCI Vault secrets (optional) ──────────────────────────────
+  secrets:
+    backend: oci-vault
+    ociVault:
+      tenancyId: env://OCI_TENANCY_ID
+      userId: env://OCI_USER_ID
+      fingerprint: env://OCI_FINGERPRINT
+      privateKey: env://OCI_PRIVATE_KEY
+      region: us-ashburn-1
+      compartmentId: env://OCI_COMPARTMENT_ID
+      vaultId: env://OCI_VAULT_ID
+      keyId: env://OCI_KEY_ID
+
+  # ── OCI Streaming audit sink (optional) ───────────────────────
+  audit:
+    enabled: true
+    sinks:
+      - type: oci-streaming
+        streamId: env://OCI_STREAM_ID
+        streamEndpoint: env://OCI_STREAMING_ENDPOINT
+        batchSize: 100
+        flushIntervalMs: 5000
+
+  # ── Oracle MCP bridge (optional) ──────────────────────────────
+  oracle:
+    mcp:
+      enabled: true
+      endpoint: env://ORACLE_MCP_ENDPOINT
+      auth:
+        method: oci-api-key
+      allowedTools: [sql_query, describe_table, list_tables]
+      blockedTools: [drop_table]
+      maxResultRows: 1000
+
+    # ── Agent Spec export (optional) ────────────────────────────
+    agentSpec:
+      enabled: true
+      exportPath: ./agent-spec.json
+      includeTools: true
+      redactSecrets: true
+```
+
+See [docs/enterprise/oracle.md](docs/enterprise/oracle.md) for full configuration, MCP guardrails, and Agent Spec schema.
+
+---
+
 ## Feature matrix
 
-| | Community | Enterprise |
-|---|---|---|
-| **Core** | | |
-| Multi-channel AI assistant (14 channels) | ✅ | ✅ |
-| Local-first gateway (loopback default) | ✅ | ✅ |
-| Skills platform | ✅ | ✅ |
-| Voice Wake + Talk Mode | ✅ | ✅ |
-| Live Canvas (A2UI) | ✅ | ✅ |
-| macOS / iOS / Android apps | ✅ | ✅ |
-| **Security** | | |
-| Zero-trust gateway (0.0.0.0 never silent) | ✅ | ✅ |
-| AES-256-GCM encrypted secrets | — | ✅ |
-| HashiCorp Vault integration | — | ✅ |
-| AWS Secrets Manager | — | ✅ |
-| GCP Secret Manager | — | ✅ |
-| Azure Key Vault | — | ✅ |
-| Legacy credential auto-migration | — | ✅ |
-| Prompt injection sanitizer (8 rule families) | — | ✅ |
-| Trust boundary tagging | — | ✅ |
-| Runtime guardrail engine | — | ✅ |
-| Skill code signing (Ed25519) | — | ✅ |
-| Enterprise SAST (14 rules, CWE/OWASP) | — | ✅ |
-| **Identity & Access** | | |
-| IAM / RBAC (5 built-in roles) | — | ✅ |
-| SQLite-persistent RBAC store | — | ✅ |
-| JWT RS256/HS256 auth | — | ✅ |
-| API key management | — | ✅ |
-| Group membership + role inheritance | — | ✅ |
-| Agent service accounts | — | ✅ |
-| Legacy scope backwards compatibility | — | ✅ |
-| OIDC / SSO (Okta, Azure AD, Google, Auth0) | — | ✅ |
-| MFA / TOTP (RFC 6238, pure Node.js) | — | ✅ |
-| Refresh token revocation (single + bulk) | — | ✅ |
-| Access token revocation list | — | ✅ |
-| IP allowlisting (IPv4 + IPv6 CIDR) | — | ✅ |
-| **Compliance** | | |
-| Tamper-evident audit log (SHA-256 chain) | — | ✅ |
-| ULID event IDs (sortable, millisecond) | — | ✅ |
-| SQLite WAL audit storage | — | ✅ |
-| PostgreSQL audit backend | — | ✅ |
-| SIEM / Syslog (RFC 5424 UDP + TCP) | — | ✅ |
-| Webhook log sink (Elastic, Splunk, Datadog) | — | ✅ |
-| Configurable retention policy | — | ✅ |
-| Chain verification API | — | ✅ |
-| GDPR data export (Art. 20) | — | ✅ |
-| GDPR data erasure (Art. 17) | — | ✅ |
-| SOC 2 / HIPAA / GDPR mapping | — | ✅ |
-| **Observability** | | |
-| Prometheus metrics (20+ metrics) | — | ✅ |
-| /metrics /healthz /livez /readyz /startupz | — | ✅ |
-| Grafana dashboard (included) | — | ✅ |
-| Admin dashboard UI (live, gateway-wired) | — | ✅ |
-| **Scale** | | |
-| Multi-tenancy (AsyncLocalStorage) | — | ✅ |
-| Multi-tenant storage isolation (SQL-level) | — | ✅ |
-| Per-tenant rate limits | — | ✅ |
-| Distributed rate limiting (Redis sliding window) | — | ✅ |
-| Distributed cluster (Redis leader election + pub/sub) | — | ✅ |
-| Node heartbeats + health tracking | — | ✅ |
-| **Deployment** | | |
-| Kubernetes Helm chart (full) | — | ✅ |
-| HPA + PDB + NetworkPolicy | — | ✅ |
-| Prometheus ServiceMonitor | — | ✅ |
-| cert-manager TLS | — | ✅ |
-| Signed container images (cosign keyless) | — | ✅ |
-| SBOM attestation (syft SPDX-JSON) | — | ✅ |
-| Vulnerability scanning (Trivy → GitHub Security) | — | ✅ |
-| npm one-command install | ✅ | ✅ |
-| **NVIDIA AI Infrastructure** | | |
-| NVIDIA NIM model provider | — | ✅ |
-| Nemotron 3 model family support | — | ✅ |
-| NVIDIA GPU monitoring (Prometheus) | — | ✅ |
-| NIM Kubernetes sidecar | — | ✅ |
-| Thinking budget guardrails | — | ✅ |
-| Model routing policy (RBAC) | — | ✅ |
-| NIM cost guard | — | ✅ |
+|                                                                | Community | Enterprise |
+| -------------------------------------------------------------- | --------- | ---------- |
+| **Core**                                                       |           |            |
+| Multi-channel AI assistant (14 channels)                       | ✅        | ✅         |
+| Local-first gateway (loopback default)                         | ✅        | ✅         |
+| Skills platform                                                | ✅        | ✅         |
+| Voice Wake + Talk Mode                                         | ✅        | ✅         |
+| Live Canvas (A2UI)                                             | ✅        | ✅         |
+| macOS / iOS / Android apps                                     | ✅        | ✅         |
+| **Security**                                                   |           |            |
+| Zero-trust gateway (0.0.0.0 never silent)                      | ✅        | ✅         |
+| AES-256-GCM encrypted secrets                                  | —         | ✅         |
+| HashiCorp Vault integration                                    | —         | ✅         |
+| AWS Secrets Manager                                            | —         | ✅         |
+| GCP Secret Manager                                             | —         | ✅         |
+| Azure Key Vault                                                | —         | ✅         |
+| OCI Vault (Oracle Cloud KMS)                                   | —         | ✅         |
+| Legacy credential auto-migration                               | —         | ✅         |
+| Prompt injection sanitizer (8 rule families)                   | —         | ✅         |
+| Trust boundary tagging                                         | —         | ✅         |
+| Runtime guardrail engine                                       | —         | ✅         |
+| Skill code signing (Ed25519)                                   | —         | ✅         |
+| Enterprise SAST (14 rules, CWE/OWASP)                          | —         | ✅         |
+| **Identity & Access**                                          |           |            |
+| IAM / RBAC (5 built-in roles)                                  | —         | ✅         |
+| SQLite-persistent RBAC store                                   | —         | ✅         |
+| JWT RS256/HS256 auth                                           | —         | ✅         |
+| API key management                                             | —         | ✅         |
+| Group membership + role inheritance                            | —         | ✅         |
+| Agent service accounts                                         | —         | ✅         |
+| Legacy scope backwards compatibility                           | —         | ✅         |
+| OIDC / SSO (Palantir, Okta, Azure AD, Google, Auth0, Keycloak) | —         | ✅         |
+| MFA / TOTP (RFC 6238, pure Node.js)                            | —         | ✅         |
+| Refresh token revocation (single + bulk)                       | —         | ✅         |
+| Access token revocation list                                   | —         | ✅         |
+| IP allowlisting (IPv4 + IPv6 CIDR)                             | —         | ✅         |
+| **Compliance**                                                 |           |            |
+| Tamper-evident audit log (SHA-256 chain)                       | —         | ✅         |
+| ULID event IDs (sortable, millisecond)                         | —         | ✅         |
+| SQLite WAL audit storage                                       | —         | ✅         |
+| PostgreSQL audit backend                                       | —         | ✅         |
+| SIEM / Syslog (RFC 5424 UDP + TCP)                             | —         | ✅         |
+| Webhook log sink (Elastic, Splunk, Datadog)                    | —         | ✅         |
+| Configurable retention policy                                  | —         | ✅         |
+| Chain verification API                                         | —         | ✅         |
+| GDPR data export (Art. 20)                                     | —         | ✅         |
+| GDPR data erasure (Art. 17)                                    | —         | ✅         |
+| SOC 2 / HIPAA / GDPR mapping                                   | —         | ✅         |
+| **Observability**                                              |           |            |
+| Prometheus metrics (20+ metrics)                               | —         | ✅         |
+| /metrics /healthz /livez /readyz /startupz                     | —         | ✅         |
+| Grafana dashboard (included)                                   | —         | ✅         |
+| Admin dashboard UI (live, gateway-wired)                       | —         | ✅         |
+| **Scale**                                                      |           |            |
+| Multi-tenancy (AsyncLocalStorage)                              | —         | ✅         |
+| Multi-tenant storage isolation (SQL-level)                     | —         | ✅         |
+| Per-tenant rate limits                                         | —         | ✅         |
+| Distributed rate limiting (Redis sliding window)               | —         | ✅         |
+| Distributed cluster (Redis leader election + pub/sub)          | —         | ✅         |
+| Node heartbeats + health tracking                              | —         | ✅         |
+| **Deployment**                                                 |           |            |
+| Kubernetes Helm chart (full)                                   | —         | ✅         |
+| HPA + PDB + NetworkPolicy                                      | —         | ✅         |
+| Prometheus ServiceMonitor                                      | —         | ✅         |
+| cert-manager TLS                                               | —         | ✅         |
+| Signed container images (cosign keyless)                       | —         | ✅         |
+| SBOM attestation (syft SPDX-JSON)                              | —         | ✅         |
+| Vulnerability scanning (Trivy → GitHub Security)               | —         | ✅         |
+| npm one-command install                                        | ✅        | ✅         |
+| **NVIDIA AI Infrastructure**                                   |           |            |
+| NVIDIA NIM model provider                                      | —         | ✅         |
+| Nemotron 3 model family support                                | —         | ✅         |
+| NVIDIA GPU monitoring (Prometheus)                             | —         | ✅         |
+| NIM Kubernetes sidecar                                         | —         | ✅         |
+| Thinking budget guardrails                                     | —         | ✅         |
+| Model routing policy (RBAC)                                    | —         | ✅         |
+| NIM cost guard                                                 | —         | ✅         |
+| **Palantir Foundry**                                           |           |            |
+| Palantir Foundry audit sink                                    | —         | ✅         |
+| Palantir OIDC/SSO preset                                       | —         | ✅         |
+| Foundry Compute Module Dockerfile                              | —         | ✅         |
+| Ontology-aware guardrails (guide)                              | —         | ✅         |
+| OIDC provider presets (6 providers)                            | —         | ✅         |
+| **Oracle Cloud Infrastructure**                                |           |            |
+| OCI Vault secret backend                                       | —         | ✅         |
+| OCI Streaming audit sink                                       | —         | ✅         |
+| Oracle MCP bridge (Autonomous DB)                              | —         | ✅         |
+| MCP guardrails (allowlist, SQL injection detection)            | —         | ✅         |
+| Agent Spec JSON export                                         | —         | ✅         |
 
 ---
 
@@ -1511,63 +1628,63 @@ Every enterprise security subsystem ships with a dedicated unit test suite. Test
 
 #### Secret backends (91 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `backend-vault.test.ts` | 24 | Token auth, AppRole, no-auth fallback, KV v2 CRUD, custom request headers |
-| `backend-azure-kv.test.ts` | 24 | HTTP 404 vs `SecretNotFound` error code disambiguation, Azure-safe name encoding/decoding |
-| `backend-gcp-sm.test.ts` | 22 | gRPC error code mapping (`NOT_FOUND`, `PERMISSION_DENIED`), Buffer and string payload handling, create-or-skip-if-exists semantics |
-| `backend-aws-sm.test.ts` | 21 | Get/set/delete/list/exists operations, pagination across multiple pages, SDK error propagation |
+| Test file                  | Tests | What it validates                                                                                                                  |
+| -------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `backend-vault.test.ts`    | 24    | Token auth, AppRole, no-auth fallback, KV v2 CRUD, custom request headers                                                          |
+| `backend-azure-kv.test.ts` | 24    | HTTP 404 vs `SecretNotFound` error code disambiguation, Azure-safe name encoding/decoding                                          |
+| `backend-gcp-sm.test.ts`   | 22    | gRPC error code mapping (`NOT_FOUND`, `PERMISSION_DENIED`), Buffer and string payload handling, create-or-skip-if-exists semantics |
+| `backend-aws-sm.test.ts`   | 21    | Get/set/delete/list/exists operations, pagination across multiple pages, SDK error propagation                                     |
 
 #### Skill supply chain security (37 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `code-signing.test.ts` | 17 | Ed25519 sign and verify round-trip, key derivation, modified-file detection, multi-key trust anchors, corrupt-signature rejection |
-| `sast.test.ts` | 20 | All 14 SAST rules fire on matching patterns, risk score accumulation 0–100, CWE and OWASP tag presence, `approve`/`review`/`reject` threshold recommendations |
+| Test file              | Tests | What it validates                                                                                                                                             |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `code-signing.test.ts` | 17    | Ed25519 sign and verify round-trip, key derivation, modified-file detection, multi-key trust anchors, corrupt-signature rejection                             |
+| `sast.test.ts`         | 20    | All 14 SAST rules fire on matching patterns, risk score accumulation 0–100, CWE and OWASP tag presence, `approve`/`review`/`reject` threshold recommendations |
 
 #### IAM / RBAC (69 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `rbac/store.test.ts` | 26 | User, role, and group CRUD; duplicate rejection; cascade-delete integrity |
-| `rbac/engine.test.ts` | 23 | Permission evaluation, wildcard matching (`agents.*`, `*`), group role inheritance, cycle detection in role graphs |
-| `rbac/model.test.ts` | 20 | All 5 built-in roles and their exact permission sets; custom role definition; invalid role rejection |
+| Test file             | Tests | What it validates                                                                                                  |
+| --------------------- | ----- | ------------------------------------------------------------------------------------------------------------------ |
+| `rbac/store.test.ts`  | 26    | User, role, and group CRUD; duplicate rejection; cascade-delete integrity                                          |
+| `rbac/engine.test.ts` | 23    | Permission evaluation, wildcard matching (`agents.*`, `*`), group role inheritance, cycle detection in role graphs |
+| `rbac/model.test.ts`  | 20    | All 5 built-in roles and their exact permission sets; custom role definition; invalid role rejection               |
 
 #### Authentication (23 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `jwt.test.ts` | 23 | RS256 and HS256 sign/verify, access token and refresh token lifecycle, API key generation (`oc_…` prefix), SHA-256 key hash storage (raw key never stored), expired-token rejection |
+| Test file     | Tests | What it validates                                                                                                                                                                   |
+| ------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `jwt.test.ts` | 23    | RS256 and HS256 sign/verify, access token and refresh token lifecycle, API key generation (`oc_…` prefix), SHA-256 key hash storage (raw key never stored), expired-token rejection |
 
 #### Audit logging (27 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `audit/schema.test.ts` | 17 | ULID ID generation, SHA-256 hash chain linkage, single-event tamper detection, multi-event chain break detection at exact index |
-| `audit/logger.test.ts` | 10 | Auth/agent/guardrail event logging, disk-full simulation with graceful degradation |
+| Test file              | Tests | What it validates                                                                                                               |
+| ---------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `audit/schema.test.ts` | 17    | ULID ID generation, SHA-256 hash chain linkage, single-event tamper detection, multi-event chain break detection at exact index |
+| `audit/logger.test.ts` | 10    | Auth/agent/guardrail event logging, disk-full simulation with graceful degradation                                              |
 
 #### Cryptography & secret routing (45 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `encryption.test.ts` | 16 | AES-256-GCM encrypt/decrypt round-trip, IV uniqueness across encryptions, auth-tag tamper detection, wrong-key rejection |
-| `secrets/index.test.ts` | 14 | Secret reference URI parsing (`vault://`, `aws-sm://`, `gcp-sm://`, `azure-kv://`, `env://`, `file://`), backend routing, backend-not-configured errors |
-| `backend-file.test.ts` | 15 | File backend CRUD, encrypted-at-rest storage, plaintext-credential migration |
+| Test file               | Tests | What it validates                                                                                                                                       |
+| ----------------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `encryption.test.ts`    | 16    | AES-256-GCM encrypt/decrypt round-trip, IV uniqueness across encryptions, auth-tag tamper detection, wrong-key rejection                                |
+| `secrets/index.test.ts` | 14    | Secret reference URI parsing (`vault://`, `aws-sm://`, `gcp-sm://`, `azure-kv://`, `env://`, `file://`), backend routing, backend-not-configured errors |
+| `backend-file.test.ts`  | 15    | File backend CRUD, encrypted-at-rest storage, plaintext-credential migration                                                                            |
 
 #### Security & guardrails (40 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `input-sanitizer.test.ts` | 22 | NFC Unicode normalization, invisible character stripping, all 8 injection pattern families, trust boundary tag injection, configurable truncation |
-| `guardrails.test.ts` | 18 | Rule evaluation against tool inputs and outputs, pluggable custom rules, `block`/`require-approval`/`warn` action dispatch, audit event emission on block |
+| Test file                 | Tests | What it validates                                                                                                                                         |
+| ------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `input-sanitizer.test.ts` | 22    | NFC Unicode normalization, invisible character stripping, all 8 injection pattern families, trust boundary tag injection, configurable truncation         |
+| `guardrails.test.ts`      | 18    | Rule evaluation against tool inputs and outputs, pluggable custom rules, `block`/`require-approval`/`warn` action dispatch, audit event emission on block |
 
 #### Observability & infrastructure (38 tests)
 
-| Test file | Tests | What it validates |
-|-----------|-------|-------------------|
-| `monitoring/index.test.ts` | 10 | Prometheus metric registration and increment, `/healthz` probe response shape, noop stub when monitoring is disabled |
-| `tenancy/index.test.ts` | 14 | `AsyncLocalStorage` tenant context propagation through nested async calls, per-tenant rate limit enforcement, missing-context error |
-| `cluster/index.test.ts` | 14 | Node heartbeat registration, stale-node eviction after missed heartbeats, in-memory coordinator for development |
+| Test file                  | Tests | What it validates                                                                                                                   |
+| -------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `monitoring/index.test.ts` | 10    | Prometheus metric registration and increment, `/healthz` probe response shape, noop stub when monitoring is disabled                |
+| `tenancy/index.test.ts`    | 14    | `AsyncLocalStorage` tenant context propagation through nested async calls, per-tenant rate limit enforcement, missing-context error |
+| `cluster/index.test.ts`    | 14    | Node heartbeat registration, stale-node eviction after missed heartbeats, in-memory coordinator for development                     |
 
 ### What the tests prove
 
@@ -1661,21 +1778,23 @@ Enterprise edition: see [Install](#install) above.
 
 ## Enterprise documentation
 
-| Doc | Description |
-|-----|-------------|
-| [Security hardening](docs/enterprise/security.md) | Zero-trust config, DM policies, production checklist |
-| [IAM & RBAC](docs/enterprise/iam.md) | Roles, permissions, JWT config, API keys, OIDC, MFA, IP allowlisting |
-| [Audit logging](docs/enterprise/audit.md) | Hash chain verification, PostgreSQL, SIEM/syslog, GDPR |
-| [Kubernetes](docs/enterprise/kubernetes.md) | Helm chart reference, HA config, Prometheus, cert-manager |
-| [Secret management](docs/enterprise/secrets.md) | All 5 backends, secret reference URIs, migration |
-| [Container security](docs/enterprise/containers.md) | cosign signing, SBOM verification, Trivy scanning |
+| Doc                                                 | Description                                                               |
+| --------------------------------------------------- | ------------------------------------------------------------------------- |
+| [Security hardening](docs/enterprise/security.md)   | Zero-trust config, DM policies, production checklist                      |
+| [IAM & RBAC](docs/enterprise/iam.md)                | Roles, permissions, JWT config, API keys, OIDC, MFA, IP allowlisting      |
+| [Audit logging](docs/enterprise/audit.md)           | Hash chain verification, PostgreSQL, SIEM/syslog, GDPR                    |
+| [Kubernetes](docs/enterprise/kubernetes.md)         | Helm chart reference, HA config, Prometheus, cert-manager                 |
+| [Secret management](docs/enterprise/secrets.md)     | All 6 backends, secret reference URIs, migration                          |
+| [Container security](docs/enterprise/containers.md) | cosign signing, SBOM verification, Trivy scanning                         |
+| [Palantir Foundry](docs/enterprise/palantir.md)     | Audit streaming, OIDC/SSO, Compute Module deployment, ontology guardrails |
+| [Oracle Cloud](docs/enterprise/oracle.md)           | OCI Vault, OCI Streaming, MCP bridge, Agent Spec export                   |
 
 ---
 
 ## Sponsors
 
-| OpenAI | Blacksmith |
-|--------|-----------|
+| OpenAI                                                            | Blacksmith                                                                   |
+| ----------------------------------------------------------------- | ---------------------------------------------------------------------------- |
 | [![OpenAI](docs/assets/sponsors/openai.svg)](https://openai.com/) | [![Blacksmith](docs/assets/sponsors/blacksmith.svg)](https://blacksmith.sh/) |
 
 ---

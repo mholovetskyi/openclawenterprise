@@ -17,10 +17,10 @@
  *   env://OPENAI_API_KEY
  */
 
-import path from "node:path";
-import os from "node:os";
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type { OpenClawConfig } from "../../config/config.js";
 
 export type SecretMetadata = {
@@ -50,17 +50,19 @@ let activeBackend: SecretBackend | null = null;
 
 // ── Reference parsing ─────────────────────────────────────────────────────────
 
-const SCHEME_RE = /^(vault|aws-sm|gcp-sm|azure-kv|encrypted|env):\/\/(.+)$/;
+const SCHEME_RE = /^(vault|aws-sm|gcp-sm|azure-kv|oci-vault|encrypted|env):\/\/(.+)$/;
 
 export type ParsedSecretRef = {
-  scheme: "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "encrypted" | "env" | "plain";
+  scheme: "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "oci-vault" | "encrypted" | "env" | "plain";
   path: string;
   field?: string;
 };
 
 export function parseSecretRef(value: string): ParsedSecretRef {
   const match = value.match(SCHEME_RE);
-  if (!match) return { scheme: "plain", path: value };
+  if (!match) {
+    return { scheme: "plain", path: value };
+  }
   const scheme = match[1] as ParsedSecretRef["scheme"];
   const rest = match[2];
   const hashIdx = rest.lastIndexOf("#");
@@ -115,8 +117,12 @@ export async function resolveSecretValue(value: string): Promise<string> {
       }
       return fieldValue;
     } catch (err) {
-      if ((err as Error).message.startsWith('Field "')) throw err;
-      throw new Error(`Secret ${ref.path} is not valid JSON (needed to extract field)`);
+      if ((err as Error).message.startsWith('Field "')) {
+        throw err;
+      }
+      throw new Error(`Secret ${ref.path} is not valid JSON (needed to extract field)`, {
+        cause: err,
+      });
     }
   }
 
@@ -172,13 +178,33 @@ export async function initSecretsBackend(cfg: OpenClawConfig): Promise<SecretsHa
       break;
     }
 
+    case "oci-vault": {
+      const { createOciVaultBackend } = await import("./backend-oci-vault.js");
+      const ociCfg = secretsCfg?.ociVault;
+      if (!ociCfg?.compartmentId || !ociCfg?.vaultId) {
+        throw new Error(
+          "enterprise.secrets.ociVault.compartmentId and vaultId are required for oci-vault backend",
+        );
+      }
+      backend = createOciVaultBackend({
+        tenancyId: ociCfg.tenancyId,
+        userId: ociCfg.userId,
+        fingerprint: ociCfg.fingerprint,
+        privateKey: ociCfg.privateKey,
+        region: ociCfg.region ?? "us-ashburn-1",
+        compartmentId: ociCfg.compartmentId,
+        vaultId: ociCfg.vaultId,
+        keyId: ociCfg.keyId,
+        prefix: ociCfg.prefix,
+      });
+      break;
+    }
+
     case "file":
     default: {
       const { createFileBackend } = await import("./backend-file.js");
       const key = await resolveFileBackendKey(cfg);
-      const storePath =
-        secretsCfg?.filePath ??
-        path.join(os.homedir(), ".openclaw", "secrets.enc");
+      const storePath = secretsCfg?.filePath ?? path.join(os.homedir(), ".openclaw", "secrets.enc");
       backend = createFileBackend({ storePath, key });
       await migrateLegacyCredentials(backend, cfg);
       break;
@@ -202,16 +228,20 @@ export function getSecretsBackend(): SecretBackend | null {
 
 // ── Master key resolution ─────────────────────────────────────────────────────
 
-async function resolveFileBackendKey(cfg: OpenClawConfig): Promise<Buffer> {
+async function resolveFileBackendKey(_cfg: OpenClawConfig): Promise<Buffer> {
   // 1. Try OS keychain (macOS Keychain, Windows DPAPI, Linux libsecret)
   const keychainKey = await readFromKeychain();
-  if (keychainKey) return keychainKey;
+  if (keychainKey) {
+    return keychainKey;
+  }
 
   // 2. Try env var OPENCLAW_MASTER_KEY (base64)
   const envKey = process.env.OPENCLAW_MASTER_KEY;
   if (envKey) {
     const buf = Buffer.from(envKey, "base64");
-    if (buf.length === 32) return buf;
+    if (buf.length === 32) {
+      return buf;
+    }
   }
 
   // 3. Generate a new key and store in keychain (first run)
@@ -230,7 +260,9 @@ async function readFromKeychain(): Promise<Buffer | null> {
         { encoding: "utf8", timeout: 5000 },
       ).trim();
       const buf = Buffer.from(raw, "base64");
-      if (buf.length === 32) return buf;
+      if (buf.length === 32) {
+        return buf;
+      }
     } catch {
       return null;
     }
@@ -247,9 +279,12 @@ async function writeToKeychain(key: Buffer): Promise<void> {
         [
           "add-generic-password",
           "-U",
-          "-s", "openclaw-master-key",
-          "-a", "openclaw",
-          "-w", key.toString("base64"),
+          "-s",
+          "openclaw-master-key",
+          "-a",
+          "openclaw",
+          "-w",
+          key.toString("base64"),
         ],
         { encoding: "utf8", timeout: 5000 },
       );
@@ -262,7 +297,9 @@ async function writeToKeychain(key: Buffer): Promise<void> {
     // Linux / Windows: write to ~/.openclaw/.master-key with 0o600
     const keyPath = path.join(os.homedir(), ".openclaw", ".master-key");
     const dir = path.dirname(keyPath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     fs.writeFileSync(keyPath, key.toString("base64"), { mode: 0o600 });
   }
 }
@@ -279,7 +316,9 @@ async function migrateLegacyCredentials(
   ];
 
   for (const legacyPath of legacyPaths) {
-    if (!fs.existsSync(legacyPath)) continue;
+    if (!fs.existsSync(legacyPath)) {
+      continue;
+    }
     try {
       const raw = fs.readFileSync(legacyPath, "utf8");
       const data = JSON.parse(raw) as Record<string, unknown>;

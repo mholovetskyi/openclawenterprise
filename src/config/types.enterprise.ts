@@ -35,15 +35,20 @@ export type EnterpriseConfig = {
 
   /** NVIDIA NIM + GPU integration. */
   nvidia?: EnterpriseNvidiaConfig;
+
+  /** Palantir Foundry integration. */
+  palantir?: EnterprisePalantirConfig;
+
+  /** Authentication configuration (OIDC, MFA). */
+  auth?: EnterpriseAuthConfig;
+
+  /** Oracle Cloud Infrastructure integration. */
+  oracle?: EnterpriseOracleConfig;
 };
 
 // ── NVIDIA ────────────────────────────────────────────────────────────────
 
-export type NimModelCapability =
-  | "chat"
-  | "tool-calling"
-  | "reasoning"
-  | "multi-agent";
+export type NimModelCapability = "chat" | "tool-calling" | "reasoning" | "multi-agent";
 
 export type NimModelConfig = {
   id: string;
@@ -120,7 +125,7 @@ export type EnterpriseNvidiaConfig = {
 
 export type EnterpriseSecretsConfig = {
   /** Backend type. Defaults to "file" when enterprise is enabled. */
-  backend?: "file" | "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "env" | "none";
+  backend?: "file" | "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "oci-vault" | "env" | "none";
 
   /** Local path for the encrypted file backend. */
   filePath?: string;
@@ -154,6 +159,18 @@ export type EnterpriseSecretsConfig = {
     vaultUrl: string;
     prefix?: string;
   };
+
+  ociVault?: {
+    tenancyId?: string;
+    userId?: string;
+    fingerprint?: string;
+    privateKey?: string;
+    region?: string;
+    compartmentId?: string;
+    vaultId?: string;
+    keyId?: string;
+    prefix?: string;
+  };
 };
 
 // ── IAM ────────────────────────────────────────────────────────────────────
@@ -163,11 +180,11 @@ export type EnterpriseIAMConfig = {
 
   jwt?: {
     algorithm?: "RS256" | "HS256";
-    secret?: string;               // HS256 only
-    privateKeyPath?: string;       // RS256 — auto-generated if absent
-    publicKeyPath?: string;        // RS256
-    expiresIn?: string;            // e.g. "15m"
-    refreshExpiresIn?: string;     // e.g. "7d"
+    secret?: string; // HS256 only
+    privateKeyPath?: string; // RS256 — auto-generated if absent
+    publicKeyPath?: string; // RS256
+    expiresIn?: string; // e.g. "15m"
+    refreshExpiresIn?: string; // e.g. "7d"
     issuer?: string;
   };
 
@@ -187,9 +204,12 @@ export type EnterpriseAuditConfig = {
 
   storage?: {
     driver?: "sqlite" | "postgresql";
-    path?: string;         // sqlite
-    url?: string;          // postgresql — use env:// reference
+    path?: string; // sqlite
+    url?: string; // postgresql — use env:// reference
   };
+
+  /** External audit sinks (syslog, webhook, palantir-foundry). */
+  sinks?: AuditSinkConfig[];
 
   retention?: {
     /** Auto-purge events older than this many days. 0 = no purge. */
@@ -227,7 +247,7 @@ export type EnterpriseClusterConfig = {
   enabled?: boolean;
 
   redis?: {
-    url?: string;   // use env:// reference
+    url?: string; // use env:// reference
     keyPrefix?: string;
   };
 
@@ -251,6 +271,161 @@ export type EnterpriseGuardrailsConfig = {
   /** NVIDIA-specific guardrail rules. */
   nvidia?: NvidiaGuardrailsConfig;
 };
+
+// ── Palantir Foundry ──────────────────────────────────────────────────────
+
+export type PalantirFoundrySinkConfig = {
+  type: "palantir-foundry";
+  /** Foundry stack URL, e.g. https://myorg.palantirfoundry.com. Supports secret refs. */
+  stackUrl: string;
+  /** Developer Console app client ID. Supports secret refs. */
+  clientId: string;
+  /** Confidential OAuth client secret. Supports secret refs. */
+  clientSecret: string;
+  /** Ontology RID. Supports secret refs. */
+  ontologyRid: string;
+  /** Target streaming dataset RID. */
+  streamRid: string;
+  /** Events per write batch. Default: 50. */
+  batchSize?: number;
+  /** Max wait before flush in ms. Default: 5000. */
+  flushIntervalMs?: number;
+  /** Retries on transient failure. Default: 3. */
+  retryAttempts?: number;
+  /** Initial backoff between retries in ms. Default: 1000. */
+  retryBackoffMs?: number;
+  /** Max events in in-memory buffer. Default: 10000. */
+  maxBufferSize?: number;
+};
+
+export type EnterprisePalantirConfig = {
+  enabled?: boolean;
+};
+
+// ── Auth ──────────────────────────────────────────────────────────────────
+
+export type OidcProviderPreset = "palantir" | "okta" | "azure-ad" | "google" | "auth0" | "keycloak";
+
+export type EnterpriseOidcConfig = {
+  enabled?: boolean;
+  /** OIDC provider preset — auto-constructs discoveryUrl. */
+  provider?: OidcProviderPreset;
+  /** Stack URL for provider preset. Supports secret refs. */
+  stackUrl?: string;
+  /** Azure AD tenant ID (required for azure-ad preset). */
+  tenantId?: string;
+  /** Keycloak realm (required for keycloak preset). */
+  realm?: string;
+  /** Explicit discovery URL. Takes precedence over provider preset. */
+  discoveryUrl?: string;
+  issuer?: string;
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  scopes?: string[];
+  groupsClaim?: string;
+  roleMap?: Record<string, string>;
+  defaultRole?: string;
+};
+
+export type EnterpriseAuthConfig = {
+  oidc?: EnterpriseOidcConfig;
+  mfa?: {
+    enabled?: boolean;
+    requireForRoles?: string[];
+  };
+};
+
+// ── Oracle Cloud ──────────────────────────────────────────────────────────
+
+export type OciAuthConfig = {
+  tenancyId?: string;
+  userId?: string;
+  fingerprint?: string;
+  privateKey?: string;
+  region?: string;
+};
+
+export type OciStreamingSinkConfig = {
+  type: "oci-streaming";
+  /** OCI Stream OCID. Supports secret refs. */
+  streamId: string;
+  /** Streaming endpoint URL. Supports secret refs. */
+  streamEndpoint: string;
+  /** OCI auth fields. */
+  tenancyId?: string;
+  userId?: string;
+  fingerprint?: string;
+  privateKey?: string;
+  region?: string;
+  /** Messages per PutMessages call. Default: 100. */
+  batchSize?: number;
+  /** Max wait before flush in ms. Default: 5000. */
+  flushIntervalMs?: number;
+  /** Partition key for ordering. Default: "openclaw-audit". */
+  partitionKey?: string;
+  /** Retries on transient failure. Default: 3. */
+  retryAttempts?: number;
+  /** Initial backoff between retries in ms. Default: 1000. */
+  retryBackoffMs?: number;
+  /** Max events in in-memory buffer. Default: 10000. */
+  maxBufferSize?: number;
+};
+
+export type OracleMcpConfig = {
+  enabled?: boolean;
+  /** MCP SSE endpoint URL from Autonomous DB. Supports secret refs. */
+  endpoint?: string;
+  auth?: {
+    method?: "oci-api-key" | "token";
+    tenancyId?: string;
+    userId?: string;
+    fingerprint?: string;
+    privateKey?: string;
+    region?: string;
+    bearerToken?: string;
+  };
+  allowedTools?: string[];
+  blockedTools?: string[];
+  requireApproval?: string[];
+  maxResultRows?: number;
+  queryTimeout?: number;
+  healthCheckIntervalMs?: number;
+};
+
+export type OracleAgentSpecConfig = {
+  enabled?: boolean;
+  exportPath?: string;
+  includeTools?: boolean;
+  includeSystemPrompt?: boolean;
+  redactSecrets?: boolean;
+};
+
+export type EnterpriseOracleConfig = {
+  mcp?: OracleMcpConfig;
+  agentSpec?: OracleAgentSpecConfig;
+};
+
+// ── Audit sinks ──────────────────────────────────────────────────────────
+
+export type AuditSinkConfig =
+  | {
+      type: "syslog";
+      host: string;
+      port?: number;
+      protocol?: "udp" | "tcp";
+      facility?: number;
+      appName?: string;
+    }
+  | {
+      type: "webhook";
+      url: string;
+      headers?: Record<string, string>;
+      batchSize?: number;
+      flushIntervalMs?: number;
+    }
+  | PalantirFoundrySinkConfig
+  | OciStreamingSinkConfig;
 
 // ── Skills ────────────────────────────────────────────────────────────────
 
