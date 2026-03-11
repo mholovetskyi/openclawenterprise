@@ -17,6 +17,7 @@ import type { OpenClawConfig } from "../config/config.js";
 import type { AgentToolsConfig } from "../config/types.tools.js";
 import { resolveGatewayAuth } from "../gateway/auth.js";
 import { resolveNodeCommandAllowlist } from "../gateway/node-command-policy.js";
+import { safeEqualSecret } from "../security/secret-equal.js";
 import { inferParamBFromIdOrName } from "../shared/model-param-b.js";
 import { pickSandboxToolPolicy } from "./audit-tool-policy.js";
 
@@ -438,7 +439,7 @@ export function collectHooksHardeningFindings(
       : openclawGatewayToken
         ? openclawGatewayToken
         : null;
-  if (token && gatewayToken && token === gatewayToken) {
+  if (token && gatewayToken && safeEqualSecret(token, gatewayToken)) {
     findings.push({
       checkId: "hooks.token_reuse_gateway_token",
       severity: "critical",

@@ -8,7 +8,7 @@
  * Activation: enterprise.nvidia.gpuMetrics.enabled: true
  */
 
-import { exec as cpExec } from "node:child_process";
+import { execFile as cpExecFile } from "node:child_process";
 import type { OpenClawConfig } from "../../config/config.js";
 import type { NvidiaGpuMetricsConfig } from "../../config/types.enterprise.js";
 import { auditLogSync } from "../audit/logger.js";
@@ -18,8 +18,11 @@ export type ExecResult = { stdout: string; stderr: string };
 export type ExecFn = (cmd: string, opts?: { timeout?: number }) => Promise<ExecResult>;
 
 function defaultExecAsync(cmd: string, opts?: { timeout?: number }): Promise<ExecResult> {
+  const parts = cmd.split(/\s+/);
+  const bin = parts[0];
+  const args = parts.slice(1);
   return new Promise((resolve, reject) => {
-    cpExec(cmd, opts ?? {}, (err, stdout, stderr) => {
+    cpExecFile(bin, args, opts ?? {}, (err, stdout, stderr) => {
       if (err) reject(err);
       else resolve({ stdout: String(stdout), stderr: String(stderr) });
     });

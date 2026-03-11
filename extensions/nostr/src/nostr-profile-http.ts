@@ -38,6 +38,16 @@ export interface NostrProfileHttpContext {
 }
 
 // ============================================================================
+// Log Sanitization
+// ============================================================================
+
+/** Strip newlines and control characters from user-controlled values before logging. */
+function sanitizeLogValue(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1f\x7f]/g, "");
+}
+
+// ============================================================================
 // Rate Limiting
 // ============================================================================
 
@@ -232,7 +242,7 @@ function enforceLoopbackMutationGuards(
   // Mutation endpoints are local-control-plane only.
   const remoteAddress = req.socket.remoteAddress;
   if (!isLoopbackRemoteAddress(remoteAddress)) {
-    ctx.log?.warn?.(`Rejected mutation from non-loopback remoteAddress=${String(remoteAddress)}`);
+    ctx.log?.warn?.(`Rejected mutation from non-loopback remoteAddress=${sanitizeLogValue(String(remoteAddress))}`);
     sendJson(res, 403, { ok: false, error: "Forbidden" });
     return false;
   }
@@ -240,14 +250,14 @@ function enforceLoopbackMutationGuards(
   // CSRF guard: browsers send Origin/Referer on cross-site requests.
   const origin = req.headers.origin;
   if (typeof origin === "string" && !isLoopbackOriginLike(origin)) {
-    ctx.log?.warn?.(`Rejected mutation with non-loopback origin=${origin}`);
+    ctx.log?.warn?.(`Rejected mutation with non-loopback origin=${sanitizeLogValue(origin)}`);
     sendJson(res, 403, { ok: false, error: "Forbidden" });
     return false;
   }
 
   const referer = req.headers.referer ?? req.headers.referrer;
   if (typeof referer === "string" && !isLoopbackOriginLike(referer)) {
-    ctx.log?.warn?.(`Rejected mutation with non-loopback referer=${referer}`);
+    ctx.log?.warn?.(`Rejected mutation with non-loopback referer=${sanitizeLogValue(referer)}`);
     sendJson(res, 403, { ok: false, error: "Forbidden" });
     return false;
   }
