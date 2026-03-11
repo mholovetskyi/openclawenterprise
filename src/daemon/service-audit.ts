@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { safeEqualSecret } from "../security/secret-equal.js";
 import { resolveLaunchAgentPlistPath } from "./launchd.js";
 import {
   isSystemNodePath,
@@ -212,7 +213,7 @@ function auditGatewayToken(
     return;
   }
   const serviceToken = command?.environment?.OPENCLAW_GATEWAY_TOKEN?.trim();
-  if (serviceToken === expectedToken) {
+  if (safeEqualSecret(serviceToken ?? "", expectedToken)) {
     return;
   }
   issues.push({
