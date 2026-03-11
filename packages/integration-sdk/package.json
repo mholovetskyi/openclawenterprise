@@ -1,0 +1,49 @@
+{
+  "name": "@openclaw/integration-sdk",
+  "version": "0.1.0",
+  "description": "Enterprise Integration SDK — build custom audit sinks, secret backends, and guardrail rules for OpenClaw",
+  "keywords": [
+    "audit",
+    "enterprise",
+    "guardrails",
+    "integration",
+    "openclaw",
+    "plugin",
+    "secrets"
+  ],
+  "license": "MIT",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./testing": {
+      "types": "./dist/testing.d.ts",
+      "default": "./dist/testing.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc",
+    "check": "tsc --noEmit",
+    "dev": "tsc --watch",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  },
+  "peerDependencies": {
+    "openclaw": ">=2026.0.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
