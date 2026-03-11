@@ -41,6 +41,9 @@ export type EnterpriseConfig = {
 
   /** Authentication configuration (OIDC, MFA). */
   auth?: EnterpriseAuthConfig;
+
+  /** Oracle Cloud Infrastructure integration. */
+  oracle?: EnterpriseOracleConfig;
 };
 
 // ── NVIDIA ────────────────────────────────────────────────────────────────
@@ -122,7 +125,7 @@ export type EnterpriseNvidiaConfig = {
 
 export type EnterpriseSecretsConfig = {
   /** Backend type. Defaults to "file" when enterprise is enabled. */
-  backend?: "file" | "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "env" | "none";
+  backend?: "file" | "vault" | "aws-sm" | "gcp-sm" | "azure-kv" | "oci-vault" | "env" | "none";
 
   /** Local path for the encrypted file backend. */
   filePath?: string;
@@ -154,6 +157,18 @@ export type EnterpriseSecretsConfig = {
 
   azureKv?: {
     vaultUrl: string;
+    prefix?: string;
+  };
+
+  ociVault?: {
+    tenancyId?: string;
+    userId?: string;
+    fingerprint?: string;
+    privateKey?: string;
+    region?: string;
+    compartmentId?: string;
+    vaultId?: string;
+    keyId?: string;
     prefix?: string;
   };
 };
@@ -321,6 +336,76 @@ export type EnterpriseAuthConfig = {
   };
 };
 
+// ── Oracle Cloud ──────────────────────────────────────────────────────────
+
+export type OciAuthConfig = {
+  tenancyId?: string;
+  userId?: string;
+  fingerprint?: string;
+  privateKey?: string;
+  region?: string;
+};
+
+export type OciStreamingSinkConfig = {
+  type: "oci-streaming";
+  /** OCI Stream OCID. Supports secret refs. */
+  streamId: string;
+  /** Streaming endpoint URL. Supports secret refs. */
+  streamEndpoint: string;
+  /** OCI auth fields. */
+  tenancyId?: string;
+  userId?: string;
+  fingerprint?: string;
+  privateKey?: string;
+  region?: string;
+  /** Messages per PutMessages call. Default: 100. */
+  batchSize?: number;
+  /** Max wait before flush in ms. Default: 5000. */
+  flushIntervalMs?: number;
+  /** Partition key for ordering. Default: "openclaw-audit". */
+  partitionKey?: string;
+  /** Retries on transient failure. Default: 3. */
+  retryAttempts?: number;
+  /** Initial backoff between retries in ms. Default: 1000. */
+  retryBackoffMs?: number;
+  /** Max events in in-memory buffer. Default: 10000. */
+  maxBufferSize?: number;
+};
+
+export type OracleMcpConfig = {
+  enabled?: boolean;
+  /** MCP SSE endpoint URL from Autonomous DB. Supports secret refs. */
+  endpoint?: string;
+  auth?: {
+    method?: "oci-api-key" | "token";
+    tenancyId?: string;
+    userId?: string;
+    fingerprint?: string;
+    privateKey?: string;
+    region?: string;
+    bearerToken?: string;
+  };
+  allowedTools?: string[];
+  blockedTools?: string[];
+  requireApproval?: string[];
+  maxResultRows?: number;
+  queryTimeout?: number;
+  healthCheckIntervalMs?: number;
+};
+
+export type OracleAgentSpecConfig = {
+  enabled?: boolean;
+  exportPath?: string;
+  includeTools?: boolean;
+  includeSystemPrompt?: boolean;
+  redactSecrets?: boolean;
+};
+
+export type EnterpriseOracleConfig = {
+  mcp?: OracleMcpConfig;
+  agentSpec?: OracleAgentSpecConfig;
+};
+
 // ── Audit sinks ──────────────────────────────────────────────────────────
 
 export type AuditSinkConfig =
@@ -339,7 +424,8 @@ export type AuditSinkConfig =
       batchSize?: number;
       flushIntervalMs?: number;
     }
-  | PalantirFoundrySinkConfig;
+  | PalantirFoundrySinkConfig
+  | OciStreamingSinkConfig;
 
 // ── Skills ────────────────────────────────────────────────────────────────
 

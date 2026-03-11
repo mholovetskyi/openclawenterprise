@@ -101,7 +101,7 @@ OpenClaw's gateway binds to all interfaces (`0.0.0.0`) in LAN mode — the right
 
 OpenClaw stores API keys, OAuth tokens, and webhook secrets in `~/.openclaw/credentials` — a plaintext file, which is the right trade-off for a personal tool where simplicity beats vault complexity. On a shared server or a machine that generates bug reports, plaintext secrets are a liability.
 
-**Enterprise adds:** AES-256-GCM encrypted file backend with the master key in the OS keychain. HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, and Azure Key Vault are all supported. Existing credentials auto-migrate. (`src/enterprise/secrets/`)
+**Enterprise adds:** AES-256-GCM encrypted file backend with the master key in the OS keychain. HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault, and OCI Vault are all supported. Existing credentials auto-migrate. (`src/enterprise/secrets/`)
 
 ### 3. Not every client should have full operator access
 
@@ -1472,6 +1472,58 @@ See [docs/enterprise/palantir.md](docs/enterprise/palantir.md) for full configur
 
 ---
 
+## Oracle Cloud Infrastructure integration
+
+OpenClaw Enterprise integrates with Oracle Cloud Infrastructure for secret management (OCI Vault), audit log streaming (OCI Streaming), database connectivity (Oracle MCP bridge), and portable agent configuration export (Agent Spec JSON).
+
+```yaml
+enterprise:
+  # ── OCI Vault secrets (optional) ──────────────────────────────
+  secrets:
+    backend: oci-vault
+    ociVault:
+      tenancyId: env://OCI_TENANCY_ID
+      userId: env://OCI_USER_ID
+      fingerprint: env://OCI_FINGERPRINT
+      privateKey: env://OCI_PRIVATE_KEY
+      region: us-ashburn-1
+      compartmentId: env://OCI_COMPARTMENT_ID
+      vaultId: env://OCI_VAULT_ID
+      keyId: env://OCI_KEY_ID
+
+  # ── OCI Streaming audit sink (optional) ───────────────────────
+  audit:
+    enabled: true
+    sinks:
+      - type: oci-streaming
+        streamId: env://OCI_STREAM_ID
+        streamEndpoint: env://OCI_STREAMING_ENDPOINT
+        batchSize: 100
+        flushIntervalMs: 5000
+
+  # ── Oracle MCP bridge (optional) ──────────────────────────────
+  oracle:
+    mcp:
+      enabled: true
+      endpoint: env://ORACLE_MCP_ENDPOINT
+      auth:
+        method: oci-api-key
+      allowedTools: [sql_query, describe_table, list_tables]
+      blockedTools: [drop_table]
+      maxResultRows: 1000
+
+    # ── Agent Spec export (optional) ────────────────────────────
+    agentSpec:
+      enabled: true
+      exportPath: ./agent-spec.json
+      includeTools: true
+      redactSecrets: true
+```
+
+See [docs/enterprise/oracle.md](docs/enterprise/oracle.md) for full configuration, MCP guardrails, and Agent Spec schema.
+
+---
+
 ## Feature matrix
 
 |                                                                | Community | Enterprise |
@@ -1490,6 +1542,7 @@ See [docs/enterprise/palantir.md](docs/enterprise/palantir.md) for full configur
 | AWS Secrets Manager                                            | —         | ✅         |
 | GCP Secret Manager                                             | —         | ✅         |
 | Azure Key Vault                                                | —         | ✅         |
+| OCI Vault (Oracle Cloud KMS)                                   | —         | ✅         |
 | Legacy credential auto-migration                               | —         | ✅         |
 | Prompt injection sanitizer (8 rule families)                   | —         | ✅         |
 | Trust boundary tagging                                         | —         | ✅         |
@@ -1556,6 +1609,12 @@ See [docs/enterprise/palantir.md](docs/enterprise/palantir.md) for full configur
 | Foundry Compute Module Dockerfile                              | —         | ✅         |
 | Ontology-aware guardrails (guide)                              | —         | ✅         |
 | OIDC provider presets (6 providers)                            | —         | ✅         |
+| **Oracle Cloud Infrastructure**                                |           |            |
+| OCI Vault secret backend                                       | —         | ✅         |
+| OCI Streaming audit sink                                       | —         | ✅         |
+| Oracle MCP bridge (Autonomous DB)                              | —         | ✅         |
+| MCP guardrails (allowlist, SQL injection detection)            | —         | ✅         |
+| Agent Spec JSON export                                         | —         | ✅         |
 
 ---
 
@@ -1725,9 +1784,10 @@ Enterprise edition: see [Install](#install) above.
 | [IAM & RBAC](docs/enterprise/iam.md)                | Roles, permissions, JWT config, API keys, OIDC, MFA, IP allowlisting      |
 | [Audit logging](docs/enterprise/audit.md)           | Hash chain verification, PostgreSQL, SIEM/syslog, GDPR                    |
 | [Kubernetes](docs/enterprise/kubernetes.md)         | Helm chart reference, HA config, Prometheus, cert-manager                 |
-| [Secret management](docs/enterprise/secrets.md)     | All 5 backends, secret reference URIs, migration                          |
+| [Secret management](docs/enterprise/secrets.md)     | All 6 backends, secret reference URIs, migration                          |
 | [Container security](docs/enterprise/containers.md) | cosign signing, SBOM verification, Trivy scanning                         |
 | [Palantir Foundry](docs/enterprise/palantir.md)     | Audit streaming, OIDC/SSO, Compute Module deployment, ontology guardrails |
+| [Oracle Cloud](docs/enterprise/oracle.md)           | OCI Vault, OCI Streaming, MCP bridge, Agent Spec export                   |
 
 ---
 
