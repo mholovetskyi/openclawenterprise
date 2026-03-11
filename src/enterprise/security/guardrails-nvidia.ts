@@ -9,9 +9,9 @@
  */
 
 import type { NvidiaGuardrailsConfig } from "../../config/types.enterprise.js";
-import type { GuardrailAction, GuardrailContext, GuardrailResult } from "./guardrails.js";
 import { auditLogSync } from "../audit/logger.js";
 import { getTenantContext } from "../tenancy/index.js";
+import type { GuardrailAction, GuardrailContext, GuardrailResult } from "./guardrails.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -107,6 +107,7 @@ export function setTokenUsageTracker(tracker: TokenUsageTracker): void {
 
 const NEMOTRON_THINKING_MODELS = new Set([
   "nvidia/nemotron-3-nano-30b-a3b",
+  "nvidia/nemotron-3-super-120b-a12b",
 ]);
 
 export function evaluateThinkingBudgetLimit(
@@ -143,15 +144,17 @@ export function evaluateThinkingBudgetLimit(
 
     return {
       action,
-      triggered: [{
-        rule: {
-          id: "thinking-budget-limit",
-          description: "Thinking budget exceeds configured limit",
-          match: {},
-          action,
+      triggered: [
+        {
+          rule: {
+            id: "thinking-budget-limit",
+            description: "Thinking budget exceeds configured limit",
+            match: {},
+            action,
+          },
+          reason: `Thinking budget ${requestedTokens} exceeds limit ${maxTokens}`,
         },
-        reason: `Thinking budget ${requestedTokens} exceeds limit ${maxTokens}`,
-      }],
+      ],
     };
   }
 
@@ -247,7 +250,9 @@ export function evaluateModelRoutingPolicy(
   // Check if any of the user's roles allow this model
   for (const role of roles) {
     const allowedModels = config.roleModelMap[role];
-    if (!allowedModels) continue;
+    if (!allowedModels) {
+      continue;
+    }
 
     // Wildcard — all models allowed
     if (allowedModels.includes("*")) {
@@ -276,15 +281,17 @@ export function evaluateModelRoutingPolicy(
 
   return {
     action: "block",
-    triggered: [{
-      rule: {
-        id: "model-routing-policy",
-        description: "User role does not permit access to this model",
-        match: {},
-        action: "block",
+    triggered: [
+      {
+        rule: {
+          id: "model-routing-policy",
+          description: "User role does not permit access to this model",
+          match: {},
+          action: "block",
+        },
+        reason: `Roles [${roles.join(", ")}] do not have access to model ${ctx.model}`,
       },
-      reason: `Roles [${roles.join(", ")}] do not have access to model ${ctx.model}`,
-    }],
+    ],
   };
 }
 

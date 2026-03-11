@@ -32,7 +32,9 @@ vi.mock("../monitoring/metrics.js", () => {
 // Mock secrets module
 vi.mock("../secrets/index.js", () => ({
   resolveSecretValue: vi.fn(async (val: string) => {
-    if (val === "env://NIM_API_KEY") return "test-api-key-123";
+    if (val === "env://NIM_API_KEY") {
+      return "test-api-key-123";
+    }
     return val;
   }),
 }));
@@ -93,7 +95,9 @@ describe("NIM Provider - initialization", () => {
   let handle: NimProviderHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {
+      await handle.shutdown();
+    }
   });
 
   it("creates noop handle when NIM is disabled", async () => {
@@ -102,9 +106,11 @@ describe("NIM Provider - initialization", () => {
     } as unknown as OpenClawConfig);
     expect(handle.getModels()).toHaveLength(0);
     expect(handle.isHealthy()).toBe(false);
-    await expect(handle.chatCompletion({
-      messages: [{ role: "user", content: "hi" }],
-    })).rejects.toThrow("NIM provider is not enabled");
+    await expect(
+      handle.chatCompletion({
+        messages: [{ role: "user", content: "hi" }],
+      }),
+    ).rejects.toThrow("NIM provider is not enabled");
   });
 
   it("creates noop handle when enterprise.nvidia is undefined", async () => {
@@ -124,23 +130,44 @@ describe("NIM Provider - initialization", () => {
     mockFetch.mockResolvedValueOnce(mockFetchResponse(200, { data: [] }));
     handle = await initNimProvider(makeCfg({ models: undefined }), deps);
     const models = handle.getModels();
-    expect(models.length).toBeGreaterThanOrEqual(3);
+    expect(models.length).toBeGreaterThanOrEqual(4);
     expect(models.some((m) => m.id === "nvidia/nemotron-3-nano-30b-a3b")).toBe(true);
+    expect(models.some((m) => m.id === "nvidia/nemotron-3-super-120b-a12b")).toBe(true);
     expect(models.some((m) => m.id === "nvidia/llama-3.3-nemotron-super-49b-v1")).toBe(true);
     expect(models.some((m) => m.id === "nvidia/llama-3.1-nemotron-nano-8b-v1")).toBe(true);
   });
 
+  it("registers Nemotron 3 Super 120B with correct capabilities", async () => {
+    mockFetch.mockResolvedValueOnce(mockFetchResponse(200, { data: [] }));
+    handle = await initNimProvider(makeCfg({ models: undefined }), deps);
+    const model = handle.getModel("nvidia/nemotron-3-super-120b-a12b");
+    expect(model).not.toBeNull();
+    expect(model?.displayName).toBe("Nemotron 3 Super 120B");
+    expect(model?.contextWindow).toBe(1048576);
+    expect(model?.maxOutputTokens).toBe(32768);
+    expect(model?.thinkingBudget).toBe("configurable");
+    expect(model?.capabilities).toContain("agentic-reasoning");
+    expect(model?.capabilities).toContain("multi-agent");
+    expect(model?.capabilities).toContain("reasoning");
+    expect(model?.capabilities).toContain("tool-calling");
+  });
+
   it("registers custom models from config", async () => {
     mockFetch.mockResolvedValueOnce(mockFetchResponse(200, { data: [] }));
-    handle = await initNimProvider(makeCfg({
-      models: [{
-        id: "custom/model-1",
-        displayName: "Custom Model",
-        contextWindow: 8192,
-        maxOutputTokens: 4096,
-        capabilities: ["chat"],
-      }],
-    }), deps);
+    handle = await initNimProvider(
+      makeCfg({
+        models: [
+          {
+            id: "custom/model-1",
+            displayName: "Custom Model",
+            contextWindow: 8192,
+            maxOutputTokens: 4096,
+            capabilities: ["chat"],
+          },
+        ],
+      }),
+      deps,
+    );
     const models = handle.getModels();
     expect(models).toHaveLength(1);
     expect(models[0].id).toBe("custom/model-1");
@@ -169,18 +196,25 @@ describe("NIM Provider - health check", () => {
 
   afterEach(async () => {
     const p = getNimProvider();
-    if (p) await p.shutdown();
+    if (p) {
+      await p.shutdown();
+    }
   });
 
   it("reports healthy when /v1/models returns 200", async () => {
-    mockFetch.mockResolvedValueOnce(mockFetchResponse(200, {
-      data: [
-        { id: "nvidia/nemotron-3-nano-30b-a3b" },
-        { id: "nvidia/llama-3.1-nemotron-nano-8b-v1" },
-      ],
-    }));
+    mockFetch.mockResolvedValueOnce(
+      mockFetchResponse(200, {
+        data: [
+          { id: "nvidia/nemotron-3-nano-30b-a3b" },
+          { id: "nvidia/llama-3.1-nemotron-nano-8b-v1" },
+        ],
+      }),
+    );
 
-    const handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    const handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
     const status = handle.getHealthStatus();
     expect(status.healthy).toBe(true);
     expect(status.availableModels).toContain("nvidia/nemotron-3-nano-30b-a3b");
@@ -190,7 +224,10 @@ describe("NIM Provider - health check", () => {
   it("reports unhealthy when /v1/models returns error", async () => {
     mockFetch.mockResolvedValueOnce(mockFetchResponse(500, { error: "internal" }));
 
-    const handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    const handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
     const status = handle.getHealthStatus();
     expect(status.healthy).toBe(false);
     expect(status.error).toContain("HTTP 500");
@@ -200,7 +237,10 @@ describe("NIM Provider - health check", () => {
   it("reports unhealthy when fetch throws", async () => {
     mockFetch.mockRejectedValueOnce(new Error("Connection refused"));
 
-    const handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    const handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
     const status = handle.getHealthStatus();
     expect(status.healthy).toBe(false);
     expect(status.error).toContain("Connection refused");
@@ -219,20 +259,27 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {
+      await handle.shutdown();
+    }
   });
 
   it("sends chat completion request and returns response", async () => {
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
     const mockResponse = {
       id: "chat-123",
       model: "nvidia/nemotron-3-nano-30b-a3b",
-      choices: [{
-        index: 0,
-        message: { role: "assistant", content: "Hello!" },
-        finish_reason: "stop",
-      }],
+      choices: [
+        {
+          index: 0,
+          message: { role: "assistant", content: "Hello!" },
+          finish_reason: "stop",
+        },
+      ],
       usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
     };
     mockFetch.mockResolvedValueOnce(mockFetchResponse(200, mockResponse));
@@ -247,14 +294,21 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   it("includes thinking budget in request body for Nemotron 3 Nano", async () => {
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
-    mockFetch.mockResolvedValueOnce(mockFetchResponse(200, {
-      id: "chat-124",
-      model: "nvidia/nemotron-3-nano-30b-a3b",
-      choices: [{ index: 0, message: { role: "assistant", content: "thought" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 10, completion_tokens: 50, total_tokens: 60 },
-    }));
+    mockFetch.mockResolvedValueOnce(
+      mockFetchResponse(200, {
+        id: "chat-124",
+        model: "nvidia/nemotron-3-nano-30b-a3b",
+        choices: [
+          { index: 0, message: { role: "assistant", content: "thought" }, finish_reason: "stop" },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 50, total_tokens: 60 },
+      }),
+    );
 
     await handle.chatCompletion({
       messages: [{ role: "user", content: "Think about this" }],
@@ -267,14 +321,21 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   it("emits audit event on successful request", async () => {
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
-    mockFetch.mockResolvedValueOnce(mockFetchResponse(200, {
-      id: "chat-125",
-      model: "nvidia/nemotron-3-nano-30b-a3b",
-      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
-    }));
+    mockFetch.mockResolvedValueOnce(
+      mockFetchResponse(200, {
+        id: "chat-125",
+        model: "nvidia/nemotron-3-nano-30b-a3b",
+        choices: [
+          { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+        ],
+        usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+      }),
+    );
 
     await handle.chatCompletion({ messages: [{ role: "user", content: "test" }] });
 
@@ -287,16 +348,27 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   it("retries on 500 then succeeds", async () => {
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
     mockFetch
       .mockResolvedValueOnce(mockFetchResponse(500, { error: "temporary" }))
-      .mockResolvedValueOnce(mockFetchResponse(200, {
-        id: "chat-retry",
-        model: "nvidia/nemotron-3-nano-30b-a3b",
-        choices: [{ index: 0, message: { role: "assistant", content: "retry ok" }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
-      }));
+      .mockResolvedValueOnce(
+        mockFetchResponse(200, {
+          id: "chat-retry",
+          model: "nvidia/nemotron-3-nano-30b-a3b",
+          choices: [
+            {
+              index: 0,
+              message: { role: "assistant", content: "retry ok" },
+              finish_reason: "stop",
+            },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+        }),
+      );
 
     const result = await handle.chatCompletion({
       messages: [{ role: "user", content: "test" }],
@@ -306,26 +378,38 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   it("does not retry on 400 client error", async () => {
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
     mockFetch.mockResolvedValueOnce(mockFetchResponse(400, { error: "bad request" }));
 
-    await expect(handle.chatCompletion({
-      messages: [{ role: "user", content: "test" }],
-    })).rejects.toThrow("NIM API error: HTTP 400");
+    await expect(
+      handle.chatCompletion({
+        messages: [{ role: "user", content: "test" }],
+      }),
+    ).rejects.toThrow("NIM API error: HTTP 400");
   });
 
   it("retries on 429 rate limit", async () => {
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
     mockFetch
       .mockResolvedValueOnce(mockFetchResponse(429, { error: "rate limited" }))
-      .mockResolvedValueOnce(mockFetchResponse(200, {
-        id: "chat-429",
-        model: "nvidia/nemotron-3-nano-30b-a3b",
-        choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
-        usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
-      }));
+      .mockResolvedValueOnce(
+        mockFetchResponse(200, {
+          id: "chat-429",
+          model: "nvidia/nemotron-3-nano-30b-a3b",
+          choices: [
+            { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+          ],
+          usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+        }),
+      );
 
     const result = await handle.chatCompletion({
       messages: [{ role: "user", content: "test" }],
@@ -334,18 +418,23 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   it("emits error audit and fallback audit when all retries fail", async () => {
-    handle = await initNimProvider(makeCfg({
-      healthCheck: { enabled: true, intervalMs: 999999 },
-      fallbackModel: "openai/gpt-4",
-    }), deps);
+    handle = await initNimProvider(
+      makeCfg({
+        healthCheck: { enabled: true, intervalMs: 999999 },
+        fallbackModel: "openai/gpt-4",
+      }),
+      deps,
+    );
 
     mockFetch
       .mockRejectedValueOnce(new Error("network down"))
       .mockRejectedValueOnce(new Error("network down"));
 
-    await expect(handle.chatCompletion({
-      messages: [{ role: "user", content: "test" }],
-    })).rejects.toThrow("network down");
+    await expect(
+      handle.chatCompletion({
+        messages: [{ role: "user", content: "test" }],
+      }),
+    ).rejects.toThrow("network down");
 
     // Should have emitted error audit
     expect(mockAuditLogSync).toHaveBeenCalledWith(
@@ -371,23 +460,33 @@ describe("NIM Provider - metrics emission", () => {
   let handle: NimProviderHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {
+      await handle.shutdown();
+    }
   });
 
   it("increments nimRequests counter on success", async () => {
     const { metrics } = await import("../monitoring/metrics.js");
     mockFetch.mockReset();
     mockFetch.mockResolvedValueOnce(mockFetchResponse(200, { data: [] }));
-    handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
 
-    mockFetch.mockResolvedValueOnce(mockFetchResponse(200, {
-      id: "m1",
-      model: "nvidia/nemotron-3-nano-30b-a3b",
-      choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }],
-      usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
-    }));
+    mockFetch.mockResolvedValueOnce(
+      mockFetchResponse(200, {
+        id: "m1",
+        model: "nvidia/nemotron-3-nano-30b-a3b",
+        choices: [
+          { index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" },
+        ],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      }),
+    );
 
     await handle.chatCompletion({ messages: [{ role: "user", content: "hi" }] });
+    // eslint-disable-next-line @typescript-eslint/unbound-method
     expect(metrics.nimRequests.inc).toHaveBeenCalledWith(
       expect.objectContaining({ model: "nvidia/nemotron-3-nano-30b-a3b", status: "success" }),
     );
@@ -397,7 +496,10 @@ describe("NIM Provider - metrics emission", () => {
 describe("NIM Provider - shutdown", () => {
   it("clears global handle and interval on shutdown", async () => {
     mockFetch.mockResolvedValueOnce(mockFetchResponse(200, { data: [] }));
-    const handle = await initNimProvider(makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }), deps);
+    const handle = await initNimProvider(
+      makeCfg({ healthCheck: { enabled: true, intervalMs: 999999 } }),
+      deps,
+    );
     expect(getNimProvider()).not.toBeNull();
     await handle.shutdown();
     expect(getNimProvider()).toBeNull();

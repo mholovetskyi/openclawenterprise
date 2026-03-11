@@ -42,8 +42,20 @@ describe("NVIDIA provider", () => {
     const provider = buildNvidiaProvider();
     const modelIds = provider.models.map((m) => m.id);
     expect(modelIds).toContain("nvidia/llama-3.1-nemotron-70b-instruct");
+    expect(modelIds).toContain("nvidia/nemotron-3-super-120b-a12b");
+    expect(modelIds).toContain("nvidia/nemotron-3-nano-30b-a3b");
     expect(modelIds).toContain("meta/llama-3.3-70b-instruct");
     expect(modelIds).toContain("nvidia/mistral-nemo-minitron-8b-8k-instruct");
+  });
+
+  it("should configure Nemotron 3 Super 120B with 1M context and reasoning", () => {
+    const provider = buildNvidiaProvider();
+    const superModel = provider.models.find((m) => m.id === "nvidia/nemotron-3-super-120b-a12b");
+    expect(superModel).toBeDefined();
+    expect(superModel?.name).toBe("NVIDIA Nemotron 3 Super 120B");
+    expect(superModel?.reasoning).toBe(true);
+    expect(superModel?.contextWindow).toBe(1048576);
+    expect(superModel?.maxTokens).toBe(32768);
   });
 });
 

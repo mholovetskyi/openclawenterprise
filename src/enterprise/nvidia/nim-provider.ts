@@ -8,14 +8,10 @@
  */
 
 import type { OpenClawConfig } from "../../config/config.js";
-import type {
-  EnterpriseNimConfig,
-  NimModelConfig,
-  NimModelCapability,
-} from "../../config/types.enterprise.js";
-import { resolveSecretValue } from "../secrets/index.js";
-import { auditLog, auditLogSync } from "../audit/logger.js";
+import type { NimModelConfig, NimModelCapability } from "../../config/types.enterprise.js";
+import { auditLogSync } from "../audit/logger.js";
 import { metrics } from "../monitoring/metrics.js";
+import { resolveSecretValue } from "../secrets/index.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +74,14 @@ const DEFAULT_MODELS: NimModelConfig[] = [
     contextWindow: 1048576,
     maxOutputTokens: 32768,
     capabilities: ["chat", "tool-calling", "reasoning"],
+    thinkingBudget: "configurable",
+  },
+  {
+    id: "nvidia/nemotron-3-super-120b-a12b",
+    displayName: "Nemotron 3 Super 120B",
+    contextWindow: 1048576,
+    maxOutputTokens: 32768,
+    capabilities: ["chat", "tool-calling", "reasoning", "multi-agent", "agentic-reasoning"],
     thinkingBudget: "configurable",
   },
   {
@@ -173,15 +177,17 @@ export async function initNimProvider(
         : healthEndpoint;
 
       const headers: Record<string, string> = {
-        "Accept": "application/json",
+        Accept: "application/json",
       };
-      if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+      if (apiKey) {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
 
       const res = await fetchWithTimeout(fetchFn, url, { headers }, 10000);
       const elapsed = Date.now() - start;
 
       if (res.ok) {
-        const body = await res.json() as { data?: Array<{ id: string }> };
+        const body = (await res.json()) as { data?: Array<{ id: string }> };
         const availableModels = body.data?.map((m) => m.id) ?? [];
         healthStatus = {
           healthy: true,
@@ -224,7 +230,9 @@ export async function initNimProvider(
     healthTimer = setInterval(() => {
       checkHealth().catch(() => {});
     }, interval);
-    if (healthTimer.unref) healthTimer.unref();
+    if (healthTimer.unref) {
+      healthTimer.unref();
+    }
   }
 
   // Chat completion with retry + fallback
@@ -236,29 +244,34 @@ export async function initNimProvider(
       model,
       messages: opts.messages,
     };
-    if (opts.maxTokens !== undefined) body.max_tokens = opts.maxTokens;
-    if (opts.temperature !== undefined) body.temperature = opts.temperature;
-    if (opts.tools?.length) body.tools = opts.tools;
+    if (opts.maxTokens !== undefined) {
+      body.max_tokens = opts.maxTokens;
+    }
+    if (opts.temperature !== undefined) {
+      body.temperature = opts.temperature;
+    }
+    if (opts.tools?.length) {
+      body.tools = opts.tools;
+    }
 
-    // Thinking budget for Nemotron 3 Nano
+    // Thinking budget for Nemotron 3 Nano and Super
     if (opts.thinkingBudgetTokens !== undefined) {
       body.thinking = { budget_tokens: opts.thinkingBudgetTokens };
     }
 
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
-      "Accept": "application/json",
+      Accept: "application/json",
     };
-    if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+    if (apiKey) {
+      headers["Authorization"] = `Bearer ${apiKey}`;
+    }
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= retryCfg.maxRetries; attempt++) {
       if (attempt > 0) {
-        const delay = Math.min(
-          retryCfg.backoffMs * 2 ** (attempt - 1),
-          retryCfg.maxBackoffMs,
-        );
+        const delay = Math.min(retryCfg.backoffMs * 2 ** (attempt - 1), retryCfg.maxBackoffMs);
         await sleep(delay);
       }
 
@@ -279,21 +292,15 @@ export async function initNimProvider(
           continue;
         }
 
-        const data = await res.json() as NimResponse;
+        const data = (await res.json()) as NimResponse;
         const elapsed = Date.now() - start;
 
         // Emit metrics
         metrics.nimRequests.inc({ model, status: "success" });
         metrics.nimLatency.observe({ model }, elapsed / 1000);
         if (data.usage) {
-          metrics.nimTokens.inc(
-            { model, direction: "input" },
-            data.usage.prompt_tokens,
-          );
-          metrics.nimTokens.inc(
-            { model, direction: "output" },
-            data.usage.completion_tokens,
-          );
+          metrics.nimTokens.inc({ model, direction: "input" }, data.usage.prompt_tokens);
+          metrics.nimTokens.inc({ model, direction: "output" }, data.usage.completion_tokens);
         }
 
         // Emit audit event

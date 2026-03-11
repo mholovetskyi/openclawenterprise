@@ -95,6 +95,36 @@ describe("evaluateThinkingBudgetLimit", () => {
     expect(result.action).toBe("require-approval"); // default action
   });
 
+  it("enforces thinking budget on Nemotron 3 Super 120B", () => {
+    const ctx: NvidiaGuardrailContext = {
+      tool: "chat",
+      model: "nvidia/nemotron-3-super-120b-a12b",
+      thinkingBudgetTokens: 8192,
+      userId: "user-1",
+    };
+    const result = evaluateThinkingBudgetLimit(ctx, {
+      enabled: true,
+      maxThinkingTokens: 4096,
+      action: "block",
+    });
+    expect(result.action).toBe("block");
+    expect(result.triggered).toHaveLength(1);
+    expect(result.triggered[0].reason).toContain("8192");
+  });
+
+  it("allows Nemotron 3 Super 120B within budget", () => {
+    const ctx: NvidiaGuardrailContext = {
+      tool: "chat",
+      model: "nvidia/nemotron-3-super-120b-a12b",
+      thinkingBudgetTokens: 2048,
+    };
+    const result = evaluateThinkingBudgetLimit(ctx, {
+      enabled: true,
+      maxThinkingTokens: 4096,
+    });
+    expect(result.action).toBe("allow");
+  });
+
   it("emits audit event when budget exceeded", () => {
     const ctx: NvidiaGuardrailContext = {
       tool: "chat",
@@ -180,7 +210,9 @@ describe("evaluateCostGuard", () => {
     const ctx: NvidiaGuardrailContext = { tool: "chat", userId: "user-1" };
     const result = evaluateCostGuard(ctx, {
       enabled: true,
-      limits: [{ scope: "per-tenant", period: "daily", maxTokens: 10000000, action: "require-approval" }],
+      limits: [
+        { scope: "per-tenant", period: "daily", maxTokens: 10000000, action: "require-approval" },
+      ],
     });
     expect(result.action).toBe("require-approval");
   });
@@ -229,6 +261,11 @@ describe("evaluateModelRoutingPolicy", () => {
   const roleModelMap = {
     viewer: ["nvidia/llama-3.1-nemotron-nano-8b-v1"],
     operator: ["nvidia/llama-3.1-nemotron-nano-8b-v1", "nvidia/nemotron-3-nano-30b-a3b"],
+    "power-user": [
+      "nvidia/llama-3.1-nemotron-nano-8b-v1",
+      "nvidia/nemotron-3-nano-30b-a3b",
+      "nvidia/nemotron-3-super-120b-a12b",
+    ],
     admin: ["*"],
     "super-admin": ["*"],
   };
@@ -290,6 +327,27 @@ describe("evaluateModelRoutingPolicy", () => {
     };
     const result = evaluateModelRoutingPolicy(ctx, { enabled: true, roleModelMap });
     expect(result.action).toBe("allow");
+  });
+
+  it("allows power-user to use Nemotron 3 Super 120B", () => {
+    const ctx: NvidiaGuardrailContext = {
+      tool: "chat",
+      model: "nvidia/nemotron-3-super-120b-a12b",
+      userRoles: ["power-user"],
+    };
+    const result = evaluateModelRoutingPolicy(ctx, { enabled: true, roleModelMap });
+    expect(result.action).toBe("allow");
+  });
+
+  it("blocks operator from using Nemotron 3 Super 120B", () => {
+    const ctx: NvidiaGuardrailContext = {
+      tool: "chat",
+      model: "nvidia/nemotron-3-super-120b-a12b",
+      userRoles: ["operator"],
+      userId: "user-1",
+    };
+    const result = evaluateModelRoutingPolicy(ctx, { enabled: true, roleModelMap });
+    expect(result.action).toBe("block");
   });
 
   it("allows if any role grants access", () => {

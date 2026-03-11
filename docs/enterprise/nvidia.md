@@ -1,6 +1,6 @@
 # NVIDIA AI infrastructure integration
 
-OpenClaw Enterprise integrates natively with NVIDIA's agentic AI stack — NIM inference microservices, Nemotron 3 model family, and GPU monitoring. Run enterprise-hardened AI agents on NVIDIA hardware with full observability, access control, and cost governance.
+OpenClaw Enterprise integrates natively with NVIDIA's agentic AI stack — NIM inference microservices, Nemotron 3 model family (including the new Nemotron 3 Super 120B), and GPU monitoring. Run enterprise-hardened AI agents on NVIDIA hardware with full observability, access control, and cost governance.
 
 ## Overview
 
@@ -36,6 +36,12 @@ enterprise:
           contextWindow: 1048576
           maxOutputTokens: 32768
           capabilities: [chat, tool-calling, reasoning]
+          thinkingBudget: configurable
+        - id: "nvidia/nemotron-3-super-120b-a12b"
+          displayName: "Nemotron 3 Super 120B"
+          contextWindow: 1048576
+          maxOutputTokens: 32768
+          capabilities: [chat, tool-calling, reasoning, multi-agent, agentic-reasoning]
           thinkingBudget: configurable
         - id: "nvidia/llama-3.3-nemotron-super-49b-v1"
           displayName: "Nemotron 3 Super 49B"
@@ -96,19 +102,39 @@ enterprise:
 
 ### Model capability matrix
 
-| Model | Context | Max Output | Thinking | Tool Calling | Multi-Agent |
-|-------|---------|-----------|----------|-------------|-------------|
-| Nemotron 3 Nano 30B | 1M tokens | 32K | Configurable budget | Yes | No |
-| Nemotron 3 Super 49B | 128K tokens | 32K | No | Yes | Yes |
-| Nemotron Nano 8B | 128K tokens | 32K | No | Yes | No |
+| Model                 | Params (Total/Active) | Context     | Max Output | Thinking            | Tool Calling | Multi-Agent | Agentic Reasoning |
+| --------------------- | --------------------- | ----------- | ---------- | ------------------- | ------------ | ----------- | ----------------- |
+| Nemotron 3 Super 120B | 120B / 12B            | 1M tokens   | 32K        | Configurable budget | Yes          | Yes         | Yes               |
+| Nemotron 3 Nano 30B   | 31.6B / 3.6B          | 1M tokens   | 32K        | Configurable budget | Yes          | No          | No                |
+| Nemotron 3 Super 49B  | 49B                   | 128K tokens | 32K        | No                  | Yes          | Yes         | No                |
+| Nemotron Nano 8B      | 8B                    | 128K tokens | 32K        | No                  | Yes          | No          | No                |
 
-### Thinking budget (Nemotron 3 Nano)
+### Nemotron 3 Super 120B
 
-Nemotron 3 Nano 30B supports a configurable thinking budget — a parameter that controls how many tokens the model spends on internal reasoning before producing output. Higher budgets produce more thorough reasoning at the cost of latency and token usage.
+The flagship model in the Nemotron 3 family. Uses a hybrid Mamba-Transformer architecture with Latent Mixture-of-Experts (LatentMoE), activating only 12B of its 120B parameters per token for maximum efficiency. Supports Multi-Token Prediction (MTP) for up to 3x faster inference on reasoning tasks, and delivers up to 5x higher throughput than the previous Nemotron Super generation.
+
+Key features:
+
+- **1M token context window** — retain full workflow state for complex agentic pipelines
+- **Agentic reasoning** — purpose-built for multi-step tool use and autonomous agent workflows
+- **NVFP4 quantization** — trained natively in 4-bit precision on Blackwell architecture
+- **Configurable thinking budget** — control reasoning depth vs. latency tradeoff
+
+```yaml
+enterprise:
+  nvidia:
+    nim:
+      defaultModel: "nvidia/nemotron-3-super-120b-a12b"
+```
+
+### Thinking budget (Nemotron 3 Nano and Super)
+
+Nemotron 3 Nano 30B and Nemotron 3 Super 120B support a configurable thinking budget — a parameter that controls how many tokens the model spends on internal reasoning before producing output. Higher budgets produce more thorough reasoning at the cost of latency and token usage.
 
 ```typescript
+// Works with both Nemotron 3 Nano 30B and Nemotron 3 Super 120B
 const response = await nimProvider.chatCompletion({
-  model: "nvidia/nemotron-3-nano-30b-a3b",
+  model: "nvidia/nemotron-3-super-120b-a12b",
   messages: [{ role: "user", content: "Analyze this complex scenario..." }],
   thinkingBudgetTokens: 4096,
 });
@@ -128,20 +154,20 @@ enterprise:
 
 ### Prometheus metrics
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
-| `openclaw_nim_requests_total` | Counter | model, status | Total NIM inference requests |
-| `openclaw_nim_latency_seconds` | Histogram | model | Request latency distribution |
-| `openclaw_nim_tokens_total` | Counter | model, direction | Token consumption (input/output) |
-| `openclaw_nim_health_status` | Gauge | endpoint | Health status (0=down, 1=up) |
+| Metric                         | Type      | Labels           | Description                      |
+| ------------------------------ | --------- | ---------------- | -------------------------------- |
+| `openclaw_nim_requests_total`  | Counter   | model, status    | Total NIM inference requests     |
+| `openclaw_nim_latency_seconds` | Histogram | model            | Request latency distribution     |
+| `openclaw_nim_tokens_total`    | Counter   | model, direction | Token consumption (input/output) |
+| `openclaw_nim_health_status`   | Gauge     | endpoint         | Health status (0=down, 1=up)     |
 
 ### Audit events
 
-| Action | Category | Description |
-|--------|----------|-------------|
-| `nvidia.nim.request` | system | Successful inference request |
-| `nvidia.nim.error` | system | Failed inference request |
-| `nvidia.nim.fallback` | system | Request routed to fallback provider |
+| Action                | Category | Description                         |
+| --------------------- | -------- | ----------------------------------- |
+| `nvidia.nim.request`  | system   | Successful inference request        |
+| `nvidia.nim.error`    | system   | Failed inference request            |
+| `nvidia.nim.fallback` | system   | Request routed to fallback provider |
 
 ## GPU monitoring
 
@@ -166,14 +192,14 @@ If `nvidia-smi` is not found, GPU metrics are silently disabled with a single wa
 
 ### Metric reference
 
-| Metric | Type | Labels | Description |
-|--------|------|--------|-------------|
+| Metric                                    | Type  | Labels              | Description             |
+| ----------------------------------------- | ----- | ------------------- | ----------------------- |
 | `openclaw_nvidia_gpu_utilization_percent` | Gauge | gpu_index, gpu_name | GPU compute utilization |
-| `openclaw_nvidia_gpu_memory_used_bytes` | Gauge | gpu_index, gpu_name | GPU memory in use |
-| `openclaw_nvidia_gpu_memory_total_bytes` | Gauge | gpu_index, gpu_name | Total GPU memory |
-| `openclaw_nvidia_gpu_temperature_celsius` | Gauge | gpu_index, gpu_name | GPU temperature |
-| `openclaw_nvidia_gpu_power_watts` | Gauge | gpu_index, gpu_name | Current power draw |
-| `openclaw_nvidia_gpu_power_limit_watts` | Gauge | gpu_index, gpu_name | Power limit |
+| `openclaw_nvidia_gpu_memory_used_bytes`   | Gauge | gpu_index, gpu_name | GPU memory in use       |
+| `openclaw_nvidia_gpu_memory_total_bytes`  | Gauge | gpu_index, gpu_name | Total GPU memory        |
+| `openclaw_nvidia_gpu_temperature_celsius` | Gauge | gpu_index, gpu_name | GPU temperature         |
+| `openclaw_nvidia_gpu_power_watts`         | Gauge | gpu_index, gpu_name | Current power draw      |
+| `openclaw_nvidia_gpu_power_limit_watts`   | Gauge | gpu_index, gpu_name | Power limit             |
 
 ### Threshold alerting
 
@@ -282,7 +308,7 @@ kubectl logs deploy/openclaw -c openclaw --tail=50
 
 ### Thinking budget limit
 
-Prevents runaway reasoning costs by capping thinking tokens per request on Nemotron 3 Nano:
+Prevents runaway reasoning costs by capping thinking tokens per request on Nemotron 3 Nano and Super:
 
 ```yaml
 enterprise:
@@ -291,7 +317,7 @@ enterprise:
       thinkingBudgetLimit:
         enabled: true
         maxThinkingTokens: 4096
-        action: require-approval    # block | require-approval | warn
+        action: require-approval # block | require-approval | warn
 ```
 
 ### Cost guard
@@ -330,6 +356,10 @@ enterprise:
           operator:
             - "nvidia/llama-3.1-nemotron-nano-8b-v1"
             - "nvidia/nemotron-3-nano-30b-a3b"
+          power-user:
+            - "nvidia/llama-3.1-nemotron-nano-8b-v1"
+            - "nvidia/nemotron-3-nano-30b-a3b"
+            - "nvidia/nemotron-3-super-120b-a12b"
           admin: ["*"]
           super-admin: ["*"]
 ```
@@ -382,7 +412,7 @@ enterprise:
 NIM models require significant GPU memory. If the NIM container is OOM-killed:
 
 - Check GPU memory with `nvidia-smi`
-- Use a smaller model (Nano 8B requires ~16GB, Nano 30B requires ~40GB)
+- Use a smaller model (Nano 8B requires ~16GB, Nano 30B requires ~40GB, Super 120B requires ~80GB with NVFP4)
 - Ensure no other processes are consuming GPU memory
 
 ### GPU not detected
@@ -424,7 +454,7 @@ If requests are blocked by the thinking budget guardrail:
 
 - Increase `maxThinkingTokens` in the guardrail config
 - Change the action to `warn` instead of `block`/`require-approval`
-- Only Nemotron 3 Nano 30B uses configurable thinking budgets
+- Nemotron 3 Nano 30B and Nemotron 3 Super 120B support configurable thinking budgets
 
 ## FAQ
 
@@ -438,12 +468,13 @@ No. OpenClaw Enterprise integrates with the NVIDIA AI stack (NIM, Nemotron model
 
 **Which Nemotron model should I use?**
 
-| Use Case | Recommended Model |
-|----------|-------------------|
-| Cost-sensitive, high throughput | Nemotron Nano 8B |
-| Complex reasoning, long context | Nemotron 3 Nano 30B (1M context) |
-| Multi-agent orchestration | Nemotron 3 Super 49B |
-| Development / testing | Nemotron Nano 8B |
+| Use Case                        | Recommended Model                              |
+| ------------------------------- | ---------------------------------------------- |
+| Cost-sensitive, high throughput | Nemotron Nano 8B                               |
+| Complex reasoning, long context | Nemotron 3 Nano 30B (1M context)               |
+| Agentic AI, multi-step tool use | Nemotron 3 Super 120B (1M context, 12B active) |
+| Multi-agent orchestration       | Nemotron 3 Super 120B or Super 49B             |
+| Development / testing           | Nemotron Nano 8B                               |
 
 **Can I use both NVIDIA-hosted and self-hosted NIM?**
 

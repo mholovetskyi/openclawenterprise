@@ -48,7 +48,12 @@ export type EnterpriseConfig = {
 
 // ── NVIDIA ────────────────────────────────────────────────────────────────
 
-export type NimModelCapability = "chat" | "tool-calling" | "reasoning" | "multi-agent";
+export type NimModelCapability =
+  | "chat"
+  | "tool-calling"
+  | "reasoning"
+  | "multi-agent"
+  | "agentic-reasoning";
 
 export type NimModelConfig = {
   id: string;
@@ -56,7 +61,7 @@ export type NimModelConfig = {
   contextWindow?: number;
   maxOutputTokens?: number;
   capabilities?: NimModelCapability[];
-  /** Nemotron 3 Nano thinking budget mode. */
+  /** Nemotron 3 Nano/Super thinking budget mode. */
   thinkingBudget?: "configurable" | "none";
 };
 
