@@ -27,7 +27,7 @@ function handleTabsRouteError(
       return jsonError(res, mapped.status, mapped.message);
     }
   }
-  return jsonError(res, 500, String(err));
+  return jsonError(res, 500, "Internal server error");
 }
 
 async function withTabsProfileRoute(params: {

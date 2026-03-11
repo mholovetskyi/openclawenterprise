@@ -37,7 +37,7 @@ export function handleRouteError(ctx: BrowserRouteContext, res: BrowserResponse,
   if (mapped) {
     return jsonError(res, mapped.status, mapped.message);
   }
-  jsonError(res, 500, String(err));
+  jsonError(res, 500, "Internal server error");
 }
 
 export function resolveProfileContext(

@@ -157,20 +157,20 @@ export function registerBrowserBasicRoutes(app: BrowserRouteRegistrar, ctx: Brow
       });
       res.json(result);
     } catch (err) {
-      const msg = String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("already exists")) {
-        return jsonError(res, 409, msg);
+        return jsonError(res, 409, "Profile already exists");
       }
       if (msg.includes("invalid profile name")) {
-        return jsonError(res, 400, msg);
+        return jsonError(res, 400, "Invalid profile name");
       }
       if (msg.includes("no available CDP ports")) {
-        return jsonError(res, 507, msg);
+        return jsonError(res, 507, "No available CDP ports");
       }
       if (msg.includes("cdpUrl")) {
-        return jsonError(res, 400, msg);
+        return jsonError(res, 400, "Invalid CDP URL");
       }
-      jsonError(res, 500, msg);
+      jsonError(res, 500, "Internal server error");
     }
   });
 
@@ -186,17 +186,17 @@ export function registerBrowserBasicRoutes(app: BrowserRouteRegistrar, ctx: Brow
       const result = await service.deleteProfile(name);
       res.json(result);
     } catch (err) {
-      const msg = String(err);
+      const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes("invalid profile name")) {
-        return jsonError(res, 400, msg);
+        return jsonError(res, 400, "Invalid profile name");
       }
       if (msg.includes("default profile")) {
-        return jsonError(res, 400, msg);
+        return jsonError(res, 400, "Cannot delete default profile");
       }
       if (msg.includes("not found")) {
-        return jsonError(res, 404, msg);
+        return jsonError(res, 404, "Profile not found");
       }
-      jsonError(res, 500, msg);
+      jsonError(res, 500, "Internal server error");
     }
   });
 }

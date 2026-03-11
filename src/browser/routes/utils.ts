@@ -28,7 +28,7 @@ export function getProfileContext(
   try {
     return ctx.forProfile(profileName);
   } catch (err) {
-    return { error: String(err), status: 404 };
+    return { error: "Profile not found", status: 404 };
   }
 }
 
