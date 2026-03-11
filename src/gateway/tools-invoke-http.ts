@@ -299,7 +299,7 @@ export async function handleToolsInvokeHttpRequest(
   if (!tool) {
     sendJson(res, 404, {
       ok: false,
-      error: { type: "not_found", message: `Tool not available: ${toolName}` },
+      error: { type: "not_found", message: "requested tool is not available" },
     });
     return true;
   }

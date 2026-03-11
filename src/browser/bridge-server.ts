@@ -53,6 +53,18 @@ export async function startBrowserBridgeServer(params: {
         res.status(404).send("Invalid or expired token");
         return;
       }
+      // Validate redirect target is a loopback address to prevent open-redirect attacks
+      let redirectHost: string;
+      try {
+        redirectHost = new URL(redirectUrl).hostname;
+      } catch {
+        res.status(400).send("Invalid redirect URL");
+        return;
+      }
+      if (!isLoopbackHost(redirectHost)) {
+        res.status(403).send("Redirect target must be a loopback address");
+        return;
+      }
       res.setHeader("Cache-Control", "no-store");
       res.redirect(302, redirectUrl);
     });

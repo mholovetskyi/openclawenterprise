@@ -213,6 +213,20 @@ export async function createOracleMcpBridge(
   deps: OracleMcpBridgeDeps,
 ): Promise<OracleMcpBridge> {
   const endpoint = await deps.resolveSecret(config.endpoint);
+
+  // Validate endpoint URL to prevent SSRF
+  try {
+    const parsed = new URL(endpoint);
+    if (!["https:", "http:"].includes(parsed.protocol)) {
+      throw new Error("MCP endpoint must use http or https protocol");
+    }
+  } catch (err) {
+    if (err instanceof TypeError) {
+      throw new Error("MCP endpoint is not a valid URL");
+    }
+    throw err;
+  }
+
   const queryTimeout = config.queryTimeout ?? 30_000;
   const maxResultRows = config.maxResultRows ?? 1000;
   const healthCheckMs = config.healthCheckIntervalMs ?? 60_000;

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { collectTextContentBlocks } from "../../agents/content-blocks.js";
 import { createOpenClawTools } from "../../agents/openclaw-tools.js";
 import type { SkillCommandSpec } from "../../agents/skills.js";
@@ -210,7 +211,7 @@ export async function handleInlineActions(params: {
         return { kind: "reply", reply: { text: `❌ Tool not available: ${dispatch.toolName}` } };
       }
 
-      const toolCallId = `cmd_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+      const toolCallId = `cmd_${Date.now()}_${randomBytes(8).toString('hex')}`;
       try {
         const result = await tool.execute(toolCallId, {
           command: rawArgs,

@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -13,7 +14,7 @@ export async function movePathToTrash(targetPath: string): Promise<string> {
     const base = path.basename(targetPath);
     let dest = path.join(trashDir, `${base}-${Date.now()}`);
     if (fs.existsSync(dest)) {
-      dest = path.join(trashDir, `${base}-${Date.now()}-${Math.random()}`);
+      dest = path.join(trashDir, `${base}-${Date.now()}-${randomBytes(8).toString('hex')}`);
     }
     fs.renameSync(targetPath, dest);
     return dest;

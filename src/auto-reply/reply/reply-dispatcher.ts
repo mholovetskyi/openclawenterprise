@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import type { HumanDelayConfig } from "../../config/types.js";
 import { sleep } from "../../utils.js";
 import type { GetReplyOptions, ReplyPayload } from "../types.js";
@@ -36,7 +37,7 @@ function getHumanDelay(config: HumanDelayConfig | undefined): number {
   if (max <= min) {
     return min;
   }
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return randomInt(min, max + 1);
 }
 
 export type ReplyDispatcherOptions = {

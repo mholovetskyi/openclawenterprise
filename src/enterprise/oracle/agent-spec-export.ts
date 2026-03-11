@@ -263,6 +263,12 @@ export async function exportAgentSpecToFile(
   const output = specs.length === 1 ? specs[0] : specs;
   const json = JSON.stringify(output, null, 2);
   const path = options.config.exportPath ?? "./agent-spec.json";
+
+  // Prevent path traversal — reject paths with ".." components
+  if (/(?:^|[\\/])\.\.(?:[\\/]|$)/.test(path)) {
+    throw new Error("Export path must not contain path traversal sequences");
+  }
+
   await deps.writeFile(path, json);
   return path;
 }

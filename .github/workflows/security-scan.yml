@@ -95,8 +95,10 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Scan changed skills
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- 'src/skills/**' 'skills/**' '*.skill.ts' '*.skill.js' | head -50)
+          CHANGED=$(git diff --name-only "origin/${BASE_REF}...HEAD" -- 'src/skills/**' 'skills/**' '*.skill.ts' '*.skill.js' | head -50)
           if [ -z "$CHANGED" ]; then
             echo "No skill files changed — skipping"
             exit 0
@@ -121,13 +123,18 @@ jobs:
           sudo mv gitleaks /usr/local/bin/
 
       - name: Run Gitleaks
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CURRENT_SHA: ${{ github.sha }}
+          BEFORE_SHA: ${{ github.event.before }}
         run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            LOG_OPTS="${{ github.event.pull_request.base.sha }}..${{ github.sha }}"
-          elif [ "${{ github.event.before }}" = "0000000000000000000000000000000000000000" ]; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            LOG_OPTS="${PR_BASE_SHA}..${CURRENT_SHA}"
+          elif [ "$BEFORE_SHA" = "0000000000000000000000000000000000000000" ]; then
             LOG_OPTS="-1"
           else
-            LOG_OPTS="${{ github.event.before }}..${{ github.sha }}"
+            LOG_OPTS="${BEFORE_SHA}..${CURRENT_SHA}"
           fi
           gitleaks detect --source . --redact --log-opts="$LOG_OPTS"
 

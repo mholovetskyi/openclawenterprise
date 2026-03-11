@@ -99,12 +99,12 @@ export async function resolveSecretValue(value: string): Promise<string> {
   }
 
   if (!activeBackend) {
-    throw new Error(`Secret backend not initialized (reference: ${value})`);
+    throw new Error(`Secret backend not initialized (scheme: ${ref.scheme})`);
   }
 
   const raw = await activeBackend.get(ref.path);
   if (raw === null) {
-    throw new Error(`Secret not found: ${value}`);
+    throw new Error(`Secret not found: ${ref.scheme}://<redacted>`);
   }
 
   // If the backend stores JSON and a field is specified, parse it

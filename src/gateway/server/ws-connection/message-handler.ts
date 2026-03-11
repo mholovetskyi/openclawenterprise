@@ -1019,7 +1019,7 @@ export function attachGatewayWsMessageHandler(params: {
         });
       })().catch((err) => {
         logGateway.error(`request handler failed: ${formatForLog(err)}`);
-        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, formatForLog(err)));
+        respond(false, undefined, errorShape(ErrorCodes.UNAVAILABLE, "request processing failed"));
       });
     } catch (err) {
       logGateway.error(`parse/handle error: ${String(err)}`);

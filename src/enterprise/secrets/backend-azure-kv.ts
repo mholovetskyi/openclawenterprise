@@ -99,7 +99,7 @@ export async function createAzureKeyVaultBackend(
         if (!secret.name) continue;
         const decoded = decodeAzureName(secret.name);
         // Strip backend prefix
-        const stripped = prefix ? decoded.replace(new RegExp(`^${prefix}`), "") : decoded;
+        const stripped = prefix ? decoded.replace(new RegExp(`^${escapeRegExp(prefix)}`), "") : decoded;
         if (keyPrefix && !stripped.startsWith(keyPrefix)) continue;
         // Skip deleted secrets
         if (secret.enabled === false) continue;
@@ -124,6 +124,10 @@ function decodeAzureName(name: string): string {
   return name.replace(/--([0-9a-f]+)-/g, (_, hex) =>
     String.fromCodePoint(parseInt(hex, 16)),
   );
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function isNotFoundError(err: unknown): boolean {

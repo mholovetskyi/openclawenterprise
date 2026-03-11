@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import type { AgentMessage } from "@mariozechner/pi-agent-core";
@@ -131,7 +132,7 @@ type CompactionMessageMetrics = {
 };
 
 function createCompactionDiagId(): string {
-  return `cmp-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+  return `cmp-${Date.now().toString(36)}-${randomBytes(8).toString('hex').slice(0, 6)}`;
 }
 
 function getMessageTextChars(msg: AgentMessage): number {

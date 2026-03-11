@@ -1,3 +1,5 @@
+import { randomBytes } from "node:crypto";
+
 /**
  * Distributed rate limiting — Redis sliding window.
  *
@@ -89,7 +91,7 @@ class RedisRateLimiter implements RateLimiter {
   async check(key: string, limit: number, windowMs: number): Promise<RateLimitResult> {
     const now = Date.now();
     const cutoff = now - windowMs;
-    const member = `${now}:${Math.random().toString(36).slice(2, 9)}`;
+    const member = `${now}:${randomBytes(8).toString('hex').slice(0, 7)}`;
 
     // Sorted set: score = timestamp ms, member = unique request ID
     await this.redis.zadd(key, now, member);

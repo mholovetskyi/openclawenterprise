@@ -2,8 +2,7 @@
  * Audit event schema — tamper-evident, structured, SOC 2 / HIPAA / GDPR ready.
  */
 
-import { createHash } from "node:crypto";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 
 export type AuditEventCategory =
   | "auth"
@@ -137,7 +136,7 @@ function encodeBase32(n: number, length: number): string {
 
 function generateULID(): string {
   const ms = Date.now();
-  const rand = Math.floor(Math.random() * 0xffffffffffff);
+  const rand = randomBytes(6).readUIntBE(0, 6);
   return encodeBase32(ms, 10) + encodeBase32(rand, 16);
 }
 

@@ -115,7 +115,8 @@ export function createBrowserRouteDispatcher(ctx: BrowserRouteContext) {
           res,
         );
       } catch (err) {
-        return { status: 500, body: { error: String(err) } };
+        const safeMessage = err instanceof Error ? err.message : "internal error";
+        return { status: 500, body: { error: safeMessage } };
       }
 
       return { status, body: payload };

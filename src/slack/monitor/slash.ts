@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { SlackActionMiddlewareArgs, SlackCommandMiddlewareArgs } from "@slack/bolt";
 import type { ChatCommandDefinition, CommandArgs } from "../../auto-reply/commands-registry.js";
 import type { ReplyPayload } from "../../auto-reply/types.js";
@@ -83,7 +84,7 @@ function storeSlackExternalArgMenu(params: {
   userId: string;
 }): string {
   pruneSlackExternalArgMenuStore();
-  const token = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+  const token = `${Date.now().toString(36)}${randomBytes(8).toString('hex').slice(0, 8)}`;
   slackExternalArgMenuStore.set(token, {
     choices: params.choices,
     userId: params.userId,

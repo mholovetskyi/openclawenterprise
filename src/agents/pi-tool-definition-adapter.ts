@@ -53,11 +53,10 @@ function isLegacyToolExecuteArgs(args: ToolExecuteArgsAny): args is ToolExecuteA
 
 function describeToolExecutionError(err: unknown): {
   message: string;
-  stack?: string;
 } {
   if (err instanceof Error) {
     const message = err.message?.trim() ? err.message : String(err);
-    return { message, stack: err.stack };
+    return { message };
   }
   return { message: String(err) };
 }
@@ -151,8 +150,8 @@ export function toToolDefinitions(tools: AnyAgentTool[]): ToolDefinition[] {
             consumeAdjustedParamsForToolCall(toolCallId);
           }
           const described = describeToolExecutionError(err);
-          if (described.stack && described.stack !== described.message) {
-            logDebug(`tools: ${normalizedName} failed stack:\n${described.stack}`);
+          if (err instanceof Error && err.stack && err.stack !== described.message) {
+            logDebug(`tools: ${normalizedName} failed stack:\n${err.stack}`);
           }
           logError(`[tools] ${normalizedName} failed: ${described.message}`);
 

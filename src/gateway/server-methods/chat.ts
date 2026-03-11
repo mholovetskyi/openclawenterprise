@@ -803,7 +803,8 @@ export const chatHandlers: GatewayRequestHandlers = {
         parsedMessage = parsed.message;
         parsedImages = parsed.images;
       } catch (err) {
-        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, String(err)));
+        const safeMsg = err instanceof Error ? err.message : "attachment processing failed";
+        respond(false, undefined, errorShape(ErrorCodes.INVALID_REQUEST, safeMsg));
         return;
       }
     }
@@ -1016,14 +1017,15 @@ export const chatHandlers: GatewayRequestHandlers = {
           });
         })
         .catch((err) => {
-          const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));
+          context.logGateway.error(`chat.send dispatch failed: ${formatForLog(err)}`);
+          const error = errorShape(ErrorCodes.UNAVAILABLE, "chat processing failed");
           context.dedupe.set(`chat:${clientRunId}`, {
             ts: Date.now(),
             ok: false,
             payload: {
               runId: clientRunId,
               status: "error" as const,
-              summary: String(err),
+              summary: "chat processing failed",
             },
             error,
           });
@@ -1031,18 +1033,19 @@ export const chatHandlers: GatewayRequestHandlers = {
             context,
             runId: clientRunId,
             sessionKey: rawSessionKey,
-            errorMessage: String(err),
+            errorMessage: "chat processing failed",
           });
         })
         .finally(() => {
           context.chatAbortControllers.delete(clientRunId);
         });
     } catch (err) {
-      const error = errorShape(ErrorCodes.UNAVAILABLE, String(err));
+      context.logGateway.error(`chat.send setup failed: ${formatForLog(err)}`);
+      const error = errorShape(ErrorCodes.UNAVAILABLE, "chat request failed");
       const payload = {
         runId: clientRunId,
         status: "error" as const,
-        summary: String(err),
+        summary: "chat request failed",
       };
       context.dedupe.set(`chat:${clientRunId}`, {
         ts: Date.now(),

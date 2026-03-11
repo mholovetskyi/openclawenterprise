@@ -144,7 +144,7 @@ export function createOciVaultBackend(
   function mapError(err: unknown): Error {
     const status = (err as { statusCode?: number }).statusCode;
     const code = (err as { serviceCode?: string }).serviceCode;
-    const message = (err as { message?: string }).message ?? String(err);
+    const message = (err as { message?: string }).message ?? (err instanceof Error ? err.message : "unknown error");
 
     if (status === 404 || code === "SecretNotFound" || code === "NotAuthorizedOrNotFound") {
       return Object.assign(new Error(`Secret not found: ${message}`), {

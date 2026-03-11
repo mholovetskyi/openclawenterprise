@@ -191,7 +191,7 @@ export async function createPalantirSink(
     await checkConnectivity(client, stackUrl);
   } catch (err) {
     process.stderr.write(
-      `[palantir-sink] Failed to connect to Foundry at ${stackUrl}: ${String(err)}. Sink disabled.\n`,
+      `[palantir-sink] Failed to connect to Foundry: ${err instanceof Error ? err.message : "unknown error"}. Sink disabled.\n`,
     );
     // Return a no-op sink
     return {

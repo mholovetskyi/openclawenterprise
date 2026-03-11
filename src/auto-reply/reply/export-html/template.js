@@ -804,6 +804,7 @@
 
         const content = document.createElement("span");
         content.className = "tree-content";
+        // eslint-disable-next-line no-unsanitized/property -- all values are escaped via escapeHtml()
         content.innerHTML = getTreeNodeDisplayHtml(entry, flatNode.node.label);
 
         div.appendChild(prefixSpan);
@@ -1263,11 +1264,11 @@
     }
 
     if (success && button) {
-      const originalHtml = button.innerHTML;
-      button.innerHTML = "✓";
+      const originalText = button.textContent;
+      button.textContent = "✓";
       button.classList.add("copied");
       setTimeout(() => {
-        button.innerHTML = originalHtml;
+        button.textContent = originalText;
         button.classList.remove("copied");
       }, 1500);
     }
@@ -1611,6 +1612,7 @@
     }
 
     const template = document.createElement("template");
+    // eslint-disable-next-line no-unsanitized/property -- html is from renderEntry() which escapes all dynamic values
     template.innerHTML = html;
     const node = template.content.firstElementChild;
 
@@ -1628,6 +1630,7 @@
 
     renderTree();
 
+    // eslint-disable-next-line no-unsanitized/property -- renderHeader() produces trusted static/escaped HTML
     document.getElementById("header-container").innerHTML = renderHeader();
 
     // Build messages using cached DOM nodes

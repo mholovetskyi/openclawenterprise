@@ -159,7 +159,7 @@ function renderFallbackIndicator(status: FallbackIndicatorStatus | null | undefi
 }
 
 function generateAttachmentId(): string {
-  return `att-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return `att-${Date.now()}-${Array.from(globalThis.crypto.getRandomValues(new Uint8Array(5)), (b) => b.toString(36)).join("").slice(0, 7)}`;
 }
 
 function handlePaste(e: ClipboardEvent, props: ChatProps) {

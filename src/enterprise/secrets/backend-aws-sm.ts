@@ -17,6 +17,10 @@ export type AwsSmBackendOptions = {
   prefix?: string;
 };
 
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
   const prefix = opts.prefix ?? "openclaw/";
 
@@ -107,7 +111,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
           new ListSecretsCommand({ Filters: [{ Key: "name", Values: [prefix] }], NextToken: nextToken }),
         );
         for (const s of res.SecretList ?? []) {
-          if (s.Name) secrets.push(s.Name.replace(new RegExp(`^${prefix}`), ""));
+          if (s.Name) secrets.push(s.Name.replace(new RegExp(`^${escapeRegExp(prefix)}`), ""));
         }
         nextToken = res.NextToken;
       } while (nextToken);

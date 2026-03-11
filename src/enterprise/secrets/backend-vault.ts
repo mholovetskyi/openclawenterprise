@@ -23,7 +23,24 @@ export type VaultBackendOptions = {
   namespace?: string;
 };
 
+function validateVaultAddress(address: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(address);
+  } catch {
+    throw new Error("Vault backend: address is not a valid URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("Vault backend: address must use https (or http for local development)");
+  }
+  if (parsed.protocol === "http:" && parsed.hostname !== "localhost" && parsed.hostname !== "127.0.0.1") {
+    throw new Error("Vault backend: insecure http is only allowed for localhost addresses");
+  }
+}
+
 export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
+  validateVaultAddress(opts.address);
+
   const mount = opts.mount ?? "secret";
   const prefix = opts.prefix ?? "openclaw/";
   let token = opts.token ?? "";
@@ -127,7 +144,7 @@ async function loginAppRole(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role_id: roleId, secret_id: secretId }),
   });
-  if (!res.ok) throw new Error(`Vault AppRole login failed: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Vault AppRole login failed (HTTP ${res.status})`);
   const body = (await res.json()) as { auth?: { client_token?: string } };
   const tok = body?.auth?.client_token;
   if (!tok) throw new Error("Vault AppRole login: no client_token in response");
@@ -146,7 +163,7 @@ async function loginK8s(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role, jwt }),
   });
-  if (!res.ok) throw new Error(`Vault K8s login failed: HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`Vault K8s login failed (HTTP ${res.status})`);
   const body = (await res.json()) as { auth?: { client_token?: string } };
   const tok = body?.auth?.client_token;
   if (!tok) throw new Error("Vault K8s login: no client_token in response");

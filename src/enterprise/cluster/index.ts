@@ -301,7 +301,7 @@ export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
         );
         return buildInMemory(nodeId, cfg);
       }
-      throw err;
+      throw new Error("Failed to connect to Redis cluster backend");
     }
 
     const keyPrefix = (clusterCfg?.redis?.keyPrefix as string | undefined) ?? "openclaw:";

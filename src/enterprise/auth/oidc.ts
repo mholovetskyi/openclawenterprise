@@ -91,7 +91,7 @@ import { createVerify } from "node:crypto";
 async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
   if (!res.ok) {
-    throw new Error(`HTTP ${res.status} fetching ${url}`);
+    throw new Error(`HTTP ${res.status} from OIDC provider`);
   }
   return res.json() as Promise<T>;
 }
@@ -176,9 +176,7 @@ async function verifyIdToken(
     throw new Error("ID token not yet valid");
   }
   if (expectedIssuer && payload["iss"] !== expectedIssuer) {
-    throw new Error(
-      `ID token issuer mismatch: expected ${expectedIssuer}, got ${String(payload["iss"])}`,
-    );
+    throw new Error("ID token issuer mismatch");
   }
   if (expectedAudience && payload["aud"] !== expectedAudience) {
     throw new Error("ID token audience mismatch");
@@ -441,9 +439,9 @@ export function createOidcHandlers(service: OidcService): {
         const { url } = service.getAuthorizationUrl();
         res.writeHead(302, { Location: url });
         res.end();
-      } catch (err) {
+      } catch (_err) {
         res.writeHead(500);
-        res.end(JSON.stringify({ error: String(err) }));
+        res.end(JSON.stringify({ error: "Internal server error" }));
       }
     },
 
@@ -474,9 +472,12 @@ export function createOidcHandlers(service: OidcService): {
           }),
         );
       } catch (err) {
-        const code = (err as { code?: string }).code === "INVALID_STATE" ? 400 : 500;
-        res.writeHead(code);
-        res.end(JSON.stringify({ error: String(err) }));
+        const errCode = (err as { code?: string }).code;
+        const isClientError = errCode === "INVALID_STATE" || errCode === "SESSION_EXPIRED";
+        const statusCode = isClientError ? 400 : 500;
+        const message = isClientError && err instanceof Error ? err.message : "Authentication failed";
+        res.writeHead(statusCode);
+        res.end(JSON.stringify({ error: message }));
       }
     },
   };

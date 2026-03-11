@@ -7,7 +7,7 @@
  * No external dependencies — pure Node.js crypto.
  */
 
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 // ── Base32 ────────────────────────────────────────────────────────────────────
 
@@ -104,11 +104,20 @@ export class MfaService {
    * Accepts codes within ±TOTP_WINDOW steps (handles clock skew up to 30s).
    */
   static verify(secret: string, code: string, nowSec?: number): boolean {
-    const now = nowSec ?? Math.floor(Date.now() / 1000);
-    for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
-      if (totpAt(secret, now + i * TOTP_STEP_SEC) === code) return true;
+    if (typeof code !== "string" || !/^\d{6}$/.test(code)) {
+      return false;
     }
-    return false;
+    const now = nowSec ?? Math.floor(Date.now() / 1000);
+    let valid = false;
+    for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
+      const expected = totpAt(secret, now + i * TOTP_STEP_SEC);
+      const expectedBuf = Buffer.from(expected, "utf8");
+      const codeBuf = Buffer.from(code, "utf8");
+      if (expectedBuf.length === codeBuf.length && timingSafeEqual(expectedBuf, codeBuf)) {
+        valid = true;
+      }
+    }
+    return valid;
   }
 
   /**

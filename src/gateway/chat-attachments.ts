@@ -171,8 +171,9 @@ export function buildMessageWithAttachments(
     validateAttachmentBase64OrThrow(normalized, { maxBytes });
     const { base64, label, mime } = normalized;
 
-    const safeLabel = label.replace(/\s+/g, "_");
-    const dataUrl = `![${safeLabel}](data:${mime};base64,${base64})`;
+    const safeLabel = label.replace(/[^\w.-]/g, "_");
+    const safeMime = mime.replace(/[^\w/+.-]/g, "");
+    const dataUrl = `![${safeLabel}](data:${safeMime};base64,${base64})`;
     blocks.push(dataUrl);
   }
 

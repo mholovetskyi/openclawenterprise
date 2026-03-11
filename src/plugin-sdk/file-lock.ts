@@ -1,3 +1,4 @@
+import { randomInt } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { isPidAlive } from "../shared/pid-alive.js";
@@ -33,7 +34,7 @@ function computeDelayMs(retries: FileLockOptions["retries"], attempt: number): n
     retries.maxTimeout,
     Math.max(retries.minTimeout, retries.minTimeout * retries.factor ** attempt),
   );
-  const jitter = retries.randomize ? 1 + Math.random() : 1;
+  const jitter = retries.randomize ? 1 + randomInt(0, 1000000) / 1000000 : 1;
   return Math.min(retries.maxTimeout, Math.round(base * jitter));
 }
 

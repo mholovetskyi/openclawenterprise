@@ -168,9 +168,11 @@ export async function initNimProvider(
     const start = Date.now();
     try {
       const healthEndpoint = nimCfg?.healthCheck?.endpoint ?? "/v1/models";
-      const url = healthEndpoint.startsWith("/")
-        ? `${endpoint.replace(/\/v1$/, "")}${healthEndpoint}`
-        : healthEndpoint;
+      // Only allow relative paths to prevent SSRF via arbitrary URLs
+      if (!healthEndpoint.startsWith("/")) {
+        throw new Error("Health check endpoint must be a relative path");
+      }
+      const url = `${endpoint.replace(/\/v1$/, "")}${healthEndpoint}`;
 
       const headers: Record<string, string> = {
         "Accept": "application/json",
@@ -207,7 +209,7 @@ export async function initNimProvider(
         endpoint,
         availableModels: [],
         lastCheckMs: elapsed,
-        error: (err as Error).message,
+        error: "Health check failed",
       };
       metrics.nimHealthStatus.set({ endpoint }, 0);
     }
@@ -271,8 +273,9 @@ export async function initNimProvider(
         );
 
         if (!res.ok) {
-          const errBody = await res.text().catch(() => "");
-          lastError = new Error(`NIM API error: HTTP ${res.status} - ${errBody}`);
+          // Read body but don't include it in the error — it may contain sensitive data
+          await res.text().catch(() => "");
+          lastError = new Error(`NIM API error: HTTP ${res.status}`);
           if (res.status >= 400 && res.status < 500 && res.status !== 429) {
             break; // Don't retry client errors except rate limits
           }
