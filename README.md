@@ -32,6 +32,7 @@
 </p>
 
 <p align="center">
+  <a href="#built-since-gtc">Built since GTC</a> ·
   <a href="#install">Install</a> ·
   <a href="#where-openclaw-stops">Enterprise gap</a> ·
   <a href="#zero-trust-gateway">Security</a> ·
@@ -56,6 +57,51 @@
 Enterprise deployments have a different set of requirements. Regulated industries need audit trails, access control, and encrypted credential storage. Platform teams need Prometheus metrics and Kubernetes-native deployment. Security-conscious organizations need runtime guardrails, prompt injection defenses, and supply chain verification for third-party skills. These aren't gaps in OpenClaw's quality — they're simply outside its design scope as a personal-use tool.
 
 **OpenClaw Enterprise** adds the complete enterprise stack on top of the OpenClaw foundation. Every enterprise feature is an opt-in module (`enterprise.enabled: true`). In community mode the binary is identical and there is no performance overhead. 100% MIT-licensed. Zero subscriptions.
+
+---
+
+## Built since GTC
+
+> *The gap between "demo-ready" and "enterprise-ready" is enormous. We closed it.*
+
+Since NVIDIA GTC, OpenClaw Enterprise has shipped a production-ready, MIT-licensed enterprise stack — zero subscriptions, zero lock-in. Every feature is opt-in with zero overhead when disabled. Here's what landed:
+
+### NVIDIA-native AI infrastructure
+- **NVIDIA NIM** — first-class inference provider with OpenAI-compatible endpoints, health checks, and retry logic
+- **NemoClaw Enterprise** — sandboxed inference with OpenShell containers, privacy routing, and 3 deployment profiles (`nvidia-cloud`, `local-nim`, `vllm`)
+- **GPU telemetry** — nvidia-smi polling with Prometheus export and configurable alert thresholds
+- **Nemotron 3 model family** — Super 120B, Nano 30B, and Super 49B supported out of the box
+- **NVIDIA guardrails** — thinking budget limits, per-user/per-tenant cost caps, RBAC-based model routing
+
+### Zero-trust security stack
+- **Encrypted secrets** — AES-256-GCM at rest, 6 backends (Vault, AWS SM, GCP SM, Azure KV, OCI Vault, env)
+- **Full RBAC** — Users, Groups, Roles, Permissions with JWT (RS256/HS256), MFA/TOTP, API keys
+- **OIDC/SSO** — Okta, Azure AD, Google Workspace, Auth0, Keycloak, Palantir Foundry
+- **Runtime guardrails** — credential harvest detection, reverse shell blocking, PII scanning, mass-deletion prevention
+- **Input sanitization** — Unicode normalization, invisible character stripping, 8 prompt injection pattern families
+- **Supply chain security** — Ed25519 code signing, 14-rule SAST scanner (CWE/OWASP), pre-install approval gates
+- **Network controls** — IP allowlisting (CIDR, IPv4/IPv6), token-bucket rate limiting
+
+### Compliance and observability
+- **Tamper-evident audit** — SHA-256 hash-chain logging, SQLite or PostgreSQL, ULID event IDs
+- **External sinks** — Syslog (RFC 5424), webhook batching, Palantir Foundry streaming, OCI Streaming
+- **Prometheus** — 20+ metrics, Kubernetes health probes (`/healthz`, `/readyz`, `/startupz`)
+- **GDPR** — data export (Art. 20) and erasure (Art. 17), SOC 2 / HIPAA / PCI DSS mapping
+- **Container security** — SBOM generation (SPDX), image signing (cosign), vulnerability scanning (Trivy)
+
+### Enterprise integrations
+- **Palantir Foundry** — audit streaming, OIDC preset, Compute Module deployment
+- **Oracle Cloud** — MCP bridge to Autonomous Database, OCI Vault secrets, OCI Streaming audit, Agent Spec export
+- **Multi-tenancy** — AsyncLocalStorage isolation with per-tenant rate limits, quotas, and audit
+- **Cluster mode** — Redis-based coordination with heartbeat protocol for multi-gateway deployments
+
+### Platform
+- **16 messaging channels** — WhatsApp, Telegram, Discord, Slack, Signal, iMessage, Matrix, and more
+- **Embedded Pi agent runtime** — context pruning, auth profile rotation, multi-agent orchestration
+- **Integration SDK** — plugin loader, scaffolding CLI, reference integrations
+- **396 tests** across 22 test files — every enterprise subsystem covered
+
+All of this — open source, MIT licensed, self-hostable anywhere.
 
 ---
 
@@ -1410,7 +1456,9 @@ gateway:
 
 ## NVIDIA AI infrastructure
 
-OpenClaw Enterprise integrates natively with NVIDIA's agentic AI stack. Run Nemotron 3 models via NIM for GPU-accelerated inference, monitor GPU health with Prometheus, enforce thinking budgets and model routing policies, and deploy NIM as a Kubernetes sidecar.
+OpenClaw Enterprise integrates natively with NVIDIA's agentic AI stack. Run Nemotron 3 models via NIM for GPU-accelerated inference, monitor GPU health with Prometheus, enforce thinking budgets and model routing policies, deploy NIM as a Kubernetes sidecar, and run sandboxed inference with NemoClaw Enterprise.
+
+### NIM provider
 
 ```yaml
 enterprise:
@@ -1435,6 +1483,43 @@ enterprise:
           operator: ["nvidia/llama-3.1-nemotron-nano-8b-v1", "nvidia/nemotron-3-nano-30b-a3b"]
           admin: ["*"]
 ```
+
+### NemoClaw Enterprise (sandboxed inference)
+
+NemoClaw brings sandboxed, privacy-aware inference to OpenClaw Enterprise. Every request runs inside an OpenShell container with declarative security policies — network egress control, filesystem isolation, and seccomp restrictions. A built-in privacy router can force sensitive data to stay on local-only models, never leaving the network boundary.
+
+Three inference profiles are supported out of the box: `nvidia-cloud` (NVIDIA-hosted API), `local-nim` (self-hosted NIM containers), and `vllm` (community vLLM backend). The primary model is **Nemotron 3 Super 120B** (`nvidia/nemotron-3-super-120b-a12b`).
+
+```yaml
+enterprise:
+  nvidia:
+    nemoClaw:
+      enabled: true
+      apiKey: env://NEMOCLAW_API_KEY    # falls back to NVIDIA_API_KEY
+      inferenceProfile: nvidia-cloud     # nvidia-cloud | local-nim | vllm
+      defaultModel: "nvidia/nemotron-3-super-120b-a12b"
+      sandbox:
+        networkEgress: block             # block | allow | require-approval
+        allowedHosts:
+          - "integrate.api.nvidia.com"
+          - "*.nvidia.com"
+        filesystem: read-only
+        seccomp: strict
+      privacyRouter:
+        enabled: true
+        sensitivePatterns: ["SSN", "credit_card", "medical_record"]
+        localOnlyModel: "nvidia/nemotron-3-nano-30b-a3b"
+```
+
+**Key capabilities:**
+
+- **OpenShell sandbox** — every inference request runs in an isolated container with network, filesystem, and syscall restrictions
+- **Privacy router** — automatically routes prompts containing sensitive data to local-only models (never leaves your network)
+- **3 inference profiles** — NVIDIA cloud, self-hosted NIM, or vLLM — switch with a single config line
+- **Egress control** — block, allow, or require-approval for outbound network from sandboxed inference
+- **Prometheus metrics** — `nemoclaw_requests_total`, `nemoclaw_latency_seconds`, `nemoclaw_tokens_total`, `nemoclaw_sandbox_health`, `nemoclaw_sandbox_egress_blocked_total`
+- **Audit events** — `NEMOCLAW_REQUEST`, `NEMOCLAW_SANDBOX_POLICY`, `NEMOCLAW_EGRESS_BLOCKED` logged to the tamper-evident audit chain
+- **Auto-fallback** — `NEMOCLAW_API_KEY` automatically falls back to `NVIDIA_API_KEY` for unified credential management
 
 See [docs/enterprise/nvidia.md](docs/enterprise/nvidia.md) for full configuration reference, Kubernetes sidecar setup, and troubleshooting.
 
@@ -1603,6 +1688,13 @@ See [docs/enterprise/oracle.md](docs/enterprise/oracle.md) for full configuratio
 | Thinking budget guardrails                                     | —         | ✅         |
 | Model routing policy (RBAC)                                    | —         | ✅         |
 | NIM cost guard                                                 | —         | ✅         |
+| NemoClaw Enterprise (sandboxed inference)                      | —         | ✅         |
+| NemoClaw OpenShell sandbox (network, fs, seccomp)              | —         | ✅         |
+| NemoClaw privacy router (local-only sensitive data)            | —         | ✅         |
+| NemoClaw 3 inference profiles (cloud, NIM, vLLM)               | —         | ✅         |
+| Nemotron 3 Super 120B model support                            | —         | ✅         |
+| NemoClaw Prometheus metrics (5 gauges)                         | —         | ✅         |
+| NemoClaw audit events (request, sandbox, egress)               | —         | ✅         |
 | **Palantir Foundry**                                           |           |            |
 | Palantir Foundry audit sink                                    | —         | ✅         |
 | Palantir OIDC/SSO preset                                       | —         | ✅         |
@@ -1620,7 +1712,7 @@ See [docs/enterprise/oracle.md](docs/enterprise/oracle.md) for full configuratio
 
 ## Test suite & quality assurance
 
-**370 tests · 20 test files · all passing in CI**
+**396 tests · 22 test files · all passing in CI**
 
 Every enterprise security subsystem ships with a dedicated unit test suite. Tests run in CI on every push via Vitest and cover correctness, edge cases, cryptographic properties, and failure modes — not just happy paths.
 
@@ -1677,6 +1769,13 @@ Every enterprise security subsystem ships with a dedicated unit test suite. Test
 | ------------------------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `input-sanitizer.test.ts` | 22    | NFC Unicode normalization, invisible character stripping, all 8 injection pattern families, trust boundary tag injection, configurable truncation         |
 | `guardrails.test.ts`      | 18    | Rule evaluation against tool inputs and outputs, pluggable custom rules, `block`/`require-approval`/`warn` action dispatch, audit event emission on block |
+
+#### NVIDIA integration (26 tests)
+
+| Test file                                    | Tests | What it validates                                                                                                                                     |
+| -------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nvidia/nemoclaw-provider.test.ts`           | 21    | NemoClaw initialization, OpenShell sandbox setup, health checks, chat completion, retry logic, egress blocking, Prometheus metrics, graceful shutdown |
+| `models-config.providers.nvidia.test.ts`     | 5     | NemoClaw model provider construction, Nemotron model availability, API key fallback to NVIDIA_API_KEY                                                |
 
 #### Observability & infrastructure (38 tests)
 
@@ -1787,6 +1886,7 @@ Enterprise edition: see [Install](#install) above.
 | [Secret management](docs/enterprise/secrets.md)     | All 6 backends, secret reference URIs, migration                          |
 | [Container security](docs/enterprise/containers.md) | cosign signing, SBOM verification, Trivy scanning                         |
 | [Palantir Foundry](docs/enterprise/palantir.md)     | Audit streaming, OIDC/SSO, Compute Module deployment, ontology guardrails |
+| [NVIDIA AI](docs/enterprise/nvidia.md)              | NIM provider, NemoClaw sandbox, GPU metrics, inference profiles           |
 | [Oracle Cloud](docs/enterprise/oracle.md)           | OCI Vault, OCI Streaming, MCP bridge, Agent Spec export                   |
 
 ---
