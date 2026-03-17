@@ -30,6 +30,7 @@ const noopHistogram: Histogram = {
 
 // ── Registry singleton ─────────────────────────────────────────────────────────
 
+// eslint-disable-next-line typescript-eslint/no-redundant-type-constituents -- prom-client may not be installed
 let promClient: typeof import("prom-client") | null = null;
 let registryEnabled = false;
 
@@ -48,7 +49,9 @@ export async function initMetricsRegistry(): Promise<void> {
 }
 
 export async function getMetricsOutput(): Promise<string> {
-  if (!promClient) return "";
+  if (!promClient) {
+    return "";
+  }
   return promClient.register.metrics();
 }
 
@@ -59,23 +62,44 @@ export function isMetricsEnabled(): boolean {
 // ── Metric factories ───────────────────────────────────────────────────────────
 
 function makeCounter(name: string, help: string, labelNames: string[]): Counter {
-  if (!promClient) return noopCounter;
+  if (!promClient) {
+    return noopCounter;
+  }
   const c = new promClient.Counter({ name, help, labelNames });
   return {
     inc(labels?: Record<string, string>, value = 1) {
-      if (labels) c.labels(labels).inc(value);
-      else c.inc(value);
+      if (labels) {
+        c.labels(labels).inc(value);
+      } else {
+        c.inc(value);
+      }
     },
   };
 }
 
 function makeGauge(name: string, help: string, labelNames: string[]): Gauge {
-  if (!promClient) return noopGauge;
+  if (!promClient) {
+    return noopGauge;
+  }
   const g = new promClient.Gauge({ name, help, labelNames });
   return {
-    set(labels, value) { g.labels(labels).set(value); },
-    inc(labels) { labels ? g.labels(labels).inc() : g.inc(); },
-    dec(labels) { labels ? g.labels(labels).dec() : g.dec(); },
+    set(labels, value) {
+      g.labels(labels).set(value);
+    },
+    inc(labels) {
+      if (labels) {
+        g.labels(labels).inc();
+      } else {
+        g.inc();
+      }
+    },
+    dec(labels) {
+      if (labels) {
+        g.labels(labels).dec();
+      } else {
+        g.dec();
+      }
+    },
   };
 }
 
@@ -85,7 +109,9 @@ function makeHistogram(
   labelNames: string[],
   buckets?: number[],
 ): Histogram {
-  if (!promClient) return noopHistogram;
+  if (!promClient) {
+    return noopHistogram;
+  }
   const h = new promClient.Histogram({
     name,
     help,
@@ -93,7 +119,9 @@ function makeHistogram(
     buckets: buckets ?? [0.01, 0.05, 0.1, 0.5, 1, 2, 5, 10, 30],
   });
   return {
-    observe(labels, value) { h.labels(labels).observe(value); },
+    observe(labels, value) {
+      h.labels(labels).observe(value);
+    },
     startTimer(labels) {
       const end = h.startTimer(labels);
       return end;
@@ -125,46 +153,42 @@ function buildMetrics() {
     ),
 
     // Agents
-    agentRuns: makeCounter(
-      "openclaw_agent_runs_total",
-      "Total agent runs",
-      ["agent_id", "model", "status"],
-    ),
+    agentRuns: makeCounter("openclaw_agent_runs_total", "Total agent runs", [
+      "agent_id",
+      "model",
+      "status",
+    ]),
     agentRunDuration: makeHistogram(
       "openclaw_agent_run_duration_seconds",
       "Agent run duration",
       ["agent_id"],
       [1, 5, 10, 30, 60, 120, 300, 600],
     ),
-    agentTokens: makeCounter(
-      "openclaw_agent_tokens_total",
-      "Total LLM tokens",
-      ["agent_id", "direction", "model"],
-    ),
-    agentCostUsd: makeCounter(
-      "openclaw_agent_cost_usd_total",
-      "Estimated LLM cost in USD",
-      ["agent_id", "model"],
-    ),
+    agentTokens: makeCounter("openclaw_agent_tokens_total", "Total LLM tokens", [
+      "agent_id",
+      "direction",
+      "model",
+    ]),
+    agentCostUsd: makeCounter("openclaw_agent_cost_usd_total", "Estimated LLM cost in USD", [
+      "agent_id",
+      "model",
+    ]),
 
     // Skills
-    skillExecutions: makeCounter(
-      "openclaw_skill_executions_total",
-      "Total skill executions",
-      ["skill", "status"],
-    ),
-    skillInstalls: makeCounter(
-      "openclaw_skill_installs_total",
-      "Total skill installations",
-      ["skill", "method"],
-    ),
+    skillExecutions: makeCounter("openclaw_skill_executions_total", "Total skill executions", [
+      "skill",
+      "status",
+    ]),
+    skillInstalls: makeCounter("openclaw_skill_installs_total", "Total skill installations", [
+      "skill",
+      "method",
+    ]),
 
     // Auth & Security
-    authAttempts: makeCounter(
-      "openclaw_auth_attempts_total",
-      "Total authentication attempts",
-      ["method", "result"],
-    ),
+    authAttempts: makeCounter("openclaw_auth_attempts_total", "Total authentication attempts", [
+      "method",
+      "result",
+    ]),
     authRateLimited: makeCounter(
       "openclaw_auth_rate_limited_total",
       "Total rate-limited auth attempts",
@@ -189,11 +213,11 @@ function buildMetrics() {
     ),
 
     // Audit
-    auditEvents: makeCounter(
-      "openclaw_audit_events_total",
-      "Total audit events written",
-      ["category", "action", "outcome"],
-    ),
+    auditEvents: makeCounter("openclaw_audit_events_total", "Total audit events written", [
+      "category",
+      "action",
+      "outcome",
+    ]),
     auditStorageErrors: makeCounter(
       "openclaw_audit_storage_errors_total",
       "Audit storage write errors",
@@ -206,33 +230,58 @@ function buildMetrics() {
       "Total messages processed per channel",
       ["channel", "direction"],
     ),
-    channelErrors: makeCounter(
-      "openclaw_channel_errors_total",
-      "Total channel errors",
-      ["channel", "error_type"],
-    ),
+    channelErrors: makeCounter("openclaw_channel_errors_total", "Total channel errors", [
+      "channel",
+      "error_type",
+    ]),
 
     // NVIDIA NIM
-    nimRequests: makeCounter(
-      "openclaw_nim_requests_total",
-      "Total NIM inference requests",
-      ["model", "status"],
-    ),
+    nimRequests: makeCounter("openclaw_nim_requests_total", "Total NIM inference requests", [
+      "model",
+      "status",
+    ]),
     nimLatency: makeHistogram(
       "openclaw_nim_latency_seconds",
       "NIM inference request latency",
       ["model"],
       [0.1, 0.5, 1, 2, 5, 10, 30, 60],
     ),
-    nimTokens: makeCounter(
-      "openclaw_nim_tokens_total",
-      "Total NIM tokens consumed",
-      ["model", "direction"],
-    ),
+    nimTokens: makeCounter("openclaw_nim_tokens_total", "Total NIM tokens consumed", [
+      "model",
+      "direction",
+    ]),
     nimHealthStatus: makeGauge(
       "openclaw_nim_health_status",
       "NIM endpoint health (0=unhealthy, 1=healthy)",
       ["endpoint"],
+    ),
+
+    // NVIDIA NemoClaw
+    nemoClawRequests: makeCounter(
+      "openclaw_nemoclaw_requests_total",
+      "Total NemoClaw inference requests",
+      ["model", "status", "profile"],
+    ),
+    nemoClawLatency: makeHistogram(
+      "openclaw_nemoclaw_latency_seconds",
+      "NemoClaw inference request latency",
+      ["model"],
+      [0.1, 0.5, 1, 2, 5, 10, 30, 60],
+    ),
+    nemoClawTokens: makeCounter(
+      "openclaw_nemoclaw_tokens_total",
+      "Total NemoClaw tokens consumed",
+      ["model", "direction"],
+    ),
+    nemoClawHealthStatus: makeGauge(
+      "openclaw_nemoclaw_health_status",
+      "NemoClaw endpoint health (0=unhealthy, 1=healthy)",
+      ["endpoint"],
+    ),
+    nemoClawSandboxEgress: makeCounter(
+      "openclaw_nemoclaw_sandbox_egress_total",
+      "NemoClaw sandbox egress events",
+      ["action"],
     ),
 
     // NVIDIA GPU
@@ -241,11 +290,10 @@ function buildMetrics() {
       "GPU utilization percentage",
       ["gpu_index", "gpu_name"],
     ),
-    gpuMemoryUsed: makeGauge(
-      "openclaw_nvidia_gpu_memory_used_bytes",
-      "GPU memory used in bytes",
-      ["gpu_index", "gpu_name"],
-    ),
+    gpuMemoryUsed: makeGauge("openclaw_nvidia_gpu_memory_used_bytes", "GPU memory used in bytes", [
+      "gpu_index",
+      "gpu_name",
+    ]),
     gpuMemoryTotal: makeGauge(
       "openclaw_nvidia_gpu_memory_total_bytes",
       "GPU total memory in bytes",
@@ -256,16 +304,14 @@ function buildMetrics() {
       "GPU temperature in Celsius",
       ["gpu_index", "gpu_name"],
     ),
-    gpuPowerDraw: makeGauge(
-      "openclaw_nvidia_gpu_power_watts",
-      "GPU power draw in watts",
-      ["gpu_index", "gpu_name"],
-    ),
-    gpuPowerLimit: makeGauge(
-      "openclaw_nvidia_gpu_power_limit_watts",
-      "GPU power limit in watts",
-      ["gpu_index", "gpu_name"],
-    ),
+    gpuPowerDraw: makeGauge("openclaw_nvidia_gpu_power_watts", "GPU power draw in watts", [
+      "gpu_index",
+      "gpu_name",
+    ]),
+    gpuPowerLimit: makeGauge("openclaw_nvidia_gpu_power_limit_watts", "GPU power limit in watts", [
+      "gpu_index",
+      "gpu_name",
+    ]),
   };
 }
 

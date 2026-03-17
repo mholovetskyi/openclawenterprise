@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { withEnvAsync } from "../test-utils/env.js";
 import { resolveApiKeyForProvider } from "./model-auth.js";
-import { buildNvidiaProvider, resolveImplicitProviders } from "./models-config.providers.js";
+import {
+  buildNvidiaProvider,
+  buildNemoClawProvider,
+  resolveImplicitProviders,
+} from "./models-config.providers.js";
 
 describe("NVIDIA provider", () => {
   it("should include nvidia when NVIDIA_API_KEY is configured", async () => {
@@ -44,6 +48,56 @@ describe("NVIDIA provider", () => {
     expect(modelIds).toContain("nvidia/llama-3.1-nemotron-70b-instruct");
     expect(modelIds).toContain("meta/llama-3.3-70b-instruct");
     expect(modelIds).toContain("nvidia/mistral-nemo-minitron-8b-8k-instruct");
+  });
+
+  it("should include Nemotron 3 Super 120B in nvidia provider", () => {
+    const provider = buildNvidiaProvider();
+    const modelIds = provider.models.map((m) => m.id);
+    expect(modelIds).toContain("nvidia/nemotron-3-super-120b-a12b");
+    expect(modelIds).toContain("nvidia/nemotron-3-nano-30b-a3b");
+    expect(modelIds).toContain("nvidia/llama-3.3-nemotron-super-49b-v1");
+  });
+});
+
+describe("NemoClaw provider", () => {
+  it("should build nemoclaw provider with correct configuration", () => {
+    const provider = buildNemoClawProvider();
+    expect(provider.baseUrl).toBe("https://integrate.api.nvidia.com/v1");
+    expect(provider.api).toBe("openai-completions");
+    expect(provider.models).toBeDefined();
+    expect(provider.models.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it("should include NemoClaw models with Nemotron 3 Super 120B as primary", () => {
+    const provider = buildNemoClawProvider();
+    const modelIds = provider.models.map((m) => m.id);
+    expect(modelIds[0]).toBe("nvidia/nemotron-3-super-120b-a12b");
+    expect(modelIds).toContain("nvidia/nemotron-3-nano-30b-a3b");
+    expect(modelIds).toContain("nvidia/llama-3.3-nemotron-super-49b-v1");
+  });
+
+  it("should mark NemoClaw models as reasoning-capable", () => {
+    const provider = buildNemoClawProvider();
+    for (const model of provider.models) {
+      expect(model.reasoning).toBe(true);
+    }
+  });
+
+  it("should include nemoclaw when NVIDIA_API_KEY is configured (fallback)", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "openclaw-test-"));
+    await withEnvAsync({ NVIDIA_API_KEY: "test-key" }, async () => {
+      const providers = await resolveImplicitProviders({ agentDir });
+      expect(providers?.nemoclaw).toBeDefined();
+      expect(providers?.nemoclaw?.models?.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("should include nemoclaw when NEMOCLAW_API_KEY is configured", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "openclaw-test-"));
+    await withEnvAsync({ NEMOCLAW_API_KEY: "nemoclaw-test-key" }, async () => {
+      const providers = await resolveImplicitProviders({ agentDir });
+      expect(providers?.nemoclaw).toBeDefined();
+    });
   });
 });
 
