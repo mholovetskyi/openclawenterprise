@@ -116,9 +116,85 @@ export type NvidiaGuardrailsConfig = {
   };
 };
 
+export type NemoClawInferenceProfile = "nvidia-cloud" | "local-nim" | "vllm";
+
+export type NemoClawSandboxPolicy = {
+  /** Network egress policy — hot-reloadable. */
+  network?: {
+    /** Default action for outbound connections. */
+    defaultAction?: "block" | "allow";
+    /** Allowed egress hostnames. */
+    allowedHosts?: string[];
+    /** Whether operator approval is required for unlisted hosts. */
+    requireApproval?: boolean;
+  };
+  /** Filesystem access policy — locked at sandbox creation. */
+  filesystem?: {
+    /** Allowed read/write paths inside the sandbox. */
+    allowedPaths?: string[];
+    /** Read-only mount paths. */
+    readOnlyPaths?: string[];
+  };
+  /** Process/syscall restrictions — locked at sandbox creation. */
+  seccomp?: {
+    /** Enable seccomp profile to block privilege escalation. */
+    enabled?: boolean;
+    /** Custom seccomp profile path. */
+    profilePath?: string;
+  };
+};
+
+export type NemoClawPrivacyRouterConfig = {
+  /** Enable the privacy router for sensitive data handling. */
+  enabled?: boolean;
+  /** Models that may receive sensitive data (on-device only). */
+  localOnlyModels?: string[];
+  /** Cloud models allowed for non-sensitive data. */
+  cloudModels?: string[];
+  /** Classification mode for data sensitivity. */
+  classificationMode?: "rule-based" | "model-based";
+};
+
+export type EnterpriseNemoClawConfig = {
+  /** Enable NemoClaw Enterprise integration. */
+  enabled?: boolean;
+  /** Inference profile: nvidia-cloud, local-nim, or vllm. */
+  inferenceProfile?: NemoClawInferenceProfile;
+  /** NVIDIA API key for cloud inference (build.nvidia.com). Supports secret refs. */
+  apiKey?: string;
+  /** Default model for NemoClaw inference. */
+  defaultModel?: string;
+  /** OpenShell sandbox configuration. */
+  sandbox?: {
+    enabled?: boolean;
+    /** Container image for OpenShell runtime. */
+    image?: string;
+    /** Declarative security policies. */
+    policy?: NemoClawSandboxPolicy;
+    /** Working directory inside the sandbox. */
+    workDir?: string;
+  };
+  /** Privacy router configuration. */
+  privacyRouter?: NemoClawPrivacyRouterConfig;
+  /** Health check configuration. */
+  healthCheck?: {
+    enabled?: boolean;
+    intervalMs?: number;
+    endpoint?: string;
+  };
+  /** Retry configuration for inference requests. */
+  retry?: {
+    maxRetries?: number;
+    backoffMs?: number;
+    maxBackoffMs?: number;
+  };
+};
+
 export type EnterpriseNvidiaConfig = {
   nim?: EnterpriseNimConfig;
   gpuMetrics?: NvidiaGpuMetricsConfig;
+  /** NemoClaw Enterprise (OpenShell + sandboxed inference). */
+  nemoClaw?: EnterpriseNemoClawConfig;
 };
 
 // ── Secrets ────────────────────────────────────────────────────────────────

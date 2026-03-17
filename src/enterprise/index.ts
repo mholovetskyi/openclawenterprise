@@ -68,9 +68,30 @@ export async function initEnterprise(cfg: OpenClawConfig): Promise<EnterpriseHan
     shutdowns.push(cl.shutdown);
   }
 
+  // ── NVIDIA NIM ───────────────────────────────────────────────────────────
+  if (cfg.enterprise?.nvidia?.nim?.enabled) {
+    const { initNimProvider } = await import("./nvidia/nim-provider.js");
+    const nim = await initNimProvider(cfg);
+    shutdowns.push(() => nim.shutdown());
+  }
+
+  // ── NVIDIA GPU Metrics ──────────────────────────────────────────────────
+  if (cfg.enterprise?.nvidia?.gpuMetrics?.enabled) {
+    const { initGpuMetrics } = await import("./nvidia/gpu-metrics.js");
+    const gpu = await initGpuMetrics(cfg);
+    shutdowns.push(() => gpu.shutdown());
+  }
+
+  // ── NVIDIA NemoClaw ─────────────────────────────────────────────────────
+  if (cfg.enterprise?.nvidia?.nemoClaw?.enabled) {
+    const { initNemoClawProvider } = await import("./nvidia/nemoclaw-provider.js");
+    const nc = await initNemoClawProvider(cfg);
+    shutdowns.push(() => nc.shutdown());
+  }
+
   handle = {
     shutdown: async () => {
-      for (const fn of shutdowns.reverse()) {
+      for (const fn of shutdowns.toReversed()) {
         try {
           await fn();
         } catch {

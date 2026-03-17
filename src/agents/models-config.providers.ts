@@ -701,6 +701,15 @@ export function buildNvidiaProvider(): ProviderConfig {
     api: "openai-completions",
     models: [
       {
+        id: "nvidia/nemotron-3-super-120b-a12b",
+        name: "NVIDIA Nemotron 3 Super 120B",
+        reasoning: true,
+        input: ["text"],
+        cost: NVIDIA_DEFAULT_COST,
+        contextWindow: 131072,
+        maxTokens: 32768,
+      },
+      {
         id: NVIDIA_DEFAULT_MODEL_ID,
         name: "NVIDIA Llama 3.1 Nemotron 70B Instruct",
         reasoning: false,
@@ -708,6 +717,24 @@ export function buildNvidiaProvider(): ProviderConfig {
         cost: NVIDIA_DEFAULT_COST,
         contextWindow: NVIDIA_DEFAULT_CONTEXT_WINDOW,
         maxTokens: NVIDIA_DEFAULT_MAX_TOKENS,
+      },
+      {
+        id: "nvidia/nemotron-3-nano-30b-a3b",
+        name: "NVIDIA Nemotron 3 Nano 30B",
+        reasoning: true,
+        input: ["text"],
+        cost: NVIDIA_DEFAULT_COST,
+        contextWindow: 131072,
+        maxTokens: 32768,
+      },
+      {
+        id: "nvidia/llama-3.3-nemotron-super-49b-v1",
+        name: "NVIDIA Nemotron 3 Super 49B",
+        reasoning: true,
+        input: ["text"],
+        cost: NVIDIA_DEFAULT_COST,
+        contextWindow: 131072,
+        maxTokens: 32768,
       },
       {
         id: "meta/llama-3.3-70b-instruct",
@@ -726,6 +753,42 @@ export function buildNvidiaProvider(): ProviderConfig {
         cost: NVIDIA_DEFAULT_COST,
         contextWindow: 8192,
         maxTokens: 2048,
+      },
+    ],
+  };
+}
+
+export function buildNemoClawProvider(): ProviderConfig {
+  return {
+    baseUrl: NVIDIA_BASE_URL,
+    api: "openai-completions",
+    models: [
+      {
+        id: "nvidia/nemotron-3-super-120b-a12b",
+        name: "NemoClaw Nemotron 3 Super 120B",
+        reasoning: true,
+        input: ["text"],
+        cost: NVIDIA_DEFAULT_COST,
+        contextWindow: 131072,
+        maxTokens: 32768,
+      },
+      {
+        id: "nvidia/nemotron-3-nano-30b-a3b",
+        name: "NemoClaw Nemotron 3 Nano 30B",
+        reasoning: true,
+        input: ["text"],
+        cost: NVIDIA_DEFAULT_COST,
+        contextWindow: 1048576,
+        maxTokens: 32768,
+      },
+      {
+        id: "nvidia/llama-3.3-nemotron-super-49b-v1",
+        name: "NemoClaw Nemotron 3 Super 49B",
+        reasoning: true,
+        input: ["text"],
+        cost: NVIDIA_DEFAULT_COST,
+        contextWindow: 131072,
+        maxTokens: 32768,
       },
     ],
   };
@@ -909,6 +972,14 @@ export async function resolveImplicitProviders(params: {
     resolveApiKeyFromProfiles({ provider: "nvidia", store: authStore });
   if (nvidiaKey) {
     providers.nvidia = { ...buildNvidiaProvider(), apiKey: nvidiaKey };
+  }
+
+  const nemoClawKey =
+    resolveEnvApiKeyVarName("nemoclaw") ??
+    resolveApiKeyFromProfiles({ provider: "nemoclaw", store: authStore }) ??
+    nvidiaKey;
+  if (nemoClawKey) {
+    providers.nemoclaw = { ...buildNemoClawProvider(), apiKey: nemoClawKey };
   }
 
   return providers;

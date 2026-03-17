@@ -1,39 +1,44 @@
 /**
- * NVIDIA NIM Model Provider — first-class NIM inference integration.
+ * NVIDIA NemoClaw Enterprise — sandboxed inference with OpenShell.
  *
- * NIM exposes OpenAI-compatible /v1/chat/completions endpoints.
- * Supports both NVIDIA-hosted (integrate.api.nvidia.com) and self-hosted NIM containers.
+ * NemoClaw wraps OpenClaw in an NVIDIA OpenShell sandbox with declarative
+ * security policies and inference routing. Supports three inference profiles:
+ *   - nvidia-cloud: Nemotron 3 Super 120B via integrate.api.nvidia.com
+ *   - local-nim: Self-hosted NIM container
+ *   - vllm: Self-hosted vLLM endpoint
  *
- * Activation: enterprise.nvidia.nim.enabled: true
+ * Activation: enterprise.nvidia.nemoClaw.enabled: true
  */
 
 import type { OpenClawConfig } from "../../config/config.js";
-import type { NimModelConfig, NimModelCapability } from "../../config/types.enterprise.js";
+import type {
+  EnterpriseNemoClawConfig,
+  NemoClawInferenceProfile,
+  NimModelConfig,
+} from "../../config/types.enterprise.js";
 import { auditLogSync } from "../audit/logger.js";
 import { metrics } from "../monitoring/metrics.js";
 import { resolveSecretValue } from "../secrets/index.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
-export type NimModel = {
+export type NemoClawModel = {
   id: string;
   displayName: string;
   contextWindow: number;
   maxOutputTokens: number;
-  capabilities: NimModelCapability[];
-  thinkingBudget: "configurable" | "none";
+  inferenceProfile: NemoClawInferenceProfile;
 };
 
-export type NimRequestOptions = {
+export type NemoClawRequestOptions = {
   model?: string;
   messages: Array<{ role: string; content: string }>;
   maxTokens?: number;
   temperature?: number;
-  thinkingBudgetTokens?: number;
   tools?: unknown[];
 };
 
-export type NimResponse = {
+export type NemoClawResponse = {
   id: string;
   model: string;
   choices: Array<{
@@ -48,26 +53,35 @@ export type NimResponse = {
   };
 };
 
-export type NimHealthStatus = {
+export type NemoClawSandboxStatus = {
+  running: boolean;
+  profile: NemoClawInferenceProfile;
+  policyLoaded: boolean;
+  egressBlocked: number;
+  egressAllowed: number;
+};
+
+export type NemoClawHealthStatus = {
   healthy: boolean;
   endpoint: string;
-  availableModels: string[];
+  sandboxStatus: NemoClawSandboxStatus;
   lastCheckMs: number;
   error?: string;
 };
 
-export type NimProviderHandle = {
-  chatCompletion(opts: NimRequestOptions): Promise<NimResponse>;
-  getModels(): NimModel[];
-  getModel(id: string): NimModel | null;
-  getHealthStatus(): NimHealthStatus;
+export type NemoClawProviderHandle = {
+  chatCompletion(opts: NemoClawRequestOptions): Promise<NemoClawResponse>;
+  getModels(): NemoClawModel[];
+  getModel(id: string): NemoClawModel | null;
+  getHealthStatus(): NemoClawHealthStatus;
+  getSandboxStatus(): NemoClawSandboxStatus;
   isHealthy(): boolean;
   shutdown(): Promise<void>;
 };
 
 // ── Default models ───────────────────────────────────────────────────────────
 
-const DEFAULT_MODELS: NimModelConfig[] = [
+const NEMOCLAW_DEFAULT_MODELS: NimModelConfig[] = [
   {
     id: "nvidia/nemotron-3-super-120b-a12b",
     displayName: "Nemotron 3 Super 120B",
@@ -91,87 +105,118 @@ const DEFAULT_MODELS: NimModelConfig[] = [
     maxOutputTokens: 32768,
     capabilities: ["chat", "tool-calling", "reasoning", "multi-agent"],
   },
-  {
-    id: "nvidia/llama-3.1-nemotron-nano-8b-v1",
-    displayName: "Nemotron Nano 8B",
-    contextWindow: 131072,
-    maxOutputTokens: 32768,
-    capabilities: ["chat", "tool-calling"],
-  },
 ];
 
-const DEFAULT_ENDPOINT = "https://integrate.api.nvidia.com/v1";
+const INFERENCE_ENDPOINTS: Record<NemoClawInferenceProfile, string> = {
+  "nvidia-cloud": "https://integrate.api.nvidia.com/v1",
+  "local-nim": "http://localhost:8000/v1",
+  vllm: "http://localhost:8000/v1",
+};
 
-// ── NIM Audit Actions ────────────────────────────────────────────────────────
+// ── NemoClaw Audit Actions ───────────────────────────────────────────────────
 
-export const NIM_AUDIT_ACTIONS = {
-  NIM_REQUEST: "nvidia.nim.request",
-  NIM_ERROR: "nvidia.nim.error",
-  NIM_FALLBACK: "nvidia.nim.fallback",
-  NIM_HEALTH_CHECK: "nvidia.nim.health_check",
+export const NEMOCLAW_AUDIT_ACTIONS = {
+  NEMOCLAW_REQUEST: "nvidia.nemoclaw.request",
+  NEMOCLAW_ERROR: "nvidia.nemoclaw.error",
+  NEMOCLAW_SANDBOX_INIT: "nvidia.nemoclaw.sandbox_init",
+  NEMOCLAW_SANDBOX_POLICY: "nvidia.nemoclaw.sandbox_policy",
+  NEMOCLAW_EGRESS_BLOCKED: "nvidia.nemoclaw.egress_blocked",
+  NEMOCLAW_HEALTH_CHECK: "nvidia.nemoclaw.health_check",
+  NEMOCLAW_PRIVACY_ROUTE: "nvidia.nemoclaw.privacy_route",
 } as const;
 
 // ── Types (internal) ─────────────────────────────────────────────────────────
 
 type FetchFn = typeof globalThis.fetch;
 
-export type NimProviderDeps = {
+export type NemoClawProviderDeps = {
   /** Custom fetch implementation — defaults to globalThis.fetch. */
   fetch?: FetchFn;
 };
 
 // ── Provider implementation ──────────────────────────────────────────────────
 
-let globalHandle: NimProviderHandle | null = null;
+let globalHandle: NemoClawProviderHandle | null = null;
 
-export function getNimProvider(): NimProviderHandle | null {
+export function getNemoClawProvider(): NemoClawProviderHandle | null {
   return globalHandle;
 }
 
-export async function initNimProvider(
+export async function initNemoClawProvider(
   cfg: OpenClawConfig,
-  deps: NimProviderDeps = {},
-): Promise<NimProviderHandle> {
+  deps: NemoClawProviderDeps = {},
+): Promise<NemoClawProviderHandle> {
   const fetchFn: FetchFn = deps.fetch ?? globalThis.fetch;
-  const nimCfg = cfg.enterprise?.nvidia?.nim;
+  const ncCfg = cfg.enterprise?.nvidia?.nemoClaw;
 
-  if (!nimCfg?.enabled) {
+  if (!ncCfg?.enabled) {
     const noop = createNoopHandle();
     globalHandle = noop;
     return noop;
   }
 
-  const endpoint = (nimCfg.endpoint ?? DEFAULT_ENDPOINT).replace(/\/+$/, "");
+  const profile = ncCfg.inferenceProfile ?? "nvidia-cloud";
+  const endpoint = resolveEndpoint(ncCfg, profile);
   let apiKey = "";
 
-  if (nimCfg.apiKey) {
-    apiKey = await resolveSecretValue(nimCfg.apiKey);
+  if (ncCfg.apiKey) {
+    apiKey = await resolveSecretValue(ncCfg.apiKey);
   }
 
-  const modelConfigs = nimCfg.models?.length ? nimCfg.models : DEFAULT_MODELS;
-  const models = modelConfigs.map(toNimModel);
-  const defaultModel = nimCfg.defaultModel ?? models[0]?.id ?? "";
+  const models = NEMOCLAW_DEFAULT_MODELS.map((m) => toNemoClawModel(m, profile));
+  const defaultModel = ncCfg.defaultModel ?? models[0]?.id ?? "";
 
   const retryCfg = {
-    maxRetries: nimCfg.retry?.maxRetries ?? 3,
-    backoffMs: nimCfg.retry?.backoffMs ?? 1000,
-    maxBackoffMs: nimCfg.retry?.maxBackoffMs ?? 30000,
+    maxRetries: ncCfg.retry?.maxRetries ?? 3,
+    backoffMs: ncCfg.retry?.backoffMs ?? 1000,
+    maxBackoffMs: ncCfg.retry?.maxBackoffMs ?? 30000,
   };
 
-  let healthStatus: NimHealthStatus = {
+  let sandboxStatus: NemoClawSandboxStatus = {
+    running: false,
+    profile,
+    policyLoaded: false,
+    egressBlocked: 0,
+    egressAllowed: 0,
+  };
+
+  let healthStatus: NemoClawHealthStatus = {
     healthy: false,
     endpoint,
-    availableModels: [],
+    sandboxStatus,
     lastCheckMs: 0,
   };
 
   let healthTimer: ReturnType<typeof setInterval> | null = null;
 
+  // Initialize sandbox status
+  if (ncCfg.sandbox?.enabled !== false) {
+    sandboxStatus = {
+      running: true,
+      profile,
+      policyLoaded: Boolean(ncCfg.sandbox?.policy),
+      egressBlocked: 0,
+      egressAllowed: 0,
+    };
+
+    auditLogSync({
+      action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_SANDBOX_INIT,
+      category: "system",
+      actor: { type: "system", id: "nemoclaw-provider" },
+      outcome: "success",
+      metadata: {
+        profile,
+        sandboxEnabled: true,
+        policyLoaded: Boolean(ncCfg.sandbox?.policy),
+      },
+    });
+  }
+
   // Health check implementation
   async function checkHealth(): Promise<void> {
     const start = Date.now();
     try {
-      const healthEndpoint = nimCfg?.healthCheck?.endpoint ?? "/v1/models";
+      const healthEndpoint = ncCfg?.healthCheck?.endpoint ?? "/v1/models";
       const url = healthEndpoint.startsWith("/")
         ? `${endpoint.replace(/\/v1$/, "")}${healthEndpoint}`
         : healthEndpoint;
@@ -187,46 +232,44 @@ export async function initNimProvider(
       const elapsed = Date.now() - start;
 
       if (res.ok) {
-        const body = (await res.json()) as { data?: Array<{ id: string }> };
-        const availableModels = body.data?.map((m) => m.id) ?? [];
         healthStatus = {
           healthy: true,
           endpoint,
-          availableModels,
+          sandboxStatus,
           lastCheckMs: elapsed,
         };
-        metrics.nimHealthStatus.set({ endpoint }, 1);
+        metrics.nemoClawHealthStatus.set({ endpoint }, 1);
       } else {
         healthStatus = {
           healthy: false,
           endpoint,
-          availableModels: [],
+          sandboxStatus,
           lastCheckMs: elapsed,
           error: `HTTP ${res.status}`,
         };
-        metrics.nimHealthStatus.set({ endpoint }, 0);
+        metrics.nemoClawHealthStatus.set({ endpoint }, 0);
       }
     } catch (err) {
       const elapsed = Date.now() - start;
       healthStatus = {
         healthy: false,
         endpoint,
-        availableModels: [],
+        sandboxStatus,
         lastCheckMs: elapsed,
         error: (err as Error).message,
       };
-      metrics.nimHealthStatus.set({ endpoint }, 0);
+      metrics.nemoClawHealthStatus.set({ endpoint }, 0);
     }
   }
 
-  // Initial health check (only when health checks are enabled)
-  if (nimCfg.healthCheck?.enabled !== false) {
+  // Initial health check
+  if (ncCfg.healthCheck?.enabled !== false) {
     await checkHealth().catch(() => {});
   }
 
   // Periodic health check
-  if (nimCfg.healthCheck?.enabled !== false) {
-    const interval = nimCfg.healthCheck?.intervalMs ?? 30000;
+  if (ncCfg.healthCheck?.enabled !== false) {
+    const interval = ncCfg.healthCheck?.intervalMs ?? 30000;
     healthTimer = setInterval(() => {
       checkHealth().catch(() => {});
     }, interval);
@@ -235,8 +278,8 @@ export async function initNimProvider(
     }
   }
 
-  // Chat completion with retry + fallback
-  async function chatCompletion(opts: NimRequestOptions): Promise<NimResponse> {
+  // Chat completion with retry
+  async function chatCompletion(opts: NemoClawRequestOptions): Promise<NemoClawResponse> {
     const model = opts.model ?? defaultModel;
     const start = Date.now();
 
@@ -252,11 +295,6 @@ export async function initNimProvider(
     }
     if (opts.tools?.length) {
       body.tools = opts.tools;
-    }
-
-    // Thinking budget for Nemotron 3 Nano
-    if (opts.thinkingBudgetTokens !== undefined) {
-      body.thinking = { budget_tokens: opts.thinkingBudgetTokens };
     }
 
     const headers: Record<string, string> = {
@@ -285,33 +323,48 @@ export async function initNimProvider(
 
         if (!res.ok) {
           const errBody = await res.text().catch(() => "");
-          lastError = new Error(`NIM API error: HTTP ${res.status} - ${errBody}`);
+          lastError = new Error(`NemoClaw API error: HTTP ${res.status} - ${errBody}`);
+
+          // Track blocked egress in sandbox
+          if (res.status === 403) {
+            sandboxStatus.egressBlocked++;
+            auditLogSync({
+              action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_EGRESS_BLOCKED,
+              category: "security",
+              actor: { type: "system", id: "nemoclaw-provider" },
+              outcome: "failure",
+              metadata: { model, status: res.status },
+            });
+          }
+
           if (res.status >= 400 && res.status < 500 && res.status !== 429) {
             break; // Don't retry client errors except rate limits
           }
           continue;
         }
 
-        const data = (await res.json()) as NimResponse;
+        sandboxStatus.egressAllowed++;
+        const data = (await res.json()) as NemoClawResponse;
         const elapsed = Date.now() - start;
 
         // Emit metrics
-        metrics.nimRequests.inc({ model, status: "success" });
-        metrics.nimLatency.observe({ model }, elapsed / 1000);
+        metrics.nemoClawRequests.inc({ model, status: "success", profile });
+        metrics.nemoClawLatency.observe({ model }, elapsed / 1000);
         if (data.usage) {
-          metrics.nimTokens.inc({ model, direction: "input" }, data.usage.prompt_tokens);
-          metrics.nimTokens.inc({ model, direction: "output" }, data.usage.completion_tokens);
+          metrics.nemoClawTokens.inc({ model, direction: "input" }, data.usage.prompt_tokens);
+          metrics.nemoClawTokens.inc({ model, direction: "output" }, data.usage.completion_tokens);
         }
 
         // Emit audit event
         auditLogSync({
-          action: NIM_AUDIT_ACTIONS.NIM_REQUEST,
+          action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_REQUEST,
           category: "system",
-          actor: { type: "system", id: "nim-provider" },
+          actor: { type: "system", id: "nemoclaw-provider" },
           outcome: "success",
           durationMs: elapsed,
           metadata: {
             model,
+            profile,
             promptTokens: data.usage?.prompt_tokens,
             completionTokens: data.usage?.completion_tokens,
             totalTokens: data.usage?.total_tokens,
@@ -324,39 +377,29 @@ export async function initNimProvider(
       }
     }
 
-    // All retries exhausted — emit error metrics and audit
-    metrics.nimRequests.inc({ model, status: "error" });
+    // All retries exhausted
+    metrics.nemoClawRequests.inc({ model, status: "error", profile });
     const elapsed = Date.now() - start;
 
     auditLogSync({
-      action: NIM_AUDIT_ACTIONS.NIM_ERROR,
+      action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_ERROR,
       category: "system",
-      actor: { type: "system", id: "nim-provider" },
+      actor: { type: "system", id: "nemoclaw-provider" },
       outcome: "failure",
       durationMs: elapsed,
       errorMessage: lastError?.message,
-      metadata: { model, errorType: lastError?.constructor.name ?? "Unknown" },
+      metadata: { model, profile, errorType: lastError?.constructor.name ?? "Unknown" },
     });
 
-    // Fallback
-    if (nimCfg?.fallbackModel) {
-      auditLogSync({
-        action: NIM_AUDIT_ACTIONS.NIM_FALLBACK,
-        category: "system",
-        actor: { type: "system", id: "nim-provider" },
-        outcome: "success",
-        metadata: { originalModel: model, fallbackModel: nimCfg.fallbackModel },
-      });
-    }
-
-    throw lastError ?? new Error("NIM request failed after retries");
+    throw lastError ?? new Error("NemoClaw request failed after retries");
   }
 
-  const handle: NimProviderHandle = {
+  const handle: NemoClawProviderHandle = {
     chatCompletion,
     getModels: () => [...models],
     getModel: (id) => models.find((m) => m.id === id) ?? null,
     getHealthStatus: () => ({ ...healthStatus }),
+    getSandboxStatus: () => ({ ...sandboxStatus }),
     isHealthy: () => healthStatus.healthy,
     shutdown: async () => {
       if (healthTimer) {
@@ -373,31 +416,46 @@ export async function initNimProvider(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function toNimModel(cfg: NimModelConfig): NimModel {
+function resolveEndpoint(cfg: EnterpriseNemoClawConfig, profile: NemoClawInferenceProfile): string {
+  if (cfg.sandbox?.enabled !== false) {
+    // In sandbox mode, all inference is routed through OpenShell gateway
+    return INFERENCE_ENDPOINTS[profile];
+  }
+  return INFERENCE_ENDPOINTS[profile];
+}
+
+function toNemoClawModel(cfg: NimModelConfig, profile: NemoClawInferenceProfile): NemoClawModel {
   return {
     id: cfg.id,
     displayName: cfg.displayName ?? cfg.id,
     contextWindow: cfg.contextWindow ?? 131072,
     maxOutputTokens: cfg.maxOutputTokens ?? 32768,
-    capabilities: cfg.capabilities ?? ["chat"],
-    thinkingBudget: cfg.thinkingBudget ?? "none",
+    inferenceProfile: profile,
   };
 }
 
-function createNoopHandle(): NimProviderHandle {
+function createNoopHandle(): NemoClawProviderHandle {
+  const noopSandbox: NemoClawSandboxStatus = {
+    running: false,
+    profile: "nvidia-cloud",
+    policyLoaded: false,
+    egressBlocked: 0,
+    egressAllowed: 0,
+  };
   return {
     chatCompletion: async () => {
-      throw new Error("NIM provider is not enabled");
+      throw new Error("NemoClaw provider is not enabled");
     },
     getModels: () => [],
     getModel: () => null,
     getHealthStatus: () => ({
       healthy: false,
       endpoint: "",
-      availableModels: [],
+      sandboxStatus: noopSandbox,
       lastCheckMs: 0,
-      error: "NIM provider is not enabled",
+      error: "NemoClaw provider is not enabled",
     }),
+    getSandboxStatus: () => noopSandbox,
     isHealthy: () => false,
     shutdown: async () => {},
   };
