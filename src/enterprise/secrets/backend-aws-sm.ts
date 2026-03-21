@@ -53,7 +53,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
         return res.SecretString ?? null;
       } catch (err: unknown) {
         const code = (err as { name?: string }).name;
-        if (code === "ResourceNotFoundException") return null;
+        if (code === "ResourceNotFoundException") {return null;}
         throw err;
       }
     },
@@ -92,7 +92,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
         );
       } catch (err: unknown) {
         const code = (err as { name?: string }).name;
-        if (code === "ResourceNotFoundException") return;
+        if (code === "ResourceNotFoundException") {return;}
         throw err;
       }
     },
@@ -107,7 +107,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
           new ListSecretsCommand({ Filters: [{ Key: "name", Values: [prefix] }], NextToken: nextToken }),
         );
         for (const s of res.SecretList ?? []) {
-          if (s.Name) secrets.push(s.Name.replace(new RegExp(`^${prefix}`), ""));
+          if (s.Name) {secrets.push(s.Name.replace(new RegExp(`^${prefix}`), ""));}
         }
         nextToken = res.NextToken;
       } while (nextToken);

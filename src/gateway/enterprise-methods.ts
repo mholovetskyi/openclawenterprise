@@ -39,13 +39,13 @@ type GatewayServer = {
 
 function requireIAM(): { store: RBACStore; rbac: RBACEngine; tokens: TokenStore | null } {
   const h = getIAMHandle();
-  if (!h) throw new Error("Enterprise IAM not initialized");
+  if (!h) {throw new Error("Enterprise IAM not initialized");}
   return { store: h.store, rbac: h.rbac, tokens: h.tokens };
 }
 
 function requireAudit(): AuditStorage {
   const s = getAuditStorage();
-  if (!s) throw new Error("Enterprise audit not initialized");
+  if (!s) {throw new Error("Enterprise audit not initialized");}
   return s;
 }
 
@@ -73,7 +73,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
   server.registerMethod("enterprise.users.get", async (params: { userId: string }) => {
     const { store } = requireIAM();
     const user = await store.getUser(params.userId);
-    if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
+    if (!user) {throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });}
     return userToWire(user);
   });
 
@@ -91,7 +91,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
     const existing = await store.getUser(params.id);
     const now = new Date().toISOString();
     const user: User = {
-      ...(existing ?? {}),
+      ...existing,
       id: params.id,
       name: params.name,
       email: params.email,
@@ -132,7 +132,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
 
   server.registerMethod("enterprise.sessions.list", async (params: { subjectId: string }) => {
     const { tokens } = requireIAM();
-    if (!tokens) return { sessions: [] };
+    if (!tokens) {return { sessions: [] };}
     const sessions = tokens.listActiveSessions(params.subjectId);
     return { sessions };
   });
@@ -142,7 +142,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
     subjectId?: string;
   }) => {
     const { tokens } = requireIAM();
-    if (!tokens) return { revoked: 0 };
+    if (!tokens) {return { revoked: 0 };}
 
     if (params.jti) {
       tokens.revokeRefreshToken(params.jti);
@@ -248,7 +248,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
   server.registerMethod("enterprise.mfa.enroll", async (params: { userId: string }) => {
     const { store } = requireIAM();
     const user = await store.getUser(params.userId);
-    if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
+    if (!user) {throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });}
     return MfaService.generateEnrollment(user.id, user.email);
   });
 
@@ -258,8 +258,8 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
   }) => {
     const { store } = requireIAM();
     const user = await store.getUser(params.userId);
-    if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
-    if (!user.totpSecret) return { ok: false };
+    if (!user) {throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });}
+    if (!user.totpSecret) {return { ok: false };}
     const ok = MfaService.verify(user.totpSecret, params.code);
     return { ok };
   });
@@ -271,9 +271,9 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
   }) => {
     const { store } = requireIAM();
     const user = await store.getUser(params.userId);
-    if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
+    if (!user) {throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });}
     const ok = MfaService.verify(params.secret, params.code);
-    if (!ok) throw Object.assign(new Error("Invalid TOTP code"), { code: "INVALID_CODE" });
+    if (!ok) {throw Object.assign(new Error("Invalid TOTP code"), { code: "INVALID_CODE" });}
     await store.upsertUser({ ...user, totpSecret: params.secret, mfaEnabled: true });
     return { ok: true as const };
   });
@@ -281,7 +281,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
   server.registerMethod("enterprise.mfa.disable", async (params: { userId: string }) => {
     const { store } = requireIAM();
     const user = await store.getUser(params.userId);
-    if (!user) throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });
+    if (!user) {throw Object.assign(new Error("User not found"), { code: "NOT_FOUND" });}
     await store.upsertUser({ ...user, totpSecret: undefined, mfaEnabled: false });
     return { ok: true as const };
   });
@@ -294,7 +294,7 @@ export function registerEnterpriseMethods(server: GatewayServer): void {
   }) => {
     const { store } = requireIAM();
     const user = await store.getUser(params.userId);
-    if (!user) return { allowed: false, reason: "User not found" };
+    if (!user) {return { allowed: false, reason: "User not found" };}
     const allowed = IpAllowlist.isAllowed(params.ipAddress, user.allowedCidrs);
     return { allowed, reason: allowed ? "ok" : "IP not in allowlist" };
   });

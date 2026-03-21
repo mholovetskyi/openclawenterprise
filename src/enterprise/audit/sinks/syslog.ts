@@ -96,9 +96,9 @@ function eventToSyslog(event: AuditEvent, opts: SyslogSinkConfig): string {
     category: event.category,
     outcome: event.outcome,
   };
-  if (event.resource?.id) fields["resource"] = event.resource.id;
-  if (event.actor.tenantId) fields["tenantId"] = event.actor.tenantId;
-  if (event.durationMs !== undefined) fields["durationMs"] = String(event.durationMs);
+  if (event.resource?.id) {fields["resource"] = event.resource.id;}
+  if (event.actor.tenantId) {fields["tenantId"] = event.actor.tenantId;}
+  if (event.durationMs !== undefined) {fields["durationMs"] = String(event.durationMs);}
 
   const sdParts = Object.entries(fields)
     .map(([k, v]) => `${k}="${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`)
@@ -130,8 +130,8 @@ export function createSyslogSink(config: SyslogSinkConfig): AuditSink {
         const buf = Buffer.from(msg, "utf8");
         await new Promise<void>((resolve, reject) => {
           sock.send(buf, 0, buf.length, port, config.host, (err) => {
-            if (err) reject(err);
-            else resolve();
+            if (err) {reject(err);}
+            else {resolve();}
           });
         });
       },
@@ -147,7 +147,7 @@ export function createSyslogSink(config: SyslogSinkConfig): AuditSink {
   const queue: Array<{ data: Buffer; resolve: () => void; reject: (e: Error) => void }> = [];
 
   function connect() {
-    if (connecting || socket?.readable) return;
+    if (connecting || socket?.readable) {return;}
     connecting = true;
     socket = createConnection({ host: config.host, port }, () => {
       connecting = false;
@@ -168,8 +168,8 @@ export function createSyslogSink(config: SyslogSinkConfig): AuditSink {
     while (queue.length > 0 && socket?.writable) {
       const item = queue.shift()!;
       socket.write(item.data, (err) => {
-        if (err) item.reject(err instanceof Error ? err : new Error(String(err)));
-        else item.resolve();
+        if (err) {item.reject(err instanceof Error ? err : new Error(String(err)));}
+        else {item.resolve();}
       });
     }
   }
@@ -184,8 +184,8 @@ export function createSyslogSink(config: SyslogSinkConfig): AuditSink {
       if (socket?.writable) {
         await new Promise<void>((resolve, reject) => {
           socket!.write(buf, (err) => {
-            if (err) reject(err instanceof Error ? err : new Error(String(err)));
-            else resolve();
+            if (err) {reject(err instanceof Error ? err : new Error(String(err)));}
+            else {resolve();}
           });
         });
         return;
@@ -221,7 +221,7 @@ export function createWebhookSink(config: WebhookSinkConfig): AuditSink {
   let flushTimer: NodeJS.Timeout | null = null;
 
   async function flush(): Promise<void> {
-    if (batch.length === 0) return;
+    if (batch.length === 0) {return;}
     const toSend = batch.splice(0);
     try {
       await fetch(config.url, {

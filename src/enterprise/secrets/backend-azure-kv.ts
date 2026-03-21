@@ -58,7 +58,7 @@ export async function createAzureKeyVaultBackend(
         await client.getSecret(name);
         return true;
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return false;
+        if (isNotFoundError(err)) {return false;}
         throw err;
       }
     },
@@ -69,7 +69,7 @@ export async function createAzureKeyVaultBackend(
         const secret = await client.getSecret(name);
         return secret.value ?? null;
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return null;
+        if (isNotFoundError(err)) {return null;}
         throw err;
       }
     },
@@ -87,7 +87,7 @@ export async function createAzureKeyVaultBackend(
         const poller = await client.beginDeleteSecret(name);
         await poller.pollUntilDone();
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return;
+        if (isNotFoundError(err)) {return;}
         throw err;
       }
     },
@@ -96,13 +96,13 @@ export async function createAzureKeyVaultBackend(
       const names: string[] = [];
       const props = client.listPropertiesOfSecrets();
       for await (const secret of props) {
-        if (!secret.name) continue;
+        if (!secret.name) {continue;}
         const decoded = decodeAzureName(secret.name);
         // Strip backend prefix
         const stripped = prefix ? decoded.replace(new RegExp(`^${prefix}`), "") : decoded;
-        if (keyPrefix && !stripped.startsWith(keyPrefix)) continue;
+        if (keyPrefix && !stripped.startsWith(keyPrefix)) {continue;}
         // Skip deleted secrets
-        if (secret.enabled === false) continue;
+        if (secret.enabled === false) {continue;}
         names.push(stripped);
       }
       return names;
@@ -127,7 +127,7 @@ function decodeAzureName(name: string): string {
 }
 
 function isNotFoundError(err: unknown): boolean {
-  if (typeof err !== "object" || err === null) return false;
+  if (typeof err !== "object" || err === null) {return false;}
   const e = err as { statusCode?: number; code?: string };
   return e.statusCode === 404 || e.code === "SecretNotFound";
 }

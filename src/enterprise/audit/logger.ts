@@ -27,7 +27,7 @@ export function setAuditEnabled(value: boolean): void {
  * Non-blocking — errors are swallowed so audit failures never break the main flow.
  */
 export async function auditLog(input: AuditEventInput): Promise<AuditEvent | null> {
-  if (!enabled || !storage) return null;
+  if (!enabled || !storage) {return null;}
 
   try {
     const event = buildAuditEvent(input, lastHash);
@@ -46,7 +46,7 @@ export async function auditLog(input: AuditEventInput): Promise<AuditEvent | nul
  * Queues the event and writes asynchronously.
  */
 export function auditLogSync(input: AuditEventInput): void {
-  if (!enabled || !storage) return;
+  if (!enabled || !storage) {return;}
   auditLog(input).catch(() => {});
 }
 

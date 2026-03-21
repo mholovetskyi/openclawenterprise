@@ -981,7 +981,7 @@ export function renderApp(state: AppViewState) {
                   // Metrics come from Prometheus /metrics — displayed via the overview tab
                 },
                 onRefreshAudit: () => {
-                  if (!state.client) return;
+                  if (!state.client) {return;}
                   state.enterpriseAuditLoading = true;
                   state.requestUpdate?.();
                   void loadEnterpriseAudit(state.client, { limit: 100 })
@@ -996,7 +996,7 @@ export function renderApp(state: AppViewState) {
                     });
                 },
                 onRefreshUsers: () => {
-                  if (!state.client) return;
+                  if (!state.client) {return;}
                   state.enterpriseUsersLoading = true;
                   state.requestUpdate?.();
                   void loadEnterpriseUsers(state.client)
@@ -1022,9 +1022,9 @@ export function renderApp(state: AppViewState) {
                 onEditUserRolesChange: (roles) => (state.enterpriseUserEditRoles = roles),
                 onEditUserActiveChange: (active) => (state.enterpriseUserEditActive = active),
                 onSaveUserEdit: (userId) => {
-                  if (!state.client) return;
+                  if (!state.client) {return;}
                   const user = state.enterpriseUsers.find((u) => u.id === userId);
-                  if (!user) return;
+                  if (!user) {return;}
                   // Optimistic local update
                   state.enterpriseUsers = state.enterpriseUsers.map((u) =>
                     u.id === userId

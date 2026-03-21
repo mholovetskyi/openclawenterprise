@@ -20,8 +20,8 @@ export type ExecFn = (cmd: string, opts?: { timeout?: number }) => Promise<ExecR
 function defaultExecAsync(cmd: string, opts?: { timeout?: number }): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
     cpExec(cmd, opts ?? {}, (err, stdout, stderr) => {
-      if (err) reject(err);
-      else resolve({ stdout: String(stdout), stderr: String(stderr) });
+      if (err) {reject(err);}
+      else {resolve({ stdout: String(stdout), stderr: String(stderr) });}
     });
   });
 }
@@ -136,7 +136,7 @@ export async function initGpuMetrics(
   pollTimer = setInterval(() => {
     poll().catch(() => {});
   }, interval);
-  if (pollTimer.unref) pollTimer.unref();
+  if (pollTimer.unref) {pollTimer.unref();}
 
   const handle: GpuMetricsHandle = {
     getGpuStates: () => [...gpuStates],
@@ -162,7 +162,7 @@ export function parseNvidiaSmiOutput(stdout: string): GpuState[] {
 
   for (const line of lines) {
     const parts = line.split(",").map((s) => s.trim());
-    if (parts.length < 12) continue;
+    if (parts.length < 12) {continue;}
 
     const state: GpuState = {
       index: parseFloat(parts[0]) || 0,
@@ -207,7 +207,7 @@ function updateMetrics(states: GpuState[]): void {
 
 function checkThresholds(states: GpuState[], gpuCfg: NvidiaGpuMetricsConfig | undefined): void {
   const thresholds = gpuCfg?.alertThresholds;
-  if (!thresholds) return;
+  if (!thresholds) {return;}
 
   for (const gpu of states) {
     if (thresholds.gpuUtilization !== undefined && gpu.gpuUtilization > thresholds.gpuUtilization) {

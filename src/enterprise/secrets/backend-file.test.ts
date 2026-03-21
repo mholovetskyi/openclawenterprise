@@ -55,7 +55,7 @@ describe("createFileBackend", () => {
     await backend.set("b", "2");
     await backend.set("c", "3");
     const keys = await backend.list();
-    expect(keys.sort()).toEqual(["a", "b", "c"]);
+    expect(keys.toSorted()).toEqual(["a", "b", "c"]);
   });
 
   it("list returns empty array when no secrets exist", async () => {

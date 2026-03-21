@@ -36,7 +36,7 @@ export function createFileBackend(opts: FileBackendOptions): SecretBackend {
 
   function save(store: SecretsStore): void {
     const dir = path.dirname(storePath);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(dir)) {fs.mkdirSync(dir, { recursive: true });}
     const tmp = `${storePath}.tmp.${randomBytes(4).toString("hex")}`;
     fs.writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, storePath);
@@ -49,7 +49,7 @@ export function createFileBackend(opts: FileBackendOptions): SecretBackend {
     async get(ref: string): Promise<string | null> {
       const store = load();
       const entry = store.secrets[ref];
-      if (!entry) return null;
+      if (!entry) {return null;}
       return decrypt(entry.blob, key);
     },
 

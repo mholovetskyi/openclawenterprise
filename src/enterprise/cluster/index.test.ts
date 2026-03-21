@@ -48,7 +48,7 @@ describe("InMemoryCoordinator (via initCluster)", () => {
   let handle: ClusterHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("registers the node on init (getLeader returns current node)", async () => {
@@ -90,7 +90,7 @@ describe("InMemoryBus (via initCluster)", () => {
   let handle: ClusterHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("delivers published messages to subscribers", async () => {

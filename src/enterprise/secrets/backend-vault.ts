@@ -37,7 +37,7 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
   }
 
   async function ensureToken(): Promise<string> {
-    if (token) return token;
+    if (token) {return token;}
     if (opts.appRole) {
       token = await loginAppRole(opts.address, opts.appRole.roleId, opts.appRole.secretId);
     } else if (opts.k8sAuth) {
@@ -73,8 +73,8 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
     async get(ref: string): Promise<string | null> {
       const url = await apiUrl(kvPath(ref));
       const res = await vaultFetch(url, { method: "GET" });
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`Vault GET ${ref} failed: HTTP ${res.status}`);
+      if (res.status === 404) {return null;}
+      if (!res.ok) {throw new Error(`Vault GET ${ref} failed: HTTP ${res.status}`);}
       const data = (res.body as { data?: { data?: Record<string, string> } })?.data?.data;
       return data?.value ?? null;
     },
@@ -85,7 +85,7 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
         method: "POST",
         body: JSON.stringify({ data: { value } }),
       });
-      if (!res.ok) throw new Error(`Vault SET ${ref} failed: HTTP ${res.status}`);
+      if (!res.ok) {throw new Error(`Vault SET ${ref} failed: HTTP ${res.status}`);}
     },
 
     async delete(ref: string): Promise<void> {
@@ -99,8 +99,8 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
     async list(): Promise<string[]> {
       const url = `${opts.address.replace(/\/$/, "")}/v1/${mount}/metadata/${prefix}?list=true`;
       const res = await vaultFetch(url, { method: "GET" });
-      if (res.status === 404) return [];
-      if (!res.ok) return [];
+      if (res.status === 404) {return [];}
+      if (!res.ok) {return [];}
       const keys = (res.body as { data?: { keys?: string[] } })?.data?.keys ?? [];
       return keys.map((k) => `${prefix}${k}`.replace(/^\/+/, ""));
     },
@@ -127,10 +127,10 @@ async function loginAppRole(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role_id: roleId, secret_id: secretId }),
   });
-  if (!res.ok) throw new Error(`Vault AppRole login failed: HTTP ${res.status}`);
+  if (!res.ok) {throw new Error(`Vault AppRole login failed: HTTP ${res.status}`);}
   const body = (await res.json()) as { auth?: { client_token?: string } };
   const tok = body?.auth?.client_token;
-  if (!tok) throw new Error("Vault AppRole login: no client_token in response");
+  if (!tok) {throw new Error("Vault AppRole login: no client_token in response");}
   return tok;
 }
 
@@ -146,9 +146,9 @@ async function loginK8s(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role, jwt }),
   });
-  if (!res.ok) throw new Error(`Vault K8s login failed: HTTP ${res.status}`);
+  if (!res.ok) {throw new Error(`Vault K8s login failed: HTTP ${res.status}`);}
   const body = (await res.json()) as { auth?: { client_token?: string } };
   const tok = body?.auth?.client_token;
-  if (!tok) throw new Error("Vault K8s login: no client_token in response");
+  if (!tok) {throw new Error("Vault K8s login: no client_token in response");}
   return tok;
 }

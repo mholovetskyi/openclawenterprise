@@ -154,7 +154,7 @@ function renderEditRow(u: RbacUser, props: EnterpriseAdminProps) {
 }
 
 function renderPillList(items: string[], type: string) {
-  if (items.length === 0) return html`<span class="muted">—</span>`;
+  if (items.length === 0) {return html`<span class="muted">—</span>`;}
   return html`
     <span class="ent-pill-list">
       ${items.map(

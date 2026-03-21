@@ -22,7 +22,6 @@ vi.mock("@google-cloud/secret-manager", () => ({
     deleteSecret = mockGCPClient.deleteSecret;
     listSecretsAsync = mockGCPClient.listSecretsAsync;
     close = mockGCPClient.close;
-    constructor() {}
   },
 }));
 

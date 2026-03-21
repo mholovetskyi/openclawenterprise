@@ -152,7 +152,7 @@ export class TokenStore {
         }
       | undefined;
 
-    if (!row) return null;
+    if (!row) {return null;}
 
     return {
       jti: row.jti,

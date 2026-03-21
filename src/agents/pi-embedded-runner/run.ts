@@ -715,13 +715,13 @@ export async function runEmbeddedPiAgent(
                 attempt: overflowCompactionAttempts,
                 maxAttempts: MAX_OVERFLOW_COMPACTION_ATTEMPTS,
               });
-              if (compactResult.compacted) {
+              if (compactResult?.compacted) {
                 autoCompactionCount += 1;
                 log.info(`auto-compaction succeeded for ${provider}/${modelId}; retrying prompt`);
                 continue;
               }
               log.warn(
-                `auto-compaction failed for ${provider}/${modelId}: ${compactResult.reason ?? "nothing to compact"}`,
+                `auto-compaction failed for ${provider}/${modelId}: ${compactResult?.reason ?? "nothing to compact"}`,
               );
             }
             // Fallback: try truncating oversized tool results in the session.

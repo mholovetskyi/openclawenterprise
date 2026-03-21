@@ -247,7 +247,7 @@ export function evaluateModelRoutingPolicy(
   // Check if any of the user's roles allow this model
   for (const role of roles) {
     const allowedModels = config.roleModelMap[role];
-    if (!allowedModels) continue;
+    if (!allowedModels) {continue;}
 
     // Wildcard — all models allowed
     if (allowedModels.includes("*")) {

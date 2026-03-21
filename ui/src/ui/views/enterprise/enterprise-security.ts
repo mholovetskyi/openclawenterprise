@@ -1,4 +1,4 @@
-import { html, nothing } from "lit";
+import { html } from "lit";
 import type { EnterpriseAdminProps } from "./types.js";
 
 export function renderEnterpriseSecurity(props: EnterpriseAdminProps) {

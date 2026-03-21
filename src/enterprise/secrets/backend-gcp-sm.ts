@@ -52,7 +52,7 @@ export async function createGCPSecretManagerBackend(
         await client.accessSecretVersion({ name });
         return true;
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return false;
+        if (isNotFoundError(err)) {return false;}
         throw err;
       }
     },
@@ -62,13 +62,13 @@ export async function createGCPSecretManagerBackend(
       try {
         const [version] = await client.accessSecretVersion({ name });
         const payload = version.payload?.data;
-        if (!payload) return null;
+        if (!payload) {return null;}
         return typeof payload === "string"
           ? payload
           : Buffer.from(payload).toString("utf8");
       } catch (err: unknown) {
         // Secret not found → return null
-        if (isNotFoundError(err)) return null;
+        if (isNotFoundError(err)) {return null;}
         throw err;
       }
     },
@@ -88,7 +88,7 @@ export async function createGCPSecretManagerBackend(
           },
         });
       } catch (err: unknown) {
-        if (!isAlreadyExistsError(err)) throw err;
+        if (!isAlreadyExistsError(err)) {throw err;}
       }
 
       // Add a new version with the payload
@@ -103,7 +103,7 @@ export async function createGCPSecretManagerBackend(
       try {
         await client.deleteSecret({ name: secretName });
       } catch (err: unknown) {
-        if (isNotFoundError(err)) return;
+        if (isNotFoundError(err)) {return;}
         throw err;
       }
     },
@@ -115,7 +115,7 @@ export async function createGCPSecretManagerBackend(
       const iterable = client.listSecretsAsync({ parent, filter });
       const names: string[] = [];
       for await (const secret of iterable) {
-        if (!secret.name) continue;
+        if (!secret.name) {continue;}
         // Extract the secret ID from the full resource name
         const id = secret.name.split("/").pop() ?? "";
         const decoded = decodeSecretId(id);

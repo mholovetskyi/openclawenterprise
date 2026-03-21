@@ -81,7 +81,7 @@ function sign(data: string, config: JWTConfig): string {
     return b64url(createHmac("sha256", secret).update(data).digest());
   }
   // RS256
-  if (!config.privateKey) throw new Error("RS256 requires privateKey in JWTConfig");
+  if (!config.privateKey) {throw new Error("RS256 requires privateKey in JWTConfig");}
   const signer = createSign("RSA-SHA256");
   signer.update(data);
   return b64url(signer.sign(config.privateKey));
@@ -92,7 +92,7 @@ function verify(header: string, payload: string, signature: string, config: JWTC
   if (config.algorithm === "HS256") {
     const expected = b64url(createHmac("sha256", config.secret ?? "").update(data).digest());
     // Timing-safe comparison
-    if (signature.length !== expected.length) return false;
+    if (signature.length !== expected.length) {return false;}
     let diff = 0;
     for (let i = 0; i < signature.length; i++) {
       diff |= signature.charCodeAt(i) ^ expected.charCodeAt(i);
@@ -100,7 +100,7 @@ function verify(header: string, payload: string, signature: string, config: JWTC
     return diff === 0;
   }
   // RS256
-  if (!config.publicKey) throw new Error("RS256 requires publicKey in JWTConfig");
+  if (!config.publicKey) {throw new Error("RS256 requires publicKey in JWTConfig");}
   const verifier = createVerify("RSA-SHA256");
   verifier.update(data);
   try {
@@ -188,10 +188,10 @@ export class JWTService {
    */
   decode(token: string): JWTPayload | null {
     const parts = token.split(".");
-    if (parts.length !== 3) return null;
+    if (parts.length !== 3) {return null;}
     const [header, payload, signature] = parts;
 
-    if (!verify(header, payload, signature, this.config)) return null;
+    if (!verify(header, payload, signature, this.config)) {return null;}
 
     let decoded: JWTPayload;
     try {
@@ -201,7 +201,7 @@ export class JWTService {
     }
 
     const now = Math.floor(Date.now() / 1000);
-    if (decoded.exp < now) return null; // expired
+    if (decoded.exp < now) {return null;} // expired
 
     return decoded;
   }

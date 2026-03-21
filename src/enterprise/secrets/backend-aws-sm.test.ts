@@ -15,6 +15,7 @@ vi.mock("@aws-sdk/client-secrets-manager", () => ({
   SecretsManagerClient: class {
     send = mockSend;
     destroy = mockDestroy;
+    // eslint-disable-next-line no-useless-constructor -- required for mock class shape
     constructor(_opts: unknown) {}
   },
   // Command classes expose their constructor args as own properties

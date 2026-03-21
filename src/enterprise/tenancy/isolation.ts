@@ -70,21 +70,21 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
     async getUserByEmail(email) {
       const user = await store.getUserByEmail(email);
       const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) return null;
+      if (user && current && user.tenantId && user.tenantId !== current) {return null;}
       return user;
     },
 
     async getUserByExternalId(externalId) {
       const user = await store.getUserByExternalId(externalId);
       const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) return null;
+      if (user && current && user.tenantId && user.tenantId !== current) {return null;}
       return user;
     },
 
     async getUserByChannelId(channel, channelUserId) {
       const user = await store.getUserByChannelId(channel, channelUserId);
       const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) return null;
+      if (user && current && user.tenantId && user.tenantId !== current) {return null;}
       return user;
     },
 
@@ -121,7 +121,7 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
     async getGroup(id) {
       const group = await store.getGroup(id);
       const current = currentTenantId();
-      if (group && current && group.tenantId && group.tenantId !== current) return null;
+      if (group && current && group.tenantId && group.tenantId !== current) {return null;}
       return group;
     },
 
@@ -157,14 +157,14 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
     async getAgentIdentity(id) {
       const agent = await store.getAgentIdentity(id);
       const current = currentTenantId();
-      if (agent && current && agent.tenantId && agent.tenantId !== current) return null;
+      if (agent && current && agent.tenantId && agent.tenantId !== current) {return null;}
       return agent;
     },
 
     async getAgentIdentityByApiKeyHash(hash) {
       const agent = await store.getAgentIdentityByApiKeyHash(hash);
       const current = currentTenantId();
-      if (agent && current && agent.tenantId && agent.tenantId !== current) return null;
+      if (agent && current && agent.tenantId && agent.tenantId !== current) {return null;}
       return agent;
     },
 

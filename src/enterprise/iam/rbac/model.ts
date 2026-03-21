@@ -174,8 +174,8 @@ export function permissionGranted(
   granted: readonly Permission[],
 ): boolean {
   for (const g of granted) {
-    if (g === "*") return true;
-    if (g === requested) return true;
+    if (g === "*") {return true;}
+    if (g === requested) {return true;}
     // Wildcard suffix: "agents.*" matches "agents.create"
     if (g.endsWith(".*")) {
       const prefix = g.slice(0, -2);
@@ -197,10 +197,10 @@ export function expandRolePermissions(
 ): Permission[] {
   const permissions: Permission[] = [];
   for (const roleId of roleIds) {
-    if (visited.has(roleId)) continue;
+    if (visited.has(roleId)) {continue;}
     visited.add(roleId);
     const role = allRoles.find((r) => r.id === roleId);
-    if (!role) continue;
+    if (!role) {continue;}
     permissions.push(...role.permissions);
     if (role.inherits?.length) {
       permissions.push(...expandRolePermissions(role.inherits, allRoles, visited));

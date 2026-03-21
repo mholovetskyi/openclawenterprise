@@ -120,19 +120,19 @@ export class GuardrailEngine {
           typeof rule.match.tool === "string"
             ? ctx.tool === rule.match.tool
             : rule.match.tool.test(ctx.tool);
-        if (!toolMatch) continue;
+        if (!toolMatch) {continue;}
       }
 
       // Command/input pattern match
       if (rule.match.commandPattern) {
         rule.match.commandPattern.lastIndex = 0;
-        if (!rule.match.commandPattern.test(inputStr)) continue;
+        if (!rule.match.commandPattern.test(inputStr)) {continue;}
       }
 
       // Output pattern match
       if (rule.match.outputPattern) {
         rule.match.outputPattern.lastIndex = 0;
-        if (!rule.match.outputPattern.test(outputStr)) continue;
+        if (!rule.match.outputPattern.test(outputStr)) {continue;}
       }
 
       triggered.push({

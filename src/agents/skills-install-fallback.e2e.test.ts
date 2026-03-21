@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { installSkill } from "./skills-install.js";
 import { buildWorkspaceSkillStatus } from "./skills-status.js";
 
@@ -86,11 +86,21 @@ describe("skills-install fallback edge cases", () => {
     });
   });
 
+  let getuidSpy: ReturnType<typeof vi.spyOn> | undefined;
+
   beforeEach(async () => {
     runCommandWithTimeoutMock.mockReset();
     scanDirectoryWithSummaryMock.mockReset();
     hasBinaryMock.mockReset();
     scanDirectoryWithSummaryMock.mockResolvedValue({ critical: 0, warn: 0, findings: [] });
+    // Simulate non-root so sudo-related paths are exercised.
+    if (typeof process.getuid === "function") {
+      getuidSpy = vi.spyOn(process, "getuid").mockReturnValue(1000);
+    }
+  });
+
+  afterEach(() => {
+    getuidSpy?.mockRestore();
   });
 
   afterAll(async () => {

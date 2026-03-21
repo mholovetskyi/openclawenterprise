@@ -67,7 +67,7 @@ function makeSmiDeps(smiOutput: string): GpuMetricsDeps {
   return {
     exec: async () => {
       callCount++;
-      if (callCount === 1) return { stdout: "NVIDIA-SMI 535.129.03", stderr: "" };
+      if (callCount === 1) {return { stdout: "NVIDIA-SMI 535.129.03", stderr: "" };}
       return { stdout: smiOutput, stderr: "" };
     },
   };
@@ -132,7 +132,7 @@ describe("GPU Metrics - initialization", () => {
   });
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("creates noop handle when gpuMetrics is disabled", async () => {
@@ -171,7 +171,7 @@ describe("GPU Metrics - metric registration", () => {
   });
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("updates Prometheus metrics on poll", async () => {
@@ -213,7 +213,7 @@ describe("GPU Metrics - threshold alerting", () => {
   });
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("does not emit threshold event when values are below threshold", async () => {

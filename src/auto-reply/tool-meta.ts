@@ -129,7 +129,7 @@ function isPathLike(value: string): boolean {
   if (value.includes("&&") || value.includes("||")) {
     return false;
   }
-  return /^~?(\/[^\s\/]+)+$/.test(value);
+  return /^~?(\/[^\s/]+)+$/.test(value);
 }
 
 function maybeWrapMarkdown(value: string, markdown?: boolean): string {

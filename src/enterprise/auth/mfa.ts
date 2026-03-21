@@ -38,7 +38,7 @@ function base32Decode(encoded: string): Buffer {
   const bytes: number[] = [];
   for (const char of input) {
     const idx = BASE32_CHARS.indexOf(char);
-    if (idx === -1) continue;
+    if (idx === -1) {continue;}
     value = (value << 5) | idx;
     bits += 5;
     if (bits >= 8) {
@@ -106,7 +106,7 @@ export class MfaService {
   static verify(secret: string, code: string, nowSec?: number): boolean {
     const now = nowSec ?? Math.floor(Date.now() / 1000);
     for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
-      if (totpAt(secret, now + i * TOTP_STEP_SEC) === code) return true;
+      if (totpAt(secret, now + i * TOTP_STEP_SEC) === code) {return true;}
     }
     return false;
   }

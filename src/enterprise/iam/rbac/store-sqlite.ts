@@ -141,7 +141,7 @@ export function createSQLiteRBACStore(dbPath: string): RBACStore {
       const rows = db.prepare("SELECT raw FROM rbac_users").all() as Array<{ raw: string }>;
       for (const r of rows) {
         const u = parseRow<User>(r);
-        if (u.externalId === externalId) return u;
+        if (u.externalId === externalId) {return u;}
       }
       return null;
     },

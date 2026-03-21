@@ -3,7 +3,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { randomUUID } from "node:crypto";
 
 export type AuditEventCategory =
   | "auth"
@@ -117,7 +116,7 @@ export function verifyChain(events: AuditEvent[]): { valid: boolean; firstBroken
 function computeEventHash(event: AuditEvent): string {
   // Exclude the hash field itself from the computation
   const { hash: _hash, ...rest } = event;
-  const canonical = JSON.stringify(rest, Object.keys(rest).sort());
+  const canonical = JSON.stringify(rest, Object.keys(rest).toSorted());
   return createHash("sha256").update(canonical).digest("hex");
 }
 

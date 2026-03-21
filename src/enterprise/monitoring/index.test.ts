@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { initMonitoring } from "./index.js";
 import type { OpenClawConfig } from "../../config/config.js";
@@ -21,7 +21,7 @@ function makeResponse(): ServerResponse & { _body: string; _status: number; _hea
     _headers: {} as Record<string, string>,
     writeHead(status: number, headers?: Record<string, string>) {
       this._status = status;
-      if (headers) Object.assign(this._headers, headers);
+      if (headers) {Object.assign(this._headers, headers);}
     },
     end(body?: string) {
       this._body = body ?? "";

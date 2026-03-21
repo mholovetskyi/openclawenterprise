@@ -121,7 +121,7 @@ class RedisRateLimiter implements RateLimiter {
 // ── Factory ────────────────────────────────────────────────────────────────────
 
 export async function createRateLimiter(redisUrl?: string): Promise<RateLimiter> {
-  if (!redisUrl) return new InMemoryRateLimiter();
+  if (!redisUrl) {return new InMemoryRateLimiter();}
 
   try {
     const redis = await loadRedis(redisUrl);

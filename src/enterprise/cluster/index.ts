@@ -90,7 +90,7 @@ class InMemoryBus implements ClusterBus {
   }
 
   subscribe(channel: string, handler: (message: unknown) => void): () => void {
-    if (!this.handlers.has(channel)) this.handlers.set(channel, new Set());
+    if (!this.handlers.has(channel)) {this.handlers.set(channel, new Set());}
     this.handlers.get(channel)!.add(handler);
     return () => this.handlers.get(channel)?.delete(handler);
   }
@@ -178,7 +178,7 @@ class RedisCoordinator implements ClusterCoordinator {
   }
 
   private startLockRenewal(ttlSec: number): void {
-    if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
+    if (this.lockRenewalTimer) {clearInterval(this.lockRenewalTimer);}
     this.lockRenewalTimer = setInterval(async () => {
       try {
       // Extend the lock only if we still hold it
@@ -190,7 +190,7 @@ class RedisCoordinator implements ClusterCoordinator {
           this._isLeader = true;
         } else {
           this._isLeader = false;
-          if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
+          if (this.lockRenewalTimer) {clearInterval(this.lockRenewalTimer);}
           this.lockRenewalTimer = null;
         }
       }
@@ -261,7 +261,7 @@ class RedisBus implements ClusterBus {
       // Wire up Redis subscription for this channel
       void this.subClient.subscribe(prefixed, (_ch, msg) => {
         const subs = this.handlers.get(prefixed);
-        if (!subs) return;
+        if (!subs) {return;}
         let parsed: unknown;
         try { parsed = JSON.parse(msg); } catch { return; }
         for (const h of subs) { try { h(parsed); } catch { /* ignore */ } }

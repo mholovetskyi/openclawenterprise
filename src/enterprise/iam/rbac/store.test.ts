@@ -80,7 +80,7 @@ describe("InMemoryRBACStore — Roles", () => {
     await store.upsertRole(makeRole("a"));
     await store.upsertRole(makeRole("b"));
     const roles = await store.listRoles();
-    expect(roles.map((r) => r.id).sort()).toEqual(["a", "b"]);
+    expect(roles.map((r) => r.id).toSorted()).toEqual(["a", "b"]);
   });
 
   it("deleteRole removes the role", async () => {
@@ -141,7 +141,7 @@ describe("InMemoryRBACStore — Users", () => {
     await store.upsertUser(makeUser("u2", "tenant-b"));
     await store.upsertUser(makeUser("u3", "tenant-a"));
     const tenantA = await store.listUsers("tenant-a");
-    expect(tenantA.map((u) => u.id).sort()).toEqual(["u1", "u3"]);
+    expect(tenantA.map((u) => u.id).toSorted()).toEqual(["u1", "u3"]);
   });
 
   it("deleteUser removes user", async () => {

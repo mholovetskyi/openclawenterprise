@@ -42,7 +42,10 @@ vi.mock("../pi-embedded-helpers.js", () => ({
   formatAssistantErrorText: vi.fn(() => ""),
   isAuthAssistantError: vi.fn(() => false),
   isBillingAssistantError: vi.fn(() => false),
-  isCompactionFailureError: vi.fn(() => false),
+  isCompactionFailureError: vi.fn((msg?: string) => {
+    const lower = (msg ?? "").toLowerCase();
+    return lower.includes("request_too_large") && lower.includes("summarization failed");
+  }),
   isLikelyContextOverflowError: vi.fn((msg?: string) => {
     const lower = (msg ?? "").toLowerCase();
     return lower.includes("request_too_large") || lower.includes("context window exceeded");

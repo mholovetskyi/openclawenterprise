@@ -32,7 +32,7 @@ vi.mock("../monitoring/metrics.js", () => {
 // Mock secrets module
 vi.mock("../secrets/index.js", () => ({
   resolveSecretValue: vi.fn(async (val: string) => {
-    if (val === "env://NIM_API_KEY") return "test-api-key-123";
+    if (val === "env://NIM_API_KEY") {return "test-api-key-123";}
     return val;
   }),
 }));
@@ -93,7 +93,7 @@ describe("NIM Provider - initialization", () => {
   let handle: NimProviderHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("creates noop handle when NIM is disabled", async () => {
@@ -169,7 +169,7 @@ describe("NIM Provider - health check", () => {
 
   afterEach(async () => {
     const p = getNimProvider();
-    if (p) await p.shutdown();
+    if (p) {await p.shutdown();}
   });
 
   it("reports healthy when /v1/models returns 200", async () => {
@@ -219,7 +219,7 @@ describe("NIM Provider - chatCompletion", () => {
   });
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("sends chat completion request and returns response", async () => {
@@ -371,7 +371,7 @@ describe("NIM Provider - metrics emission", () => {
   let handle: NimProviderHandle;
 
   afterEach(async () => {
-    if (handle) await handle.shutdown();
+    if (handle) {await handle.shutdown();}
   });
 
   it("increments nimRequests counter on success", async () => {

@@ -4,7 +4,6 @@ import {
   generateRS256KeyPair,
   generateApiKey,
   hashApiKey,
-  type JWTConfig,
 } from "./jwt.js";
 import type { User, AgentIdentity } from "../iam/rbac/model.js";
 

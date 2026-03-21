@@ -18,14 +18,13 @@ vi.mock("@azure/keyvault-secrets", () => ({
     setSecret = mockAzureClient.setSecret;
     beginDeleteSecret = mockAzureClient.beginDeleteSecret;
     listPropertiesOfSecrets = mockAzureClient.listPropertiesOfSecrets;
+    // eslint-disable-next-line no-useless-constructor -- required for mock class shape
     constructor(_vaultUrl: unknown, _credential: unknown) {}
   },
 }));
 
 vi.mock("@azure/identity", () => ({
-  DefaultAzureCredential: class {
-    constructor() {}
-  },
+  DefaultAzureCredential: class {},
 }));
 
 import { createAzureKeyVaultBackend } from "./backend-azure-kv.js";

@@ -1,6 +1,5 @@
 import fs from "node:fs";
-import { sanitizeInput, wrapWithTrustBoundary } from "../../enterprise/security/input-sanitizer.js";
-import { getGuardrailEngine } from "../../enterprise/security/guardrails.js";
+import { sanitizeInput } from "../../enterprise/security/input-sanitizer.js";
 import { auditLog } from "../../enterprise/audit/logger.js";
 import path from "node:path";
 import { CURRENT_SESSION_VERSION, SessionManager } from "@mariozechner/pi-coding-agent";

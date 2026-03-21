@@ -152,13 +152,13 @@ export async function createPostgresAuditStorage(config: PoolConfig): Promise<Au
         params.push(val);
       }
 
-      if (opts.actorId) add("actor_id = ?", opts.actorId);
-      if (opts.category) add("category = ?", opts.category);
-      if (opts.action) add("action ILIKE ?", `%${opts.action}%`);
-      if (opts.outcome) add("outcome = ?", opts.outcome);
-      if (opts.tenantId) add("tenant_id = ?", opts.tenantId);
-      if (opts.from) add("timestamp >= ?", opts.from);
-      if (opts.until) add("timestamp <= ?", opts.until);
+      if (opts.actorId) {add("actor_id = ?", opts.actorId);}
+      if (opts.category) {add("category = ?", opts.category);}
+      if (opts.action) {add("action ILIKE ?", `%${opts.action}%`);}
+      if (opts.outcome) {add("outcome = ?", opts.outcome);}
+      if (opts.tenantId) {add("tenant_id = ?", opts.tenantId);}
+      if (opts.from) {add("timestamp >= ?", opts.from);}
+      if (opts.until) {add("timestamp <= ?", opts.until);}
       if (opts.search) {
         conditions.push(
           `(action ILIKE $${i} OR actor_id ILIKE $${i} OR raw::text ILIKE $${i})`,
