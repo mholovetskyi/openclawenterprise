@@ -1,0 +1,167 @@
+name: Check Upstream OpenClaw Releases
+
+on:
+  schedule:
+    # Run daily at 08:00 UTC
+    - cron: "0 8 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check-releases:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout enterprise repo
+        uses: actions/checkout@v4
+
+      - name: Get current enterprise version
+        id: enterprise
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Current enterprise version: $VERSION"
+
+      - name: Fetch upstream releases
+        id: upstream
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Fetch the latest 20 releases from upstream openclaw/openclaw
+          RELEASES=$(gh api repos/openclaw/openclaw/releases --paginate --jq '.[].tag_name' | head -20)
+          LATEST=$(echo "$RELEASES" | head -1)
+
+          # Strip leading 'v' for comparison
+          LATEST_CLEAN="${LATEST#v}"
+          echo "latest=$LATEST_CLEAN" >> "$GITHUB_OUTPUT"
+          echo "latest_tag=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest upstream release: $LATEST_CLEAN"
+
+      - name: Compare versions and collect missing releases
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENTERPRISE_VERSION: ${{ steps.enterprise.outputs.version }}
+          LATEST_UPSTREAM: ${{ steps.upstream.outputs.latest }}
+        run: |
+          if [ "$ENTERPRISE_VERSION" = "$LATEST_UPSTREAM" ]; then
+            echo "up_to_date=true" >> "$GITHUB_OUTPUT"
+            echo "Enterprise is up to date with upstream."
+            exit 0
+          fi
+
+          echo "up_to_date=false" >> "$GITHUB_OUTPUT"
+
+          # Collect all stable releases newer than the enterprise version
+          MISSING=""
+          while IFS= read -r tag; do
+            ver="${tag#v}"
+            # Skip pre-releases (beta, alpha, rc)
+            if echo "$ver" | grep -qiE '(alpha|beta|rc)'; then
+              continue
+            fi
+            # Compare: upstream release is newer if it sorts after enterprise version
+            if [ "$(printf '%s\n%s' "$ENTERPRISE_VERSION" "$ver" | sort -V | tail -1)" = "$ver" ] && [ "$ver" != "$ENTERPRISE_VERSION" ]; then
+              MISSING="$MISSING$tag\n"
+            fi
+          done <<< "$(gh api repos/openclaw/openclaw/releases --paginate --jq '.[].tag_name' | head -20)"
+
+          MISSING=$(echo -e "$MISSING" | sed '/^$/d')
+          COUNT=$(echo "$MISSING" | wc -l)
+
+          echo "missing_releases<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$MISSING" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          echo "missing_count=$COUNT" >> "$GITHUB_OUTPUT"
+          echo "Missing releases ($COUNT): $MISSING"
+
+      - name: Check for existing tracking issue
+        if: steps.compare.outputs.up_to_date == 'false'
+        id: existing
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.upstream.outputs.latest_tag }}
+        run: |
+          EXISTING=$(gh issue list \
+            --repo "$GITHUB_REPOSITORY" \
+            --label "upstream-sync" \
+            --state open \
+            --search "Upstream sync: $LATEST_TAG" \
+            --json number --jq '.[0].number // empty')
+
+          if [ -n "$EXISTING" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "issue_number=$EXISTING" >> "$GITHUB_OUTPUT"
+            echo "Tracking issue #$EXISTING already exists."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure upstream-sync label exists
+        if: steps.compare.outputs.up_to_date == 'false' && steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create "upstream-sync" \
+            --repo "$GITHUB_REPOSITORY" \
+            --description "Tracks upstream openclaw/openclaw release syncs" \
+            --color "0E8A16" \
+            --force
+
+      - name: Create tracking issue
+        if: steps.compare.outputs.up_to_date == 'false' && steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENTERPRISE_VERSION: ${{ steps.enterprise.outputs.version }}
+          LATEST_TAG: ${{ steps.upstream.outputs.latest_tag }}
+          LATEST_UPSTREAM: ${{ steps.upstream.outputs.latest }}
+          MISSING_RELEASES: ${{ steps.compare.outputs.missing_releases }}
+          MISSING_COUNT: ${{ steps.compare.outputs.missing_count }}
+        run: |
+          BODY=$(cat <<'ISSUE_EOF'
+          ## Upstream Release Sync Required
+
+          **Enterprise version:** `ENTERPRISE_VERSION_PLACEHOLDER`
+          **Latest upstream release:** `LATEST_TAG_PLACEHOLDER`
+          **Missing releases:** MISSING_COUNT_PLACEHOLDER
+
+          ### Releases to sync
+
+          MISSING_RELEASES_PLACEHOLDER
+
+          ### Checklist
+
+          - [ ] Review upstream changelog for breaking changes
+          - [ ] Merge/rebase upstream changes into enterprise
+          - [ ] Update `package.json` version
+          - [ ] Update `CHANGELOG.md` with upstream changes
+          - [ ] Run full test suite (`pnpm test`)
+          - [ ] Verify enterprise features still work (`pnpm test:enterprise-e2e`)
+          - [ ] Update any enterprise patches affected by upstream changes
+
+          ### Links
+
+          - [Upstream releases](https://github.com/openclaw/openclaw/releases)
+          - [Upstream changelog](https://github.com/openclaw/openclaw/blob/main/CHANGELOG.md)
+          ISSUE_EOF
+
+          BODY="${BODY//ENTERPRISE_VERSION_PLACEHOLDER/$ENTERPRISE_VERSION}"
+          BODY="${BODY//LATEST_TAG_PLACEHOLDER/$LATEST_TAG}"
+          BODY="${BODY//MISSING_COUNT_PLACEHOLDER/$MISSING_COUNT}"
+
+          # Format missing releases as a checklist
+          RELEASES_LIST=""
+          while IFS= read -r tag; do
+            [ -z "$tag" ] && continue
+            RELEASES_LIST="$RELEASES_LIST- [ ] [\`$tag\`](https://github.com/openclaw/openclaw/releases/tag/$tag)\n"
+          done <<< "$MISSING_RELEASES"
+          BODY="${BODY//MISSING_RELEASES_PLACEHOLDER/$(echo -e "$RELEASES_LIST")}"
+
+          gh issue create \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Upstream sync: $LATEST_TAG (enterprise is at v$ENTERPRISE_VERSION)" \
+            --body "$BODY" \
+            --label "upstream-sync"
