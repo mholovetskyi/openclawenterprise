@@ -178,7 +178,7 @@ describe("AppSidebar footer identity menu", () => {
         (link) => link.getAttribute("href"),
       ),
     ).toEqual([
-      "https://docs.openclaw.ai",
+      "https://github.com/mholovetskyi/openclawenterprise/tree/main/docs",
       "https://docs.openclaw.ai/help",
       "https://discord.gg/clawd",
       "https://docs.openclaw.ai/releases",

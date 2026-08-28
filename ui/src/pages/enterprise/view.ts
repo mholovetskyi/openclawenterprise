@@ -8,6 +8,7 @@
  * styles live in ui/src/styles/enterprise.css (imported by enterprise-page.ts).
  */
 import { html, nothing } from "lit";
+import { renderHubTabs } from "../../components/hub-tabs.ts";
 import type { EnterpriseRbacUser } from "../../lib/enterprise/api.ts";
 import type {
   AuditEventRow,
@@ -36,23 +37,21 @@ export function renderEnterprise(props: EnterpriseAdminProps) {
           : nothing}
       </div>
 
-      <nav class="ent-tabs" role="tablist">
-        ${TABS.map(
-          (tab) => html`
-            <button
-              class="ent-tab ${props.activeTab === tab.id ? "ent-tab--active" : ""}"
-              role="tab"
-              aria-selected=${props.activeTab === tab.id}
-              @click=${() => props.onTabChange(tab.id)}
-            >
-              <span class="ent-tab-icon">${tab.icon}</span>
-              <span class="ent-tab-label">${tab.label}</span>
-            </button>
-          `,
-        )}
-      </nav>
+      ${renderHubTabs<EnterpriseTab>({
+        id: "enterprise",
+        active: props.activeTab,
+        tabs: TABS.map((tab) => ({
+          value: tab.id,
+          label: html`<span class="ent-tab-icon">${tab.icon}</span>
+            <span class="ent-tab-label">${tab.label}</span>`,
+        })),
+        ariaLabel: "Enterprise sections",
+        panelId: "ent-panel",
+        variant: "sub",
+        onSelect: (tab) => props.onTabChange(tab),
+      })}
 
-      <div class="ent-content" role="tabpanel">
+      <div class="ent-content" id="ent-panel" role="tabpanel">
         ${props.activeTab === "overview" ? renderEnterpriseOverview(props) : nothing}
         ${props.activeTab === "users" ? renderEnterpriseUsers(props) : nothing}
         ${props.activeTab === "audit" ? renderEnterpriseAudit(props) : nothing}
@@ -127,8 +126,7 @@ function renderEnterpriseOverview(props: EnterpriseAdminProps) {
       <section class="ent-section">
         <h3 class="ent-section-title">Subsystems</h3>
         <div class="ent-subsystem-grid">
-          ${subsystemRow("🔐", "Secrets", ss.secrets)}
-          ${subsystemRow("👤", "IAM / RBAC", ss.iam)}
+          ${subsystemRow("🔐", "Secrets", ss.secrets)} ${subsystemRow("👤", "IAM / RBAC", ss.iam)}
           ${subsystemRow("📋", "Audit logging", ss.audit)}
           ${subsystemRow("📊", "Monitoring", ss.monitoring)}
           ${subsystemRow("🏢", "Multi-tenancy", ss.tenancy)}
@@ -161,7 +159,9 @@ function renderEnterpriseOverview(props: EnterpriseAdminProps) {
                 ${metricCard("Audit events", metrics.auditEventsTotal.toLocaleString())}
                 ${metricCard("Guardrail blocks", metrics.guardrailBlocksTotal.toLocaleString())}
                 ${ss.tenancy.enabled ? metricCard("Tenants", metrics.tenantCount) : nothing}
-                ${ss.cluster.enabled ? metricCard("Cluster nodes", metrics.clusterNodeCount) : nothing}
+                ${ss.cluster.enabled
+                  ? metricCard("Cluster nodes", metrics.clusterNodeCount)
+                  : nothing}
               </div>
             </section>
           `
@@ -754,8 +754,7 @@ function renderEnterpriseSettings(props: EnterpriseAdminProps) {
           >
           <span class="ent-kv-key">Groups</span>
           <span class="ent-kv-val"
-            >Users inherit all roles from their groups — useful for team-based access
-            control.</span
+            >Users inherit all roles from their groups — useful for team-based access control.</span
           >
           <span class="ent-kv-key">Enforcement</span>
           <span class="ent-kv-val"

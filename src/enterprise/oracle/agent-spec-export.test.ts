@@ -107,9 +107,9 @@ describe("exportAgentSpec", () => {
   it("should include tools when includeTools is true", () => {
     const spec = exportAgentSpec(makeAgent(), makeOptions());
     expect(spec.tools).toBeDefined();
-    expect(spec.tools![0].profile).toBe("coding");
-    expect(spec.tools![0].allowed).toEqual(["bash", "read"]);
-    expect(spec.tools![0].denied).toEqual(["write"]);
+    expect(spec.tools![0]!.profile).toBe("coding");
+    expect(spec.tools![0]!.allowed).toEqual(["bash", "read"]);
+    expect(spec.tools![0]!.denied).toEqual(["write"]);
   });
 
   it("should exclude tools when includeTools is false", () => {
@@ -136,8 +136,8 @@ describe("exportAgentSpec", () => {
   it("should include guardrail rules", () => {
     const spec = exportAgentSpec(makeAgent(), makeOptions());
     expect(spec.guardrails).toHaveLength(1);
-    expect(spec.guardrails![0].id).toBe("no-pii");
-    expect(spec.guardrails![0].action).toBe("block");
+    expect(spec.guardrails![0]!.id).toBe("no-pii");
+    expect(spec.guardrails![0]!.action).toBe("block");
   });
 
   it("should include sandbox config", () => {
@@ -218,8 +218,8 @@ describe("exportAllAgentSpecs", () => {
     });
     const specs = exportAllAgentSpecs(options);
     expect(specs).toHaveLength(2);
-    expect(specs[0].metadata.id).toBe("agent-1");
-    expect(specs[1].metadata.id).toBe("agent-2");
+    expect(specs[0]!.metadata.id).toBe("agent-1");
+    expect(specs[1]!.metadata.id).toBe("agent-2");
   });
 });
 
@@ -227,26 +227,26 @@ describe("exportAllAgentSpecs", () => {
 
 describe("exportAgentSpecToFile", () => {
   it("should write single agent as object", async () => {
-    const writeFile = vi.fn(async () => {});
+    const writeFile = vi.fn(async (_path: string, _content: string) => {});
     const path = await exportAgentSpecToFile(
       makeOptions({ config: { ...defaultConfig, exportPath: "/tmp/spec.json" } }),
       { writeFile },
     );
     expect(path).toBe("/tmp/spec.json");
     expect(writeFile).toHaveBeenCalledOnce();
-    const written = JSON.parse(writeFile.mock.calls[0][1]);
+    const written = JSON.parse(writeFile.mock.calls[0]![1]);
     expect(written.specVersion).toBe("1.0");
   });
 
   it("should write multiple agents as array", async () => {
-    const writeFile = vi.fn(async () => {});
+    const writeFile = vi.fn(async (_path: string, _content: string) => {});
     await exportAgentSpecToFile(
       makeOptions({
         agents: [makeAgent({ id: "a1" }), makeAgent({ id: "a2" })],
       }),
       { writeFile },
     );
-    const written = JSON.parse(writeFile.mock.calls[0][1]);
+    const written = JSON.parse(writeFile.mock.calls[0]![1]);
     expect(Array.isArray(written)).toBe(true);
     expect(written).toHaveLength(2);
   });

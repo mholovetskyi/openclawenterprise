@@ -322,7 +322,7 @@ describe("OracleMcpBridge", () => {
     const bridge = await createOracleMcpBridge(baseConfig, deps);
     const tools = await bridge.listTools();
     expect(tools).toHaveLength(2);
-    expect(tools[0].name).toBe("sql_query");
+    expect(tools[0]!.name).toBe("sql_query");
     await bridge.close();
   });
 

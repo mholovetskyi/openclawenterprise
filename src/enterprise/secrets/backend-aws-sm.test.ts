@@ -18,19 +18,34 @@ vi.mock("@aws-sdk/client-secrets-manager", () => ({
     constructor(_opts: unknown) {}
   },
   // Command classes expose their constructor args as own properties
-  GetSecretValueCommand: function GetSecretValueCommand(this: Record<string, unknown>, args: Record<string, unknown>) {
+  GetSecretValueCommand: function GetSecretValueCommand(
+    this: Record<string, unknown>,
+    args: Record<string, unknown>,
+  ) {
     Object.assign(this, { _cmd: "GetSecretValue", ...args });
   },
-  CreateSecretCommand: function CreateSecretCommand(this: Record<string, unknown>, args: Record<string, unknown>) {
+  CreateSecretCommand: function CreateSecretCommand(
+    this: Record<string, unknown>,
+    args: Record<string, unknown>,
+  ) {
     Object.assign(this, { _cmd: "CreateSecret", ...args });
   },
-  UpdateSecretCommand: function UpdateSecretCommand(this: Record<string, unknown>, args: Record<string, unknown>) {
+  UpdateSecretCommand: function UpdateSecretCommand(
+    this: Record<string, unknown>,
+    args: Record<string, unknown>,
+  ) {
     Object.assign(this, { _cmd: "UpdateSecret", ...args });
   },
-  DeleteSecretCommand: function DeleteSecretCommand(this: Record<string, unknown>, args: Record<string, unknown>) {
+  DeleteSecretCommand: function DeleteSecretCommand(
+    this: Record<string, unknown>,
+    args: Record<string, unknown>,
+  ) {
     Object.assign(this, { _cmd: "DeleteSecret", ...args });
   },
-  ListSecretsCommand: function ListSecretsCommand(this: Record<string, unknown>, args: Record<string, unknown>) {
+  ListSecretsCommand: function ListSecretsCommand(
+    this: Record<string, unknown>,
+    args: Record<string, unknown>,
+  ) {
     Object.assign(this, { _cmd: "ListSecrets", ...args });
   },
 }));
@@ -83,7 +98,7 @@ describe("createAwsSmBackend", () => {
   it("get — uses prefixed secret id", async () => {
     mockSend.mockResolvedValueOnce({ SecretString: "v" });
     await backend.get("sub/key");
-    const cmd = mockSend.mock.calls[0][0] as { SecretId?: string };
+    const cmd = mockSend.mock.calls[0]![0] as { SecretId?: string };
     expect(cmd.SecretId).toBe("openclaw/sub/key");
   });
 
@@ -92,28 +107,28 @@ describe("createAwsSmBackend", () => {
   it("set — updates existing secret via UpdateSecretCommand", async () => {
     mockSend.mockResolvedValueOnce({});
     await backend.set("my-key", "value");
-    const cmd = mockSend.mock.calls[0][0] as { _cmd: string; SecretId: string; SecretString: string };
+    const cmd = mockSend.mock.calls[0]![0] as {
+      _cmd: string;
+      SecretId: string;
+      SecretString: string;
+    };
     expect(cmd._cmd).toBe("UpdateSecret");
     expect(cmd.SecretId).toBe("openclaw/my-key");
     expect(cmd.SecretString).toBe("value");
   });
 
   it("set — creates new secret when Update throws ResourceNotFoundException", async () => {
-    mockSend
-      .mockRejectedValueOnce(notFound())
-      .mockResolvedValueOnce({});
+    mockSend.mockRejectedValueOnce(notFound()).mockResolvedValueOnce({});
     await backend.set("new-key", "value");
-    const createCmd = mockSend.mock.calls[1][0] as { _cmd: string; Name: string };
+    const createCmd = mockSend.mock.calls[1]![0] as { _cmd: string; Name: string };
     expect(createCmd._cmd).toBe("CreateSecret");
     expect(createCmd.Name).toBe("openclaw/new-key");
   });
 
   it("set — passes description from metadata on create", async () => {
-    mockSend
-      .mockRejectedValueOnce(notFound())
-      .mockResolvedValueOnce({});
+    mockSend.mockRejectedValueOnce(notFound()).mockResolvedValueOnce({});
     await backend.set("key", "val", { description: "my desc" });
-    const createCmd = mockSend.mock.calls[1][0] as { Description?: string };
+    const createCmd = mockSend.mock.calls[1]![0] as { Description?: string };
     expect(createCmd.Description).toBe("my desc");
   });
 
@@ -127,7 +142,7 @@ describe("createAwsSmBackend", () => {
   it("delete — sends DeleteSecretCommand with ForceDeleteWithoutRecovery", async () => {
     mockSend.mockResolvedValueOnce({});
     await backend.delete("my-key");
-    const cmd = mockSend.mock.calls[0][0] as {
+    const cmd = mockSend.mock.calls[0]![0] as {
       _cmd: string;
       SecretId: string;
       ForceDeleteWithoutRecovery: boolean;
@@ -151,10 +166,7 @@ describe("createAwsSmBackend", () => {
 
   it("list — returns keys with prefix stripped", async () => {
     mockSend.mockResolvedValueOnce({
-      SecretList: [
-        { Name: "openclaw/key-a" },
-        { Name: "openclaw/key-b" },
-      ],
+      SecretList: [{ Name: "openclaw/key-a" }, { Name: "openclaw/key-b" }],
     });
     const keys = await backend.list();
     expect(keys).toEqual(["key-a", "key-b"]);

@@ -130,8 +130,8 @@ describe("OciStreamingSink", () => {
 
     // 10 events / 5 per call = 2 putMessages calls
     expect(mock.client.putMessages).toHaveBeenCalledTimes(2);
-    expect(mock.putCalls[0].messages.length).toBe(5);
-    expect(mock.putCalls[1].messages.length).toBe(5);
+    expect(mock.putCalls[0]!.messages.length).toBe(5);
+    expect(mock.putCalls[1]!.messages.length).toBe(5);
     await sink.close();
   });
 
@@ -141,7 +141,7 @@ describe("OciStreamingSink", () => {
     const event = makeEvent({ id: "EVT_JSON_TEST" });
     await sink.send(event);
 
-    const msg = mock.putCalls[0].messages[0];
+    const msg = mock.putCalls[0]!.messages[0]!;
     const decoded = JSON.parse(Buffer.from(msg.value, "base64").toString("utf8")) as Record<
       string,
       unknown
@@ -155,7 +155,7 @@ describe("OciStreamingSink", () => {
     const sink = await createOciStreamingSink({ ...defaultConfig, batchSize: 1 }, deps);
     await sink.send(makeEvent({ id: "EVT_KEY_TEST" }));
 
-    const msg = mock.putCalls[0].messages[0];
+    const msg = mock.putCalls[0]!.messages[0]!;
     expect(Buffer.from(msg.key, "base64").toString("utf8")).toBe("EVT_KEY_TEST");
     await sink.close();
   });
@@ -254,7 +254,7 @@ describe("OciStreamingSink", () => {
       await sink.send(makeEvent());
     });
 
-    const msg = mock.putCalls[0].messages[0];
+    const msg = mock.putCalls[0]!.messages[0]!;
     const decoded = JSON.parse(Buffer.from(msg.value, "base64").toString("utf8")) as Record<
       string,
       unknown

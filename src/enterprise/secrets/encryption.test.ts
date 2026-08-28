@@ -62,7 +62,7 @@ describe("decrypt", () => {
     const blob = encrypt("hello", key32);
     const buf = Buffer.from(blob.data, "base64");
     // Flip a byte in the ciphertext area (after version+iv+tag = 29 bytes)
-    buf[29] ^= 0xff;
+    buf[29] = buf[29]! ^ 0xff;
     const tampered = { data: buf.toString("base64"), createdAt: blob.createdAt };
     expect(() => decrypt(tampered, key32)).toThrow("decryption failed");
   });

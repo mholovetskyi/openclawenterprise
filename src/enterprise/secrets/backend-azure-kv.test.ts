@@ -116,7 +116,7 @@ describe("createAzureKeyVaultBackend — operations", () => {
     mockAzureClient.getSecret.mockResolvedValueOnce({ value: "v" });
     await backend.get("sub/key");
     // prefix "openclaw-" + "sub/key" → encodeAzureName encodes "/" as "--2f-"
-    const azureName = mockAzureClient.getSecret.mock.calls[0][0] as string;
+    const azureName = mockAzureClient.getSecret.mock.calls[0]![0] as string;
     expect(azureName).toContain("--2f-");
   });
 
@@ -166,10 +166,7 @@ describe("createAzureKeyVaultBackend — operations", () => {
 
   it("list — returns keys with prefix stripped", async () => {
     mockAzureClient.listPropertiesOfSecrets.mockReturnValueOnce(
-      asyncOf(
-        { name: "openclaw-key-a", enabled: true },
-        { name: "openclaw-key-b", enabled: true },
-      ),
+      asyncOf({ name: "openclaw-key-a", enabled: true }, { name: "openclaw-key-b", enabled: true }),
     );
     const keys = await backend.list();
     expect(keys).toEqual(["key-a", "key-b"]);
@@ -187,10 +184,7 @@ describe("createAzureKeyVaultBackend — operations", () => {
 
   it("list — skips entries with no name", async () => {
     mockAzureClient.listPropertiesOfSecrets.mockReturnValueOnce(
-      asyncOf(
-        { name: "openclaw-key-a", enabled: true },
-        { enabled: true },
-      ),
+      asyncOf({ name: "openclaw-key-a", enabled: true }, { enabled: true }),
     );
     expect(await backend.list()).toEqual(["key-a"]);
   });
@@ -202,7 +196,9 @@ describe("createAzureKeyVaultBackend — operations", () => {
         { name: "openclaw-api-key", enabled: true },
       ),
     );
-    const keys = await backend.list("db-");
+    // The Azure implementation extends SecretBackend.list() with an optional keyPrefix filter.
+    const listWithPrefix = backend.list as (keyPrefix?: string) => Promise<string[]>;
+    const keys = await listWithPrefix("db-");
     expect(keys).toEqual(["db-host"]);
   });
 

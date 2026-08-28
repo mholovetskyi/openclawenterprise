@@ -161,7 +161,7 @@ describe("createOciVaultBackend", () => {
       secret: { id: "ocid1.secret.new" },
     });
     await backend.set("key", "val", { description: "test desc" });
-    const call = mocks.vaultsClient.createSecret.mock.calls[0][0] as Record<string, unknown>;
+    const call = mocks.vaultsClient.createSecret.mock.calls[0]![0] as Record<string, unknown>;
     const details = call.createSecretDetails as Record<string, unknown>;
     expect(details.description).toBe("test desc");
   });
@@ -316,7 +316,7 @@ describe("createOciVaultBackend", () => {
     });
 
     await backend.get("my-secret");
-    const listCall = mocks.vaultsClient.listSecrets.mock.calls[0][0] as Record<string, unknown>;
+    const listCall = mocks.vaultsClient.listSecrets.mock.calls[0]![0] as Record<string, unknown>;
     expect(listCall.name).toBe("openclaw/my-secret");
   });
 });

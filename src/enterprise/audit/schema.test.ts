@@ -109,7 +109,7 @@ describe("verifyChain", () => {
 
   it("detects a tampered event hash", () => {
     const chain = buildChain(3);
-    chain[1] = { ...chain[1], hash: "00".repeat(32) };
+    chain[1] = { ...chain[1]!, hash: "00".repeat(32) };
     const result = verifyChain(chain);
     expect(result.valid).toBe(false);
     expect(result.firstBrokenIndex).toBe(1);
@@ -127,7 +127,7 @@ describe("verifyChain", () => {
 
   it("detects tampering of content without updating hash", () => {
     const chain = buildChain(3);
-    chain[2] = { ...chain[2], outcome: "failure" }; // change content, keep old hash
+    chain[2] = { ...chain[2]!, outcome: "failure" }; // change content, keep old hash
     const result = verifyChain(chain);
     expect(result.valid).toBe(false);
     expect(result.firstBrokenIndex).toBe(2);

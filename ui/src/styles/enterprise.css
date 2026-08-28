@@ -24,41 +24,7 @@
   font-size: 11px;
 }
 
-/* Sub-tab bar */
-.ent-tabs {
-  display: flex;
-  gap: 2px;
-  padding: 6px 0 0;
-  border-bottom: 1px solid var(--border);
-  overflow-x: auto;
-}
-
-.ent-tab {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: 12px;
-  white-space: nowrap;
-  transition:
-    color var(--duration-fast) ease,
-    border-color var(--duration-fast) ease;
-}
-
-.ent-tab:hover {
-  color: var(--text);
-}
-
-.ent-tab--active {
-  color: var(--text);
-  border-bottom-color: var(--accent);
-  font-weight: 500;
-}
+/* Sub-tab bar renders through the shared hub-tabs primitive (hub-tabs.css). */
 
 .ent-content {
   flex: 1;
@@ -488,8 +454,8 @@
   align-items: center;
 }
 
-/* Links */
-.ent-link {
+/* Links (external, open a new tab — the unconditional pointer is allowed on anchors) */
+a.ent-link {
   display: inline-block;
   color: var(--accent);
   text-decoration: none;

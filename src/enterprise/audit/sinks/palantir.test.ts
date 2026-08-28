@@ -174,7 +174,7 @@ describe("PalantirFoundrySink", () => {
 
     await sink.send(event);
 
-    const record = deps.mockOsdk.writtenRecords[0];
+    const record = deps.mockOsdk.writtenRecords[0]!;
     expect(record).toBeDefined();
     expect(record.event_id).toBe("EVT_001");
     expect(record.timestamp).toBe("2026-03-10T12:00:00.000Z");
@@ -288,7 +288,7 @@ describe("PalantirFoundrySink", () => {
       await sink.send(makeEvent({ actor: { type: "agent", id: "agent-1" } }));
     });
 
-    const record = deps.mockOsdk.writtenRecords[0];
+    const record = deps.mockOsdk.writtenRecords[0]!;
     expect(record.tenant_id).toBe("acme-corp");
 
     await sink.close();
@@ -363,8 +363,8 @@ describe("PalantirFoundrySink", () => {
     await sink.send(makeEvent());
 
     expect(deps.metrics.observations.length).toBeGreaterThan(0);
-    expect(deps.metrics.observations[0].labels.sink).toBe("palantir");
-    expect(typeof deps.metrics.observations[0].value).toBe("number");
+    expect(deps.metrics.observations[0]!.labels.sink).toBe("palantir");
+    expect(typeof deps.metrics.observations[0]!.value).toBe("number");
 
     await sink.close();
   });
@@ -382,7 +382,7 @@ describe("PalantirFoundrySink", () => {
 
     await sink.send(event);
 
-    const record = deps.mockOsdk.writtenRecords[0];
+    const record = deps.mockOsdk.writtenRecords[0]!;
     expect(record.resource_type).toBe("");
     expect(record.resource_id).toBe("");
     expect(record.duration_ms).toBeNull();

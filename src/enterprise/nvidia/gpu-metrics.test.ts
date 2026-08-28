@@ -77,27 +77,27 @@ describe("parseNvidiaSmiOutput", () => {
   it("parses single GPU output", () => {
     const states = parseNvidiaSmiOutput(SINGLE_GPU_OUTPUT);
     expect(states).toHaveLength(1);
-    expect(states[0].index).toBe(0);
-    expect(states[0].name).toBe("NVIDIA H100");
-    expect(states[0].gpuUtilization).toBe(92);
-    expect(states[0].memoryUtilization).toBe(88);
-    expect(states[0].memoryTotal).toBe(81920);
-    expect(states[0].memoryUsed).toBe(72090);
-    expect(states[0].memoryFree).toBe(9830);
-    expect(states[0].temperature).toBe(75);
-    expect(states[0].powerDraw).toBe(380);
-    expect(states[0].powerLimit).toBe(700);
-    expect(states[0].fanSpeed).toBe(45);
-    expect(states[0].pstate).toBe("P0");
+    expect(states[0]!.index).toBe(0);
+    expect(states[0]!.name).toBe("NVIDIA H100");
+    expect(states[0]!.gpuUtilization).toBe(92);
+    expect(states[0]!.memoryUtilization).toBe(88);
+    expect(states[0]!.memoryTotal).toBe(81920);
+    expect(states[0]!.memoryUsed).toBe(72090);
+    expect(states[0]!.memoryFree).toBe(9830);
+    expect(states[0]!.temperature).toBe(75);
+    expect(states[0]!.powerDraw).toBe(380);
+    expect(states[0]!.powerLimit).toBe(700);
+    expect(states[0]!.fanSpeed).toBe(45);
+    expect(states[0]!.pstate).toBe("P0");
   });
 
   it("parses multi-GPU output", () => {
     const states = parseNvidiaSmiOutput(SAMPLE_SMI_OUTPUT);
     expect(states).toHaveLength(2);
-    expect(states[0].index).toBe(0);
-    expect(states[1].index).toBe(1);
-    expect(states[0].gpuUtilization).toBe(45);
-    expect(states[1].gpuUtilization).toBe(78);
+    expect(states[0]!.index).toBe(0);
+    expect(states[1]!.index).toBe(1);
+    expect(states[0]!.gpuUtilization).toBe(45);
+    expect(states[1]!.gpuUtilization).toBe(78);
   });
 
   it("handles empty output", () => {
@@ -114,8 +114,8 @@ describe("parseNvidiaSmiOutput", () => {
     const output = "0, NVIDIA A100, N/A, N/A, 81920, 0, 81920, 30, N/A, N/A, N/A, P8";
     const states = parseNvidiaSmiOutput(output);
     expect(states).toHaveLength(1);
-    expect(states[0].gpuUtilization).toBe(0);
-    expect(states[0].temperature).toBe(30);
+    expect(states[0]!.gpuUtilization).toBe(0);
+    expect(states[0]!.temperature).toBe(30);
   });
 
   it("handles whitespace-only output", () => {
@@ -150,7 +150,9 @@ describe("GPU Metrics - initialization", () => {
 
   it("creates noop handle when nvidia-smi is not found", async () => {
     handle = await initGpuMetrics(makeCfg(), {
-      exec: async () => { throw new Error("command not found: nvidia-smi"); },
+      exec: async () => {
+        throw new Error("command not found: nvidia-smi");
+      },
     });
     expect(handle.isAvailable()).toBe(false);
     expect(handle.getGpuStates()).toHaveLength(0);
@@ -217,7 +219,8 @@ describe("GPU Metrics - threshold alerting", () => {
   });
 
   it("does not emit threshold event when values are below threshold", async () => {
-    const belowThreshold = "0, NVIDIA A100, 50, 40, 81920, 32768, 49152, 55, 200.00, 400.00, 30, P0";
+    const belowThreshold =
+      "0, NVIDIA A100, 50, 40, 81920, 32768, 49152, 55, 200.00, 400.00, 30, P0";
     handle = await initGpuMetrics(makeCfg(), makeSmiDeps(belowThreshold));
     expect(mockAuditLogSync).not.toHaveBeenCalled();
   });

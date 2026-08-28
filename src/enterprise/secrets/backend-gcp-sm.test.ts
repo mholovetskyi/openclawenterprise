@@ -114,7 +114,7 @@ describe("createGCPSecretManagerBackend — operations", () => {
       { payload: { data: Buffer.from("v") } },
     ]);
     await backend.get("my-key");
-    const call = mockGCPClient.accessSecretVersion.mock.calls[0][0] as { name: string };
+    const call = mockGCPClient.accessSecretVersion.mock.calls[0]![0] as { name: string };
     expect(call.name).toContain("projects/my-project/secrets/");
     expect(call.name).toContain("/versions/latest");
   });
@@ -127,7 +127,7 @@ describe("createGCPSecretManagerBackend — operations", () => {
     await backend.set("new-key", "value");
     expect(mockGCPClient.createSecret).toHaveBeenCalledTimes(1);
     expect(mockGCPClient.addSecretVersion).toHaveBeenCalledTimes(1);
-    const addCall = mockGCPClient.addSecretVersion.mock.calls[0][0] as {
+    const addCall = mockGCPClient.addSecretVersion.mock.calls[0]![0] as {
       payload: { data: Buffer };
     };
     expect(Buffer.from(addCall.payload.data).toString("utf8")).toBe("value");
@@ -152,7 +152,7 @@ describe("createGCPSecretManagerBackend — operations", () => {
   it("delete — deletes the secret by resource name", async () => {
     mockGCPClient.deleteSecret.mockResolvedValueOnce([{}]);
     await backend.delete("my-key");
-    const call = mockGCPClient.deleteSecret.mock.calls[0][0] as { name: string };
+    const call = mockGCPClient.deleteSecret.mock.calls[0]![0] as { name: string };
     expect(call.name).toContain("projects/my-project/secrets/");
   });
 
@@ -187,10 +187,7 @@ describe("createGCPSecretManagerBackend — operations", () => {
 
   it("list — skips entries without a name", async () => {
     mockGCPClient.listSecretsAsync.mockReturnValueOnce(
-      asyncOf(
-        { name: "projects/my-project/secrets/openclaw_x2f_key-a" },
-        {},
-      ),
+      asyncOf({ name: "projects/my-project/secrets/openclaw_x2f_key-a" }, {}),
     );
     expect(await backend.list()).toEqual(["key-a"]);
   });

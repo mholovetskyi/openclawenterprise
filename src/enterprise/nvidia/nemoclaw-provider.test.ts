@@ -142,7 +142,7 @@ describe("NemoClaw Provider - initialization", () => {
   it("sets inference profile on models", async () => {
     handle = await initNemoClawProvider(makeCfg({ inferenceProfile: "local-nim" }), deps);
     const models = handle.getModels();
-    expect(models[0].inferenceProfile).toBe("local-nim");
+    expect(models[0]!.inferenceProfile).toBe("local-nim");
   });
 
   it("getModel returns null for unknown model ID", async () => {
@@ -285,7 +285,7 @@ describe("NemoClaw Provider - chatCompletion", () => {
     });
 
     expect(result.id).toBe("chat-nc-123");
-    expect(result.choices[0].message.content).toBe("Hello from NemoClaw!");
+    expect(result.choices[0]!.message.content).toBe("Hello from NemoClaw!");
     expect(result.usage.total_tokens).toBe(15);
   });
 
@@ -340,7 +340,7 @@ describe("NemoClaw Provider - chatCompletion", () => {
       messages: [{ role: "user", content: "test" }],
     });
 
-    expect(result.choices[0].message.content).toBe("retry ok");
+    expect(result.choices[0]!.message.content).toBe("retry ok");
   });
 
   it("does not retry on 400 client error", async () => {

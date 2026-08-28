@@ -80,9 +80,9 @@ describe("evaluateThinkingBudgetLimit", () => {
     });
     expect(result.action).toBe("require-approval");
     expect(result.triggered).toHaveLength(1);
-    expect(result.triggered[0].rule.id).toBe("thinking-budget-limit");
-    expect(result.triggered[0].reason).toContain("8192");
-    expect(result.triggered[0].reason).toContain("4096");
+    expect(result.triggered[0]!.rule.id).toBe("thinking-budget-limit");
+    expect(result.triggered[0]!.reason).toContain("8192");
+    expect(result.triggered[0]!.reason).toContain("4096");
   });
 
   it("uses default maxThinkingTokens of 4096", () => {
@@ -169,7 +169,7 @@ describe("evaluateCostGuard", () => {
     });
     expect(result.action).toBe("warn");
     expect(result.triggered).toHaveLength(1);
-    expect(result.triggered[0].rule.id).toBe("nim-cost-guard");
+    expect(result.triggered[0]!.rule.id).toBe("nim-cost-guard");
   });
 
   it("uses per-tenant tracking when scope is per-tenant", () => {
@@ -180,7 +180,9 @@ describe("evaluateCostGuard", () => {
     const ctx: NvidiaGuardrailContext = { tool: "chat", userId: "user-1" };
     const result = evaluateCostGuard(ctx, {
       enabled: true,
-      limits: [{ scope: "per-tenant", period: "daily", maxTokens: 10000000, action: "require-approval" }],
+      limits: [
+        { scope: "per-tenant", period: "daily", maxTokens: 10000000, action: "require-approval" },
+      ],
     });
     expect(result.action).toBe("require-approval");
   });
@@ -269,7 +271,7 @@ describe("evaluateModelRoutingPolicy", () => {
     const result = evaluateModelRoutingPolicy(ctx, { enabled: true, roleModelMap });
     expect(result.action).toBe("block");
     expect(result.triggered).toHaveLength(1);
-    expect(result.triggered[0].rule.id).toBe("model-routing-policy");
+    expect(result.triggered[0]!.rule.id).toBe("model-routing-policy");
   });
 
   it("allows operator to use Nano 30B", () => {

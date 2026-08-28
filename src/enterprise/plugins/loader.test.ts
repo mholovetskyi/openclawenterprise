@@ -88,7 +88,7 @@ describe("PluginLoader", () => {
       expect(result).not.toBeNull();
 
       // Check that init was called with the default applied
-      const initCall = plugin.default.init.mock.calls[0][0];
+      const initCall = plugin.default.init.mock.calls[0]![0];
       expect(initCall.config.batchSize).toBe(50);
     });
   });
@@ -168,7 +168,7 @@ describe("PluginLoader", () => {
 
       await loader.loadFromPath(modulePath, pluginDir);
       const health = await loader.healthCheck();
-      expect(health.p1.status).toBe("healthy");
+      expect(health.p1?.status).toBe("healthy");
     });
 
     it("catches health check failures", async () => {
@@ -182,8 +182,8 @@ describe("PluginLoader", () => {
 
       await loader.loadFromPath(modulePath, pluginDir);
       const health = await loader.healthCheck();
-      expect(health.p1.status).toBe("unhealthy");
-      expect(health.p1.message).toContain("connection failed");
+      expect(health.p1?.status).toBe("unhealthy");
+      expect(health.p1?.message).toContain("connection failed");
     });
   });
 

@@ -33,9 +33,7 @@ describe("createVaultBackend — token auth", () => {
   });
 
   it("get — returns value on success", async () => {
-    fetchMock.mockResolvedValueOnce(
-      fakeResponse(200, { data: { data: { value: "s3cret" } } }),
-    );
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "s3cret" } } }));
     expect(await backend.get("my-key")).toBe("s3cret");
     expect(fetchMock).toHaveBeenCalledWith(
       "http://vault:8200/v1/secret/data/openclaw/my-key",
@@ -92,9 +90,7 @@ describe("createVaultBackend — token auth", () => {
   });
 
   it("list — returns keys prefixed correctly", async () => {
-    fetchMock.mockResolvedValueOnce(
-      fakeResponse(200, { data: { keys: ["key-a", "key-b"] } }),
-    );
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { keys: ["key-a", "key-b"] } }));
     const keys = await backend.list();
     expect(keys).toContain("openclaw/key-a");
     expect(keys).toContain("openclaw/key-b");
@@ -114,9 +110,7 @@ describe("createVaultBackend — token auth", () => {
   });
 
   it("exists — returns true on 200 OK", async () => {
-    fetchMock.mockResolvedValueOnce(
-      fakeResponse(200, { data: { data: { value: "x" } } }),
-    );
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "x" } } }));
     expect(await backend.exists("key")).toBe(true);
   });
 
@@ -126,11 +120,9 @@ describe("createVaultBackend — token auth", () => {
   });
 
   it("sends X-Vault-Token on every request", async () => {
-    fetchMock.mockResolvedValueOnce(
-      fakeResponse(200, { data: { data: { value: "x" } } }),
-    );
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "x" } } }));
     await backend.get("key");
-    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    const init = fetchMock.mock.calls[0]![1] as { headers: Record<string, string> };
     expect(init.headers["X-Vault-Token"]).toBe("test-token");
   });
 
@@ -139,20 +131,16 @@ describe("createVaultBackend — token auth", () => {
       ...BASE,
       namespace: "my-ns",
     });
-    fetchMock.mockResolvedValueOnce(
-      fakeResponse(200, { data: { data: { value: "x" } } }),
-    );
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "x" } } }));
     await nsBackend.get("key");
-    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    const init = fetchMock.mock.calls[0]![1] as { headers: Record<string, string> };
     expect(init.headers["X-Vault-Namespace"]).toBe("my-ns");
   });
 
   it("does not send X-Vault-Namespace when not configured", async () => {
-    fetchMock.mockResolvedValueOnce(
-      fakeResponse(200, { data: { data: { value: "x" } } }),
-    );
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "x" } } }));
     await backend.get("key");
-    const init = fetchMock.mock.calls[0][1] as { headers: Record<string, string> };
+    const init = fetchMock.mock.calls[0]![1] as { headers: Record<string, string> };
     expect(init.headers["X-Vault-Namespace"]).toBeUndefined();
   });
 
@@ -173,12 +161,8 @@ describe("createVaultBackend — AppRole auth", () => {
 
   it("logs in via AppRole and uses the returned client_token", async () => {
     fetchMock
-      .mockResolvedValueOnce(
-        fakeResponse(200, { auth: { client_token: "dynamic-tok" } }),
-      )
-      .mockResolvedValueOnce(
-        fakeResponse(200, { data: { data: { value: "val" } } }),
-      );
+      .mockResolvedValueOnce(fakeResponse(200, { auth: { client_token: "dynamic-tok" } }))
+      .mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "val" } } }));
 
     const backend = createVaultBackend({
       address: "http://vault:8200",
@@ -187,16 +171,14 @@ describe("createVaultBackend — AppRole auth", () => {
 
     const result = await backend.get("key");
     expect(result).toBe("val");
-    expect(fetchMock.mock.calls[0][0]).toContain("approle/login");
-    const init = fetchMock.mock.calls[1][1] as { headers: Record<string, string> };
+    expect(fetchMock.mock.calls[0]![0]).toContain("approle/login");
+    const init = fetchMock.mock.calls[1]![1] as { headers: Record<string, string> };
     expect(init.headers["X-Vault-Token"]).toBe("dynamic-tok");
   });
 
   it("caches the token across subsequent requests", async () => {
     fetchMock
-      .mockResolvedValueOnce(
-        fakeResponse(200, { auth: { client_token: "tok" } }),
-      )
+      .mockResolvedValueOnce(fakeResponse(200, { auth: { client_token: "tok" } }))
       .mockResolvedValue(fakeResponse(200, { data: { data: { value: "v" } } }));
 
     const backend = createVaultBackend({
@@ -207,8 +189,8 @@ describe("createVaultBackend — AppRole auth", () => {
     await backend.get("key");
     await backend.get("key");
     // Only one AppRole login call despite two requests
-    const loginCalls = fetchMock.mock.calls.filter(([url]: [string]) =>
-      url.includes("approle/login"),
+    const loginCalls = fetchMock.mock.calls.filter((call) =>
+      String(call[0]).includes("approle/login"),
     );
     expect(loginCalls).toHaveLength(1);
   });
