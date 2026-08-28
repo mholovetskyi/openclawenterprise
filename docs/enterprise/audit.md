@@ -22,10 +22,12 @@ enterprise:
   audit:
     enabled: true
     storage:
-      driver: sqlite          # sqlite (default) | postgresql (roadmap)
+      driver: sqlite # sqlite (default) | postgresql (requires storage.url)
       path: ~/.openclaw/audit.db
+      # For the postgresql driver, set storage.url (or a secret ref) instead of path:
+      # url: env://AUDIT_DATABASE_URL
     retention:
-      days: 365               # auto-purge events older than N days
+      days: 365 # auto-purge events older than N days
 ```
 
 ## Hash chain verification
@@ -36,35 +38,49 @@ To verify the audit log hasn't been tampered with:
 import { createSQLiteAuditStorage } from "./src/enterprise/audit/storage/sqlite.js";
 import { verifyChain } from "./src/enterprise/audit/schema.js";
 
-const storage = createSQLiteAuditStorage("~/.openclaw/audit.db");
-const events = await storage.query({ limit: 10000 });
-const result = verifyChain(events);
+// createSQLiteAuditStorage is async — await it.
+const storage = await createSQLiteAuditStorage("~/.openclaw/audit.db");
+
+// query() returns { events, total }; destructure the events array.
+const { events } = await storage.query({ limit: 10000 });
+
+// query() returns newest-first (ORDER BY timestamp DESC), but verifyChain
+// expects events in chain (ascending / insertion) order — reverse first.
+const result = verifyChain([...events].reverse());
 
 if (!result.valid) {
-  console.error(`Chain break detected at event ${result.brokenAt}`);
+  // firstBrokenIndex is the 0-based position (in the ascending array) of the
+  // first event that fails verification.
+  console.error(`Chain break detected at index ${result.firstBrokenIndex}`);
 }
 ```
 
+> `verifyChain(events, anchor?)` also accepts an optional `ChainAnchor`
+> (`expectedCount` / `expectedHead` / `expectedFirstSeq` / `genesisPreviousHash`).
+> Without an anchor it validates interior links, per-event hashes, sequence
+> continuity, and the genesis link (catching interior tampering and prefix
+> truncation); detecting **suffix** truncation requires an out-of-band anchor.
+
 ## Well-known audit actions
 
-| Action | Description |
-|--------|-------------|
-| `auth.login` | Successful authentication |
-| `auth.logout` | Session terminated |
-| `auth.failed` | Authentication failure |
-| `agent.run.start` | Agent task started |
-| `agent.run.complete` | Agent task completed |
-| `agent.run.error` | Agent task errored |
-| `skill.install` | Skill installed |
-| `skill.invoke` | Skill invoked |
-| `skill.blocked` | Skill blocked by SAST/signing |
-| `guardrail.warn` | Guardrail warning emitted |
-| `guardrail.block` | Action blocked by guardrail |
-| `config.read` | Config accessed |
-| `config.write` | Config modified |
-| `user.create` | IAM user created |
-| `user.delete` | IAM user deleted |
-| `role.assign` | Role assigned to user |
+| Action               | Description                   |
+| -------------------- | ----------------------------- |
+| `auth.login`         | Successful authentication     |
+| `auth.logout`        | Session terminated            |
+| `auth.failed`        | Authentication failure        |
+| `agent.run.start`    | Agent task started            |
+| `agent.run.complete` | Agent task completed          |
+| `agent.run.error`    | Agent task errored            |
+| `skill.install`      | Skill installed               |
+| `skill.invoke`       | Skill invoked                 |
+| `skill.blocked`      | Skill blocked by SAST/signing |
+| `guardrail.warn`     | Guardrail warning emitted     |
+| `guardrail.block`    | Action blocked by guardrail   |
+| `config.read`        | Config accessed               |
+| `config.write`       | Config modified               |
+| `user.create`        | IAM user created              |
+| `user.delete`        | IAM user deleted              |
+| `role.assign`        | Role assigned to user         |
 
 ## Compliance use cases
 

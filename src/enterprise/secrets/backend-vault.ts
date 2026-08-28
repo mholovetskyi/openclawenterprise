@@ -80,6 +80,7 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
         "Content-Type": "application/json",
         "X-Vault-Token": tok,
         ...(opts.namespace ? { "X-Vault-Namespace": opts.namespace } : {}),
+        // SAFETY: vaultFetch is internal to this backend and every call site passes an init without a `headers` field, so init.headers is always undefined; the cast only lets an object-spread accept the RequestInit.headers union.
         ...(init.headers as Record<string, string> | undefined),
       },
     });
@@ -100,6 +101,7 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
       const res = await vaultFetch(url, { method: "GET" });
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`Vault GET ${ref} failed: HTTP ${res.status}`);
+      // SAFETY: res.body is the parsed JSON of a Vault KV v2 GET response, whose documented shape nests the secret map at .data.data; every level is optional and `?.`-guarded, so a mismatch yields undefined.
       const data = (res.body as { data?: { data?: Record<string, string> } })?.data?.data;
       if (!data) return null;
       const keys = Object.keys(data);
@@ -137,6 +139,7 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
       const res = await vaultFetch(url, { method: "GET" });
       if (res.status === 404) return [];
       if (!res.ok) return [];
+      // SAFETY: res.body is the parsed JSON of a Vault KV v2 LIST response, whose documented shape nests the key array at .data.keys; the levels are optional and `?.`-guarded, so a mismatch falls back to [].
       const keys = (res.body as { data?: { keys?: string[] } })?.data?.keys ?? [];
       return keys.map((k) => `${prefix}${k}`.replace(/^\/+/, ""));
     },
@@ -160,6 +163,7 @@ async function loginAppRole(address: string, roleId: string, secretId: string): 
     body: JSON.stringify({ role_id: roleId, secret_id: secretId }),
   });
   if (!res.ok) throw new Error(`Vault AppRole login failed: HTTP ${res.status}`);
+  // SAFETY: parsed JSON of a Vault AppRole login response, which returns the token at .auth.client_token; both levels are optional and the token is checked for presence below before use, so the cast only names the documented shape.
   const body = (await res.json()) as { auth?: { client_token?: string } };
   const tok = body?.auth?.client_token;
   if (!tok) throw new Error("Vault AppRole login: no client_token in response");
@@ -181,6 +185,7 @@ async function loginK8s(
     body: JSON.stringify({ role, jwt }),
   });
   if (!res.ok) throw new Error(`Vault K8s login failed: HTTP ${res.status}`);
+  // SAFETY: parsed JSON of a Vault Kubernetes login response, which returns the token at .auth.client_token; both levels are optional and the token is checked for presence below before use, so the cast only names the documented shape.
   const body = (await res.json()) as { auth?: { client_token?: string } };
   const tok = body?.auth?.client_token;
   if (!tok) throw new Error("Vault K8s login: no client_token in response");

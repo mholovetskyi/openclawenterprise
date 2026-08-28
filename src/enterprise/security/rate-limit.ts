@@ -87,10 +87,11 @@ export type RateLimitRedisClient = RedisClient;
 async function loadRedis(url: string): Promise<RedisClient> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mod = req("ioredis") as any;
+  type RedisCtor = new (url: string) => RedisClient;
+  // SAFETY: ioredis's CJS entry exports the client constructor directly or under `.default` (ESM interop); `mod.default ?? mod` picks whichever, and createRateLimiter wraps this in try/catch, falling back to the in-memory limiter if the package is absent.
+  const mod = req("ioredis") as RedisCtor & { default?: RedisCtor };
   const Redis = mod.default ?? mod;
-  return new Redis(url) as RedisClient;
+  return new Redis(url);
 }
 
 export class RedisRateLimiter implements RateLimiter {

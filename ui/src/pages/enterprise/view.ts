@@ -260,8 +260,11 @@ function renderEditRow(u: EnterpriseRbacUser, props: EnterpriseAdminProps) {
           <input
             type="checkbox"
             .checked=${editingUserActive}
-            @change=${(e: Event) =>
-              props.onEditUserActiveChange((e.target as HTMLInputElement).checked)}
+            @change=${(e: Event) => {
+              if (e.target instanceof HTMLInputElement) {
+                props.onEditUserActiveChange(e.target.checked);
+              }
+            }}
           />
           <span>${editingUserActive ? "active" : "inactive"}</span>
         </label>
@@ -666,9 +669,14 @@ function renderEnterpriseSettings(props: EnterpriseAdminProps) {
 
   function handleSaveBranding(e: Event) {
     e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const title = (form.elements.namedItem("title") as HTMLInputElement).value.trim();
-    const tagline = (form.elements.namedItem("tagline") as HTMLInputElement).value.trim();
+    if (!(e.target instanceof HTMLFormElement)) {
+      return;
+    }
+    const form = e.target;
+    const titleEl = form.elements.namedItem("title");
+    const taglineEl = form.elements.namedItem("tagline");
+    const title = titleEl instanceof HTMLInputElement ? titleEl.value.trim() : "";
+    const tagline = taglineEl instanceof HTMLInputElement ? taglineEl.value.trim() : "";
     props.onDashboardSettingsChange(title, tagline);
   }
 

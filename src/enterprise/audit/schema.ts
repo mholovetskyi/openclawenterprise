@@ -282,6 +282,7 @@ function canonicalJson(value: unknown): string {
 function canonicalize(value: unknown): unknown {
   if (value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map(canonicalize);
+  // SAFETY: the two guards above excluded null, non-objects, and arrays, so `value` is a plain non-null object here.
   const obj = value as Record<string, unknown>;
   const out: Record<string, unknown> = {};
   for (const key of Object.keys(obj).sort()) {

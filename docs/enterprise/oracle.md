@@ -146,44 +146,51 @@ When the in-memory buffer reaches `maxBufferSize`, the oldest event is dropped a
 
 Connect OpenClaw Enterprise agents to Oracle Autonomous Database using the MCP (Model Context Protocol) interface. The bridge provides guardrail-protected access to database tools exposed via MCP.
 
+> **Library-only (not config-activated).** `enterprise.oracle` is **not** read by
+> `initEnterprise`, so setting `mcp.enabled: true` in config does **not**
+> construct the bridge on startup. The bridge is invoked programmatically by
+> calling `createOracleMcpBridge(...)` from `src/enterprise/oracle/mcp-bridge.ts`.
+> The block below documents the `OracleMcpBridgeConfig` fields you pass to that
+> function; the `enabled` field is a config marker only and does not auto-wire the
+> bridge.
+
 ### Prerequisites
 
 - Oracle Autonomous Database with MCP endpoint enabled
 - Network access from OpenClaw Enterprise to the MCP endpoint
 - Authentication credentials (OCI API key or bearer token)
 
-### Configuration
+### Configuration (fields passed to `createOracleMcpBridge`)
 
 ```yaml
-enterprise:
-  oracle:
-    mcp:
-      enabled: true
-      endpoint: env://ORACLE_MCP_ENDPOINT
-      auth:
-        method: oci-api-key
-        tenancyId: env://OCI_TENANCY_ID
-        userId: env://OCI_USER_ID
-        fingerprint: env://OCI_FINGERPRINT
-        privateKey: env://OCI_PRIVATE_KEY
-        region: us-ashburn-1
-      # Or use bearer token auth:
-      # auth:
-      #   method: token
-      #   bearerToken: env://ORACLE_MCP_TOKEN
-      allowedTools:
-        - sql_query
-        - describe_table
-        - list_tables
-      blockedTools:
-        - drop_table
-        - execute_ddl
-      requireApproval:
-        - create_index
-        - alter_table
-      maxResultRows: 1000
-      queryTimeout: 30000
-      healthCheckIntervalMs: 60000
+# Shape of OracleMcpBridgeConfig — pass these fields programmatically to
+# createOracleMcpBridge(); this is NOT auto-activated from config.yaml.
+oracleMcpBridge:
+  endpoint: env://ORACLE_MCP_ENDPOINT
+  auth:
+    method: oci-api-key
+    tenancyId: env://OCI_TENANCY_ID
+    userId: env://OCI_USER_ID
+    fingerprint: env://OCI_FINGERPRINT
+    privateKey: env://OCI_PRIVATE_KEY
+    region: us-ashburn-1
+  # Or use bearer token auth:
+  # auth:
+  #   method: token
+  #   bearerToken: env://ORACLE_MCP_TOKEN
+  allowedTools:
+    - sql_query
+    - describe_table
+    - list_tables
+  blockedTools:
+    - drop_table
+    - execute_ddl
+  requireApproval:
+    - create_index
+    - alter_table
+  maxResultRows: 1000
+  queryTimeout: 30000
+  healthCheckIntervalMs: 60000
 ```
 
 ### Guardrail Rules
@@ -237,17 +244,22 @@ The bridge periodically pings the MCP endpoint at `healthCheckIntervalMs` interv
 
 Export OpenClaw Enterprise agent configurations as Agent Spec JSON documents. This enables interoperability with Oracle AI services and provides a portable, vendor-neutral representation of agent capabilities.
 
-### Configuration
+> **Library-only (not config-activated).** As with the MCP bridge,
+> `enterprise.oracle.agentSpec` is **not** read by `initEnterprise`. The export
+> runs only when you call `exportAgentSpec(...)` / `exportAgentSpecToFile(...)`
+> from `src/enterprise/oracle/agent-spec-export.ts`. The fields below are the
+> export options you pass to those functions, not a startup activation switch.
+
+### Export options (passed to `exportAgentSpecToFile`)
 
 ```yaml
-enterprise:
-  oracle:
-    agentSpec:
-      enabled: true
-      exportPath: ./agent-spec.json
-      includeTools: true
-      includeSystemPrompt: false # Exclude by default for security
-      redactSecrets: true # Redact secret references
+# Options for exportAgentSpecToFile(...) — invoked programmatically, not
+# auto-run from config.yaml.
+agentSpecExport:
+  exportPath: ./agent-spec.json
+  includeTools: true
+  includeSystemPrompt: false # Exclude by default for security
+  redactSecrets: true # Redact secret references
 ```
 
 ### Agent Spec Schema

@@ -280,7 +280,7 @@ export async function initNemoClawProvider(
         endpoint,
         sandboxStatus,
         lastCheckMs: elapsed,
-        error: (err as Error).message,
+        error: err instanceof Error ? err.message : String(err),
       };
       metrics.nemoClawHealthStatus.set({ endpoint }, 0);
     }
@@ -362,6 +362,7 @@ export async function initNemoClawProvider(
         }
 
         sandboxStatus.egressAllowed++;
+        // SAFETY: reached only after res.ok, so the body is a success response from the NemoClaw (OpenAI-compatible) chat/completions endpoint, matching NemoClawResponse; optional fields (usage) are read with ?.
         const data = (await res.json()) as NemoClawResponse;
         const elapsed = Date.now() - start;
 
@@ -391,7 +392,7 @@ export async function initNemoClawProvider(
 
         return data;
       } catch (err) {
-        lastError = err as Error;
+        lastError = err instanceof Error ? err : new Error(String(err));
       }
     }
 

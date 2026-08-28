@@ -86,7 +86,8 @@ function enterpriseErrorShape(method: string, error: unknown) {
   if (error instanceof EnterpriseNotInitializedError) {
     return errorShape(ErrorCodes.UNAVAILABLE, `${method}: ${message}`);
   }
-  const code = (error as { code?: unknown } | null)?.code;
+  const code =
+    typeof error === "object" && error !== null && "code" in error ? error.code : undefined;
   return errorShape(
     ErrorCodes.INVALID_REQUEST,
     `${method}: ${message}`,

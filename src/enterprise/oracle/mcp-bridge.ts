@@ -2,16 +2,10 @@
  * Oracle Autonomous Database MCP bridge — connects OpenClaw Enterprise to
  * Oracle's MCP-compatible SQL endpoint via SSE transport.
  *
- * Activation in config:
- *   enterprise:
- *     oracle:
- *       mcp:
- *         enabled: true
- *         endpoint: env://ORACLE_MCP_ENDPOINT
- *         auth:
- *           method: oci-api-key
- *           tenancyId: env://OCI_TENANCY_ID
- *           ...
+ * Library-only: this bridge is NOT auto-activated from config. `initEnterprise`
+ * does not read `enterprise.oracle`, so `mcp.enabled: true` in config.yaml does
+ * not construct it. Invoke it programmatically via `createOracleMcpBridge(...)`,
+ * passing an `OracleMcpBridgeConfig`.
  *
  * Guardrail rules enforce:
  *   - Tool allowlist / blocklist
@@ -324,6 +318,7 @@ function createDefaultTransport(
         if (!res.ok) {
           throw new Error(`MCP call failed: ${res.status} ${res.statusText}`);
         }
+        // SAFETY: reached only after res.ok, so the body is the MCP server's tool-call response for this endpoint, which returns the McpToolResult JSON shape.
         return (await res.json()) as McpToolResult;
       } finally {
         clearTimeout(timer);
@@ -336,6 +331,7 @@ function createDefaultTransport(
       if (!res.ok) {
         throw new Error(`MCP listTools failed: ${res.status}`);
       }
+      // SAFETY: reached only after res.ok, so the body is the MCP server's tool listing, an array of tool descriptors each carrying a string `name` and optional description.
       return (await res.json()) as Array<{ name: string; description?: string }>;
     },
     async ping() {

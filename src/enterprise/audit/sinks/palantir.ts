@@ -113,8 +113,12 @@ async function loadOsdkModules(): Promise<OsdkModules> {
     // Non-literal specifiers keep TypeScript from statically resolving these
     // optional packages; loading stays lazy at runtime.
     const specifiers: string[] = ["@osdk/client", "@osdk/oauth", "@osdk/foundry.streams"];
+    // The specifiers array maps 1:1 to this tuple order, and each optional @osdk/*
+    // package's documented export matches the structural module type; a shape mismatch
+    // surfaces as a missing export accessed just below and throws in the catch.
     const [clientMod, oauthMod, streamsMod] = (await Promise.all(
       specifiers.map((specifier) => import(specifier)),
+      // SAFETY: 1:1 specifier-to-tuple order; each @osdk/* export matches its structural module type or throws below.
     )) as [OsdkClientModule, OsdkOauthModule, OsdkStreamsModule];
     return {
       createClient: clientMod.createClient,
@@ -151,6 +155,7 @@ async function defaultWriteRecords(
   records: PalantirAuditRecord[],
 ): Promise<void> {
   for (const record of records) {
+    // SAFETY: PalantirAuditRecord is a plain object of JSON-serializable fields, satisfying the Record<string, unknown> shape putRecord accepts.
     await osdk.Streams.putRecord(client, streamRid, record as unknown as Record<string, unknown>);
   }
 }

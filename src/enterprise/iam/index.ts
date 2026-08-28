@@ -105,6 +105,7 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
       privateKey = fs.readFileSync(privateKeyPath, "utf8");
       publicKey = fs.readFileSync(publicKeyPath, "utf8");
     } catch (err) {
+      // SAFETY: fs.readFileSync throws a NodeJS.ErrnoException carrying a string `code`; the branch below tolerates any value (ENOENT vs. other) so a mismatch is harmless.
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
         // Files exist but are unreadable — warn and regenerate.

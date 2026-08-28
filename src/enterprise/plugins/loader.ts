@@ -195,6 +195,7 @@ function validateManifest(manifest: unknown): manifest is PluginManifest {
   if (!manifest || typeof manifest !== "object") {
     return false;
   }
+  // SAFETY: manifest is a non-null object here (guarded above); reading its properties as unknown-typed record entries is always sound, and each is typeof-checked below.
   const m = manifest as Record<string, unknown>;
   return (
     typeof m.name === "string" &&
@@ -211,6 +212,7 @@ function isSkillSignature(value: unknown): value is SkillSignature {
   if (!value || typeof value !== "object") {
     return false;
   }
+  // SAFETY: value is a non-null object here (guarded above); reading its properties as unknown-typed record entries is always sound, and each is typeof-checked below.
   const s = value as Record<string, unknown>;
   return (
     s.algorithm === "ed25519" &&
@@ -285,6 +287,7 @@ export class PluginLoader {
     const pkgPath = path.join(dir, "package.json");
     if (!entryPoint && fs.existsSync(pkgPath)) {
       try {
+        // SAFETY: a package.json root is a JSON object per the npm manifest format; a non-object parse or read error is swallowed by the surrounding try/catch, and the `typeof pkg.main === "string"` guard keeps a malformed shape harmless.
         const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as Record<string, unknown>;
         if (typeof pkg.main === "string") {
           const mainPath = path.join(dir, pkg.main);
@@ -351,6 +354,7 @@ export class PluginLoader {
       }
     }
 
+    // SAFETY: a dynamic import resolves to an ES module namespace object whose `default` is the plugin's default export when present; it is validated by validateManifest below before any field is trusted, so an unexpected shape fails closed.
     const mod = (await import(entryPoint)) as { default?: PluginLifecycle };
     const lifecycle = mod.default;
 

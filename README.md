@@ -62,11 +62,12 @@ Enterprise deployments have a different set of requirements. Regulated industrie
 
 ## Built since GTC
 
-> *The gap between "demo-ready" and "enterprise-ready" is enormous. We closed it.*
+> _The gap between "demo-ready" and "enterprise-ready" is enormous. We closed it._
 
 Since NVIDIA GTC, OpenClaw Enterprise has shipped a production-ready, MIT-licensed enterprise stack — zero subscriptions, zero lock-in. Every feature is opt-in with zero overhead when disabled. Here's what landed:
 
 ### NVIDIA-native AI infrastructure
+
 - **NVIDIA NIM** — first-class inference provider with OpenAI-compatible endpoints, health checks, and retry logic
 - **NemoClaw Enterprise** — sandboxed inference with OpenShell containers, privacy routing, and 3 deployment profiles (`nvidia-cloud`, `local-nim`, `vllm`)
 - **GPU telemetry** — nvidia-smi polling with Prometheus export and configurable alert thresholds
@@ -74,6 +75,7 @@ Since NVIDIA GTC, OpenClaw Enterprise has shipped a production-ready, MIT-licens
 - **NVIDIA guardrails** — thinking budget limits, per-user/per-tenant cost caps, RBAC-based model routing
 
 ### Zero-trust security stack
+
 - **Encrypted secrets** — AES-256-GCM at rest, 6 backends (Vault, AWS SM, GCP SM, Azure KV, OCI Vault, env)
 - **Full RBAC** — Users, Groups, Roles, Permissions with JWT (RS256/HS256), MFA/TOTP, API keys
 - **OIDC/SSO** — Okta, Azure AD, Google Workspace, Auth0, Keycloak, Palantir Foundry
@@ -83,6 +85,7 @@ Since NVIDIA GTC, OpenClaw Enterprise has shipped a production-ready, MIT-licens
 - **Network controls** — IP allowlisting (CIDR, IPv4/IPv6), token-bucket rate limiting
 
 ### Compliance and observability
+
 - **Tamper-evident audit** — SHA-256 hash-chain logging, SQLite or PostgreSQL, ULID event IDs
 - **External sinks** — Syslog (RFC 5424), webhook batching, Palantir Foundry streaming, OCI Streaming
 - **Prometheus** — 20+ metrics, Kubernetes health probes (`/healthz`, `/readyz`, `/startupz`)
@@ -90,12 +93,14 @@ Since NVIDIA GTC, OpenClaw Enterprise has shipped a production-ready, MIT-licens
 - **Container security** — SBOM generation (SPDX), image signing (cosign), vulnerability scanning (Trivy)
 
 ### Enterprise integrations
+
 - **Palantir Foundry** — audit streaming, OIDC preset, Compute Module deployment
 - **Oracle Cloud** — MCP bridge to Autonomous Database, OCI Vault secrets, OCI Streaming audit, Agent Spec export
 - **Multi-tenancy** — AsyncLocalStorage isolation with per-tenant rate limits, quotas, and audit
 - **Cluster mode** — Redis-based coordination with heartbeat protocol for multi-gateway deployments
 
 ### Platform
+
 - **16 messaging channels** — WhatsApp, Telegram, Discord, Slack, Signal, iMessage, Matrix, and more
 - **Embedded Pi agent runtime** — context pruning, auth profile rotation, multi-agent orchestration
 - **Integration SDK** — plugin loader, scaffolding CLI, reference integrations
@@ -306,7 +311,7 @@ Every secret is stored encrypted at rest. The master key lives in your OS keycha
 # Instead of: anthropicApiKey: "sk-ant-abc123"
 # Use a secret reference:
 
-anthropicApiKey: env://ANTHROPIC_API_KEY        # container env var
+anthropicApiKey: env://ANTHROPIC_API_KEY # container env var
 anthropicApiKey: vault://secret/openclaw/keys#anthropic
 anthropicApiKey: aws-sm://openclaw/anthropic-key
 anthropicApiKey: gcp-sm://projects/my-proj/secrets/anthropic
@@ -481,7 +486,14 @@ Existing `operator.*` scope tokens from the community edition continue to work. 
 
 ### OIDC / SSO
 
-OpenClaw Enterprise ships a complete OpenID Connect (OIDC) integration supporting any compliant IdP — Okta, Azure AD / Entra ID, Google Workspace, Auth0, Keycloak, Dex. The flow uses **PKCE** (Proof Key for Code Exchange) with server-side state validation. No external OIDC library required — pure Node.js.
+OpenClaw Enterprise ships an OpenID Connect (OIDC) module supporting any compliant IdP — Okta, Azure AD / Entra ID, Google Workspace, Auth0, Keycloak, Dex. The flow uses **PKCE** (Proof Key for Code Exchange) with server-side state validation. No external OIDC library required — pure Node.js.
+
+> **Not wired as a login flow in this build.** `initEnterprise` does not call
+> `initOidc`, so the endpoints below are **not** registered automatically and
+> enabling `enterprise.auth.oidc` does not activate OIDC login (the gateway warns
+> at boot). The module (`OidcService` / `createOidcHandlers` / `initOidc` in
+> `src/enterprise/auth/oidc.ts`) is available to invoke programmatically until the
+> login flow is wired.
 
 ```yaml
 enterprise:
@@ -500,7 +512,7 @@ enterprise:
       defaultRole: viewer # role for users not matched by roleMap
 ```
 
-**Endpoints registered automatically:**
+**Endpoints the module defines (not auto-registered — see note above):**
 
 | Endpoint                  | Description                                                |
 | ------------------------- | ---------------------------------------------------------- |
@@ -525,13 +537,22 @@ enterprise:
 
 Time-based one-time passwords (TOTP, RFC 6238) with no external dependencies — pure Node.js implementation (HMAC-SHA1, 30-second windows, 6-digit codes, ±1 step clock-skew tolerance).
 
+> **Not enforced at authentication in this build.** `MfaService.verify` is only
+> reachable through the admin-gated `enterprise.mfa.*` RPC methods below; no
+> login or token-issuance path challenges for a second factor. Because booting
+> with MFA "on" but never challenged is worse than off (false assurance), setting
+> `enterprise.auth.mfa` (`enabled` or `requireForRoles`) makes the gateway
+> **refuse to boot** (fail closed). Leave it unset until MFA is wired into the
+> auth/token-issuance path.
+
 ```yaml
+# Configured, but NOT enforced at auth — enabling this refuses to boot.
 enterprise:
   auth:
     mfa:
       enabled: true
       issuer: "My Company OpenClaw" # label shown in authenticator apps
-      requireForRoles: [admin, super-admin] # enforce MFA for these roles
+      requireForRoles: [admin, super-admin] # intended enforcement — NOT active yet
 ```
 
 **Gateway RPC methods:**
@@ -568,7 +589,14 @@ Refresh tokens are stored as **SHA-256 hashes** — the raw token is never writt
 
 ### IP allowlisting
 
-Per-user CIDR allowlists restrict which IP addresses may authenticate as a given user. If `allowedCidrs` is set and non-empty, connections from IPs outside the list are rejected before token issuance.
+Per-user CIDR allowlists record which IP addresses should be permitted for a given user.
+
+> **Check-only in this build — not enforced at authentication.** The matcher
+> (`IpAllowlist.isAllowed`) is reachable only through the admin-gated
+> `enterprise.ip-allowlist.check` RPC; no login or token-issuance path consults
+> `allowedCidrs`, so an out-of-range IP is **not** rejected before token issuance.
+> Store the ranges and query them via the RPC, but do not rely on them as an
+> enforced access control yet.
 
 ```yaml
 # Set via admin API or enterprise.users RPC on the user record:
@@ -834,22 +862,35 @@ enterprise:
 
 Skills are npm-installable agents — third-party code that runs with full agent permissions. Without verification, a malicious skill can exfiltrate data, install backdoors, or pivot to internal systems.
 
+> **Skill-install signing/SAST is not yet enforced in this build.** The Ed25519
+> signing and SAST primitives ship and are unit-tested, but the skill-install
+> path does not call them, so `enterprise.skills.requireSigning` / `requireSast`
+> gate nothing at install time. To avoid false assurance, enabling either flag
+> makes the gateway **refuse to boot** (fail closed). Enterprise **plugins** are
+> the exception: plugins loaded via the enterprise `PluginLoader` **are** Ed25519
+> signature-verified before load. Treat the skill-signing API below as
+> library-only until the install-time gate lands.
+
 ### Code signing (Ed25519)
 
-Every skill published to the enterprise registry is signed with an Ed25519 key. The signing process hashes the entire skill directory (sorted file tree, SHA-256 per file) and produces a detached signature over the directory hash.
+The signing primitive hashes the entire skill directory (sorted file tree, SHA-256 per file) and produces a detached signature over the directory hash. It is invoked programmatically (and by the enterprise plugin loader), not by the skill-install path:
 
 ```typescript
 // Publisher workflow:
 const { privateKey, publicKey } = generateSigningKeyPair();
-const manifest = await signSkill("/path/to/my-skill", privateKey);
-// manifest.signature + manifest.files[] stored in skill registry
+const signature = signSkill({ skillDir: "/path/to/my-skill", privateKeyBase64: privateKey });
 
-// Install-time verification (automatic when requireSigning: true):
-const valid = await verifySkillSignature(skillDir, manifest, trustedPublicKeys);
-if (!valid) throw new Error("Skill signature verification failed");
+// Verification (object-param API):
+const result = verifySkillSignature({
+  skillDir: "/path/to/my-skill",
+  signature,
+  trustedPublicKeys, // fails closed on an empty/absent allowlist
+});
+if (!result.valid) throw new Error(`Skill signature verification failed: ${result.reason}`);
 ```
 
 ```yaml
+# Configured, but NOT enforced at skill install — enabling either flag refuses to boot.
 enterprise:
   skills:
     requireSigning: true
@@ -1496,11 +1537,11 @@ enterprise:
   nvidia:
     nemoClaw:
       enabled: true
-      apiKey: env://NEMOCLAW_API_KEY    # falls back to NVIDIA_API_KEY
-      inferenceProfile: nvidia-cloud     # nvidia-cloud | local-nim | vllm
+      apiKey: env://NEMOCLAW_API_KEY # falls back to NVIDIA_API_KEY
+      inferenceProfile: nvidia-cloud # nvidia-cloud | local-nim | vllm
       defaultModel: "nvidia/nemotron-3-super-120b-a12b"
       sandbox:
-        networkEgress: block             # block | allow | require-approval
+        networkEgress: block # block | allow | require-approval
         allowedHosts:
           - "integrate.api.nvidia.com"
           - "*.nvidia.com"
@@ -1773,10 +1814,10 @@ Every enterprise security subsystem ships with a dedicated unit test suite. Test
 
 #### NVIDIA integration (26 tests)
 
-| Test file                                    | Tests | What it validates                                                                                                                                     |
-| -------------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `nvidia/nemoclaw-provider.test.ts`           | 21    | NemoClaw initialization, OpenShell sandbox setup, health checks, chat completion, retry logic, egress blocking, Prometheus metrics, graceful shutdown |
-| `models-config.providers.nvidia.test.ts`     | 5     | NemoClaw model provider construction, Nemotron model availability, API key fallback to NVIDIA_API_KEY                                                |
+| Test file                                | Tests | What it validates                                                                                                                                     |
+| ---------------------------------------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nvidia/nemoclaw-provider.test.ts`       | 21    | NemoClaw initialization, OpenShell sandbox setup, health checks, chat completion, retry logic, egress blocking, Prometheus metrics, graceful shutdown |
+| `models-config.providers.nvidia.test.ts` | 5     | NemoClaw model provider construction, Nemotron model availability, API key fallback to NVIDIA_API_KEY                                                 |
 
 #### Observability & infrastructure (38 tests)
 

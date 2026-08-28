@@ -569,7 +569,8 @@ function findExistingTranscriptPath(
       fs.closeSync(fd);
       return candidate;
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+      if (code !== "ENOENT") {
         throw err;
       }
     }

@@ -29,10 +29,9 @@ export function loadEnterpriseBranding(): EnterpriseBranding {
     if (typeof parsed !== "object" || parsed === null) {
       return empty;
     }
-    const record = parsed as Record<string, unknown>;
     return {
-      title: typeof record.title === "string" ? record.title : "",
-      tagline: typeof record.tagline === "string" ? record.tagline : "",
+      title: "title" in parsed && typeof parsed.title === "string" ? parsed.title : "",
+      tagline: "tagline" in parsed && typeof parsed.tagline === "string" ? parsed.tagline : "",
     };
   } catch {
     return empty;

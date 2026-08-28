@@ -118,7 +118,9 @@ export function registerVoiceCallLogs(params: {
         try {
           initial = fs.readFileSync(file);
         } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          const code =
+            typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+          if (code !== "ENOENT") {
             throw err;
           }
         }
@@ -192,7 +194,9 @@ export function registerVoiceCallLogs(params: {
         try {
           content = fs.readFileSync(file, "utf8");
         } catch (err) {
-          if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+          const code =
+            typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+          if (code !== "ENOENT") {
             throw err;
           }
         }

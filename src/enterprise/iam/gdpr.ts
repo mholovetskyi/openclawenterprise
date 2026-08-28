@@ -129,6 +129,7 @@ export async function gdprEraseUser(
   //    backends anonymize nothing.
   if (audit && "anonymizeActor" in audit && typeof audit.anonymizeActor === "function") {
     // If the audit storage supports direct anonymization (e.g. SQLite backend)
+    // SAFETY: the enclosing `if` verified "anonymizeActor" in audit and that it is a function, so the storage implements the AuditStorageWithAnonymize extension.
     auditEventsAnonymized = await (audit as AuditStorageWithAnonymize).anonymizeActor(
       userId,
       pseudonymize(userId),

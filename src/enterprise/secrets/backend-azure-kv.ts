@@ -39,6 +39,7 @@ type AzureKeyVaultModule = {
 const AZURE_KV_MODULE: string = "@azure/keyvault-secrets";
 
 export async function createAzureKeyVaultBackend(cfg: OpenClawConfig): Promise<SecretBackend> {
+  // SAFETY: the OpenClawConfig schema types enterprise.secrets.azureKv with exactly this shape (vaultUrl plus optional prefix); the cast restates the config contract and its presence is re-validated below before use.
   const azCfg = cfg.enterprise?.secrets?.azureKv as
     | { vaultUrl: string; prefix?: string }
     | undefined;
@@ -52,6 +53,7 @@ export async function createAzureKeyVaultBackend(cfg: OpenClawConfig): Promise<S
 
   // Lazy imports
   const [{ SecretClient }, { DefaultAzureCredential }] = await Promise.all([
+    // SAFETY: the dynamic import resolves to @azure/keyvault-secrets (the fixed AZURE_KV_MODULE specifier); AzureKeyVaultModule mirrors that package's stable SecretClient export, so the resolved-promise shape holds.
     (import(AZURE_KV_MODULE) as Promise<AzureKeyVaultModule>).catch(() => {
       throw new Error(
         "Package @azure/keyvault-secrets is not installed.\n" +
@@ -146,6 +148,7 @@ function decodeAzureName(name: string): string {
 
 function isNotFoundError(err: unknown): boolean {
   if (typeof err !== "object" || err === null) return false;
+  // SAFETY: err is already confirmed a non-null object above; reading these two optional properties yields their value or undefined and asserts nothing more.
   const e = err as { statusCode?: number; code?: string };
   return e.statusCode === 404 || e.code === "SecretNotFound";
 }

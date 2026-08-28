@@ -126,10 +126,11 @@ export type ClusterRedisClient = RedisClient;
 async function loadRedis(url: string): Promise<RedisClient> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
-  let Redis: new (url: string) => RedisClient;
+  type RedisCtor = new (url: string) => RedisClient;
+  let Redis: RedisCtor;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = req("ioredis") as any;
+    // SAFETY: ioredis's CJS entry exports the client constructor directly or under `.default` (ESM interop); `mod.default ?? mod` picks whichever, and the require is in this try/catch so a wrong shape becomes the install-error path, not an uncaught throw.
+    const mod = req("ioredis") as RedisCtor & { default?: RedisCtor };
     Redis = mod.default ?? mod;
   } catch {
     throw new Error("Redis cluster backend requires ioredis. Run: npm install ioredis");
@@ -178,6 +179,7 @@ export class RedisCoordinator implements ClusterCoordinator {
       // Check if we're already the leader (key exists and belongs to us)
       const leaderRaw = await this.redis.get(this.leaderKey);
       if (leaderRaw) {
+        // SAFETY: the leader key is only ever written by tryAcquireLeadership / startLockRenewal as JSON.stringify of an object that always carries a `nodeId` field.
         const leader = JSON.parse(leaderRaw) as { nodeId: string };
         this._isLeader = leader.nodeId === this.nodeId;
       }
@@ -203,6 +205,7 @@ export class RedisCoordinator implements ClusterCoordinator {
           if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
           this.lockRenewalTimer = null;
         } else {
+          // SAFETY: the leader key holds JSON.stringify of a ClusterNodeInfo (always including nodeId) written by tryAcquireLeadership; raw is non-null here (the raw === null branch returned above).
           const current = JSON.parse(raw) as ClusterNodeInfo & { nodeId: string };
           if (current.nodeId === this.nodeId) {
             // Refresh the leader record's heartbeat/role on each renewal rather
@@ -232,6 +235,7 @@ export class RedisCoordinator implements ClusterCoordinator {
 
   async getLeader(): Promise<ClusterNodeInfo | null> {
     const raw = await this.redis.get(this.leaderKey);
+    // SAFETY: the leader key is written only as JSON.stringify of a ClusterNodeInfo (see tryAcquireLeadership / startLockRenewal), so a non-null value parses to that shape.
     return raw ? (JSON.parse(raw) as ClusterNodeInfo) : null;
   }
 
@@ -246,6 +250,7 @@ export class RedisCoordinator implements ClusterCoordinator {
       const raw = await this.redis.get(key);
       if (raw) {
         try {
+          // SAFETY: node keys are written only by registerNode as JSON.stringify(ClusterNodeInfo); a parse failure is caught below.
           nodes.push(JSON.parse(raw) as ClusterNodeInfo);
         } catch {
           /* skip */
@@ -330,7 +335,7 @@ export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
   const clusterCfg = cfg.enterprise?.cluster;
   const nodeId = clusterCfg?.nodeId ?? `${os.hostname()}-${randomBytes(4).toString("hex")}`;
 
-  const redisUrl = clusterCfg?.redis?.url as string | undefined;
+  const redisUrl = clusterCfg?.redis?.url;
 
   if (redisUrl) {
     // ── Redis-backed cluster ──────────────────────────────────────────────────
@@ -349,8 +354,8 @@ export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
       throw err;
     }
 
-    const keyPrefix = (clusterCfg?.redis?.keyPrefix as string | undefined) ?? "openclaw:";
-    const heartbeatMs = (clusterCfg?.heartbeatIntervalMs as number | undefined) ?? 10_000;
+    const keyPrefix = clusterCfg?.redis?.keyPrefix ?? "openclaw:";
+    const heartbeatMs = clusterCfg?.heartbeatIntervalMs ?? 10_000;
 
     const nodeInfo: ClusterNodeInfo = {
       nodeId,
@@ -395,8 +400,7 @@ export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
 function buildInMemory(nodeId: string, cfg: OpenClawConfig): ClusterHandle {
   const coordinator = new InMemoryCoordinator(nodeId);
   const bus = new InMemoryBus();
-  const heartbeatMs =
-    (cfg.enterprise?.cluster?.heartbeatIntervalMs as number | undefined) ?? 10_000;
+  const heartbeatMs = cfg.enterprise?.cluster?.heartbeatIntervalMs ?? 10_000;
 
   const nodeInfo: ClusterNodeInfo = {
     nodeId,

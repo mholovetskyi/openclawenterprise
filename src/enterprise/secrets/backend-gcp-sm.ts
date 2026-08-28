@@ -49,6 +49,7 @@ type GcpSecretManagerModule = {
 const GCP_SM_MODULE: string = "@google-cloud/secret-manager";
 
 export async function createGCPSecretManagerBackend(cfg: OpenClawConfig): Promise<SecretBackend> {
+  // SAFETY: the OpenClawConfig schema types enterprise.secrets.gcpSm with exactly this shape (projectId plus optional prefix); the cast restates the config contract and its presence is re-validated below before use.
   const gcpCfg = cfg.enterprise?.secrets?.gcpSm as
     | { projectId: string; prefix?: string }
     | undefined;
@@ -61,14 +62,14 @@ export async function createGCPSecretManagerBackend(cfg: OpenClawConfig): Promis
   const prefix = gcpCfg.prefix ?? "";
 
   // Lazy import — not bundled unless this backend is explicitly enabled
-  const { SecretManagerServiceClient } = await (
-    import(GCP_SM_MODULE) as Promise<GcpSecretManagerModule>
-  ).catch(() => {
-    throw new Error(
-      "Package @google-cloud/secret-manager is not installed.\n" +
-        "Run: npm install @google-cloud/secret-manager",
-    );
-  });
+  const { SecretManagerServiceClient } =
+    await // SAFETY: the dynamic import resolves to @google-cloud/secret-manager (the fixed GCP_SM_MODULE specifier); GcpSecretManagerModule mirrors that package's stable SecretManagerServiceClient export, so the resolved-promise shape holds.
+    (import(GCP_SM_MODULE) as Promise<GcpSecretManagerModule>).catch(() => {
+      throw new Error(
+        "Package @google-cloud/secret-manager is not installed.\n" +
+          "Run: npm install @google-cloud/secret-manager",
+      );
+    });
 
   const client = new SecretManagerServiceClient();
   const parent = `projects/${projectId}`;
@@ -169,12 +170,14 @@ function decodeSecretId(id: string): string {
 
 function isNotFoundError(err: unknown): boolean {
   return (
+    // SAFETY: `"code" in err` on this line confirms the property exists; the gRPC status code the Google client attaches is a number (5 = NOT_FOUND).
     typeof err === "object" && err !== null && "code" in err && (err as { code: number }).code === 5
   );
 }
 
 function isAlreadyExistsError(err: unknown): boolean {
   return (
+    // SAFETY: `"code" in err` on this line confirms the property exists; the gRPC status code the Google client attaches is a number (6 = ALREADY_EXISTS).
     typeof err === "object" && err !== null && "code" in err && (err as { code: number }).code === 6
   );
 }

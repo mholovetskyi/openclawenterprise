@@ -68,7 +68,9 @@ export class RBACEngine {
     for (const perm of permissions) {
       const result = await this.can(ctx, perm);
       if (result.allowed) return { allowed: true };
-      reasons.push((result as { reason: string }).reason);
+      // `AuthzResult` is a discriminated union on `allowed`; the early return
+      // above narrows `result` to the denied variant, which carries `reason`.
+      reasons.push(result.reason);
     }
     return {
       allowed: false,
@@ -92,10 +94,11 @@ export class RBACEngine {
   private async resolveGroups(ctx: AuthzContext): Promise<Group[]> {
     // Only users have group membership; agents resolve roles directly.
     if (ctx.identityType === "user") {
+      // SAFETY: `identity` and `identityType` are populated together when an AuthzContext is built, so identityType === "user" guarantees identity is a User.
       const user = ctx.identity as User;
       if (user.groups?.length) {
         const groups = await Promise.all(user.groups.map((id) => this.store.getGroup(id)));
-        return groups.filter(Boolean) as Group[];
+        return groups.filter((g): g is Group => g !== null);
       }
     }
     return [];

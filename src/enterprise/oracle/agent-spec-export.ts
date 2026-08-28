@@ -196,9 +196,12 @@ export function exportAgentSpec(agentInput: AgentConfigInput, options: ExportOpt
   // System prompt
   let systemPrompt: string | undefined;
   if (config.includeSystemPrompt && options.systemPrompt) {
-    systemPrompt = shouldRedact
-      ? (redactSecrets(options.systemPrompt) as string)
-      : options.systemPrompt;
+    if (shouldRedact) {
+      // SAFETY: options.systemPrompt is a string (truthy-guarded) and redactSecrets maps a string to a string (original or "***REDACTED***"), never another shape.
+      systemPrompt = redactSecrets(options.systemPrompt) as string;
+    } else {
+      systemPrompt = options.systemPrompt;
+    }
   }
 
   const spec: AgentSpec = {
@@ -220,6 +223,7 @@ export function exportAgentSpec(agentInput: AgentConfigInput, options: ExportOpt
   };
 
   if (shouldRedact) {
+    // SAFETY: redactSecrets deep-clones structurally, preserving every object key and array position and only replacing secret-looking string values with a string marker, so a valid AgentSpec maps to a value that still satisfies AgentSpec.
     return redactSecrets(spec) as AgentSpec;
   }
 

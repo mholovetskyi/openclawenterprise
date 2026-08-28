@@ -60,8 +60,7 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
   try {
     // Use createRequire so TypeScript doesn't statically resolve this optional dep
     const _req = createRequire(import.meta.url);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = _req("better-sqlite3") as any;
+    const mod: BetterSQLiteCtor & { default?: BetterSQLiteCtor } = _req("better-sqlite3");
     Database = mod.default ?? mod;
   } catch {
     throw new Error(
@@ -204,31 +203,37 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
 
       const countRow = db
         .prepare(`SELECT COUNT(*) as c FROM audit_events ${where}`)
+        // SAFETY: SELECT COUNT(*) as c always returns one row with a numeric `c`.
         .get(params) as { c: number };
       const rows = db
         .prepare(
           `SELECT raw FROM audit_events ${where} ORDER BY timestamp DESC LIMIT @limit OFFSET @offset`,
         )
+        // SAFETY: SELECT raw returns rows whose `raw` column is a TEXT string.
         .all({ ...params, limit, offset }) as Array<{ raw: string }>;
 
       return {
+        // SAFETY: raw is written only by append() serializing a full AuditEvent.
         events: rows.map((r) => JSON.parse(r.raw) as AuditEvent),
         total: countRow.c,
       };
     },
 
     async getLastHash(): Promise<string | undefined> {
+      // SAFETY: lastHashStmt selects the `hash` column; .get() is that row or undefined.
       const row = lastHashStmt.get() as { hash: string } | undefined;
       return row?.hash;
     },
 
     async getHead(): Promise<{ hash: string; seq: number } | undefined> {
+      // SAFETY: headStmt selects `hash` and `seq`; .get() is that row or undefined.
       const row = headStmt.get() as { hash: string; seq: number | null } | undefined;
       if (!row) return undefined;
       return { hash: row.hash, seq: row.seq ?? 0 };
     },
 
     async count(): Promise<number> {
+      // SAFETY: SELECT COUNT(*) as c always returns one row with a numeric `c`.
       const row = db.prepare("SELECT COUNT(*) as c FROM audit_events").get() as { c: number };
       return row.c;
     },
@@ -249,13 +254,14 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
       // passes verifyEventHash and the chain stays intact (verified by test).
       const rows = db
         .prepare("SELECT id, raw FROM audit_events WHERE actor_id = @pseudo")
+        // SAFETY: the prepared SELECT names `id` and `raw`, both TEXT columns.
         .all({ pseudo: pseudonym }) as Array<{ id: string; raw: string }>;
 
       let count = 0;
       for (const row of rows) {
         try {
-          // SAFETY: the raw column is written only by append() from a full
-          // AuditEvent; a malformed row throws in JSON.parse and is skipped below.
+          // The raw column is written only by append() from a full AuditEvent.
+          // SAFETY: a malformed row throws in JSON.parse and is skipped by the catch below.
           const event = JSON.parse(row.raw) as AuditEvent;
           const erased = anonymizeEventActor(event, pseudonym);
           db.prepare("UPDATE audit_events SET raw = @raw WHERE id = @id").run({

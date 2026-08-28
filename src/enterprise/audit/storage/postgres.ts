@@ -53,9 +53,12 @@ type PoolCtor = new (config: PoolConfig) => Pool;
 function loadPg(): PoolCtor {
   try {
     const req = createRequire(import.meta.url);
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const mod = req("pg") as any;
-    return (mod.Pool ?? mod.default?.Pool) as PoolCtor;
+    const mod: { Pool?: PoolCtor; default?: { Pool?: PoolCtor } } = req("pg");
+    const ctor = mod.Pool ?? mod.default?.Pool;
+    if (!ctor) {
+      throw new Error("pg module does not export Pool");
+    }
+    return ctor;
   } catch {
     throw new Error("PostgreSQL audit backend requires pg. Run: npm install pg");
   }
@@ -189,6 +192,7 @@ export async function createPostgresAuditStorage(config: PoolConfig): Promise<Au
 
       return {
         events: rows.rows.map((r) =>
+          // SAFETY: raw is written only by append() serializing a full AuditEvent; JSONB returns it here already parsed as that object.
           typeof r.raw === "string" ? JSON.parse(r.raw) : (r.raw as AuditEvent),
         ),
         total,
@@ -241,8 +245,8 @@ export async function createPostgresAuditStorage(config: PoolConfig): Promise<Au
       let count = 0;
       for (const row of result.rows) {
         try {
-          // SAFETY: the raw JSONB column is written only by append() from a full
-          // AuditEvent; a malformed row throws in JSON.parse and is skipped below.
+          // The raw JSONB column is written only by append() from a full AuditEvent.
+          // SAFETY: a malformed row throws in JSON.parse and is skipped by the catch below.
           const event = (typeof row.raw === "string" ? JSON.parse(row.raw) : row.raw) as AuditEvent;
           const erased = anonymizeEventActor(event, pseudonym);
           await pool.query("UPDATE audit_events SET raw = $1 WHERE id = $2", [

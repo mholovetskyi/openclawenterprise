@@ -47,12 +47,14 @@ export function createFileBackend(opts: FileBackendOptions): SecretBackend {
         { cause: err },
       );
     }
+    // SAFETY: reading two optional properties off the JSON.parse result to validate it; every field is optional so the cast asserts nothing beyond `unknown`, and the object/null guards below gate every read.
+    const shape = parsed as { version?: unknown; secrets?: unknown };
     if (
       typeof parsed !== "object" ||
       parsed === null ||
-      (parsed as { version?: unknown }).version !== 1 ||
-      typeof (parsed as { secrets?: unknown }).secrets !== "object" ||
-      (parsed as { secrets?: unknown }).secrets === null
+      shape.version !== 1 ||
+      typeof shape.secrets !== "object" ||
+      shape.secrets === null
     ) {
       const aside = `${storePath}.corrupt.${Date.now()}`;
       try {
@@ -65,8 +67,7 @@ export function createFileBackend(opts: FileBackendOptions): SecretBackend {
           `moved aside to ${aside}. Refusing to overwrite to avoid data loss.`,
       );
     }
-    // SAFETY: validated above that parsed is an object with version === 1 and a
-    // non-null secrets object, matching the SecretsStore shape.
+    // SAFETY: validated above — parsed is a non-null object with version === 1 and a non-null secrets object, matching the SecretsStore shape.
     return parsed as SecretsStore;
   }
 

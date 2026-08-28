@@ -63,6 +63,7 @@ export function parseSecretRef(value: string): ParsedSecretRef {
   if (!match) {
     return { scheme: "plain", path: value };
   }
+  // SAFETY: SCHEME_RE's group 1 is a fixed alternation of exactly the non-"plain" scheme literals, so on a match the captured text is always one of them.
   const scheme = match[1] as ParsedSecretRef["scheme"];
   // The scheme regex requires a non-empty remainder, so group 2 is always
   // present on a match; the fallback satisfies noUncheckedIndexedAccess.
@@ -119,6 +120,7 @@ export async function resolveSecretValue(value: string): Promise<string> {
   // If the backend stores JSON and a field is specified, parse it
   if (ref.field) {
     try {
+      // SAFETY: the vault://path#field convention stores the secret as a flat JSON object of string fields; noUncheckedIndexedAccess still types the indexed read as possibly-undefined, which is checked immediately below.
       const parsed = JSON.parse(raw) as Record<string, string>;
       const fieldValue = parsed[ref.field];
       if (fieldValue === undefined) {
@@ -126,6 +128,7 @@ export async function resolveSecretValue(value: string): Promise<string> {
       }
       return fieldValue;
     } catch (err) {
+      // SAFETY: the only values thrown inside the try are a SyntaxError from JSON.parse and the explicit `new Error('Field "...')` above — both Error instances — so reading `.message` here is sound.
       if ((err as Error).message.startsWith('Field "')) {
         throw err;
       }
@@ -367,6 +370,7 @@ async function migrateLegacyCredentials(
     }
     try {
       const raw = fs.readFileSync(legacyPath, "utf8");
+      // SAFETY: legacy credentials files are JSON objects; values are typed unknown (no shape asserted) and each is re-checked with `typeof value === "string"` below before being migrated.
       const data = JSON.parse(raw) as Record<string, unknown>;
       let migrated = 0;
       for (const [key, value] of Object.entries(data)) {

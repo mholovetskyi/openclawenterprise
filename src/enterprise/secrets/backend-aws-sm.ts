@@ -73,6 +73,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
 
   async function getModule(): Promise<AwsSmModule> {
     try {
+      // SAFETY: the dynamic import resolves to @aws-sdk/client-secrets-manager (the fixed AWS_SM_MODULE specifier); AwsSmModule mirrors the subset of that package's stable public exports this backend calls.
       return (await import(AWS_SM_MODULE)) as AwsSmModule;
     } catch {
       throw new Error(
@@ -104,6 +105,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
         const res = await c.send(new GetSecretValueCommand({ SecretId: secretId(ref) }));
         return res.SecretString ?? null;
       } catch (err: unknown) {
+        // SAFETY: optional read of `name` off an unknown thrown value; the cast asserts nothing beyond that read (undefined when absent).
         const code = (err as { name?: string }).name;
         if (code === "ResourceNotFoundException") return null;
         throw err;
@@ -117,6 +119,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
       try {
         await c.send(new UpdateSecretCommand({ SecretId: id, SecretString: value }));
       } catch (err: unknown) {
+        // SAFETY: optional read of `name` off an unknown thrown value; the cast asserts nothing beyond that read (undefined when absent).
         const code = (err as { name?: string }).name;
         if (code === "ResourceNotFoundException") {
           await c.send(
@@ -140,6 +143,7 @@ export function createAwsSmBackend(opts: AwsSmBackendOptions): SecretBackend {
           new DeleteSecretCommand({ SecretId: secretId(ref), ForceDeleteWithoutRecovery: true }),
         );
       } catch (err: unknown) {
+        // SAFETY: optional read of `name` off an unknown thrown value; the cast asserts nothing beyond that read (undefined when absent).
         const code = (err as { name?: string }).name;
         if (code === "ResourceNotFoundException") return;
         throw err;

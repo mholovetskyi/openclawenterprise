@@ -121,7 +121,8 @@ export async function initGpuMetrics(
     } catch (err) {
       // Non-fatal: log and continue
       if (!warned) {
-        process.stderr.write(`[openclaw] nvidia-smi query failed: ${(err as Error).message}\n`);
+        const detail = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[openclaw] nvidia-smi query failed: ${detail}\n`);
         warned = true;
       }
     }

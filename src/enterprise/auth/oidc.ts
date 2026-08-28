@@ -97,6 +97,9 @@ async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
   if (!res.ok) {
     throw new Error(`HTTP ${res.status} fetching ${url}`);
   }
+  // fetchJson is the single typed boundary for trusted OIDC/IdP endpoints; res.json()
+  // is Promise<any> and the caller's T is the provider's documented response schema.
+  // SAFETY: T reflects the provider's documented discovery/JWKS/token/userinfo response.
   return res.json() as Promise<T>;
 }
 
@@ -187,10 +190,14 @@ export async function verifyIdToken(
   let header: Record<string, unknown>;
   let payload: Record<string, unknown>;
   try {
+    // Every field read below uses guarded index access (typeof checks / optional
+    // lookups), so a non-object payload degrades to `undefined` reads, not unsound access.
+    // SAFETY: JSON.parse yields an arbitrary JSON value read only via guarded index access below.
     header = JSON.parse(Buffer.from(headerB64, "base64url").toString("utf8")) as Record<
       string,
       unknown
     >;
+    // SAFETY: JSON.parse yields an arbitrary JSON value read only via guarded index access below.
     payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as Record<
       string,
       unknown
@@ -423,13 +430,17 @@ export class OidcService {
     const nameClaim = this.config.nameClaim ?? "name";
     const groupsClaim = this.config.groupsClaim ?? "groups";
 
-    const email = claims[emailClaim] as string | undefined;
-    const name = claims[nameClaim] as string | undefined;
-    const externalId = (claims["sub"] as string) || email || "";
-    const idpGroups: string[] = Array.isArray(claims[groupsClaim])
-      ? (claims[groupsClaim] as string[])
-      : typeof claims[groupsClaim] === "string"
-        ? [claims[groupsClaim]]
+    const emailRaw = claims[emailClaim];
+    const email = typeof emailRaw === "string" ? emailRaw : undefined;
+    const nameRaw = claims[nameClaim];
+    const name = typeof nameRaw === "string" ? nameRaw : undefined;
+    const sub = typeof claims["sub"] === "string" ? claims["sub"] : "";
+    const externalId = sub || email || "";
+    const rawGroups = claims[groupsClaim];
+    const idpGroups: string[] = Array.isArray(rawGroups)
+      ? rawGroups.filter((g): g is string => typeof g === "string")
+      : typeof rawGroups === "string"
+        ? [rawGroups]
         : [];
 
     // Map IdP groups → OpenClaw roles
@@ -523,6 +534,9 @@ export function createOidcHandlers(service: OidcService): {
           }),
         );
       } catch (err) {
+        // err is unknown in the catch clause; a non-matching shape yields undefined and
+        // falls through to a 500, so the cast cannot mis-handle a genuine error.
+        // SAFETY: reading an optional string `code` off an unknown error is defensive; undefined → 500.
         const code = (err as { code?: string }).code === "INVALID_STATE" ? 400 : 500;
         res.writeHead(code);
         res.end(JSON.stringify({ error: String(err) }));
@@ -600,6 +614,7 @@ export function resolveOidcDiscoveryUrl(params: {
     throw new Error("Either discoveryUrl or provider must be set in OIDC config");
   }
 
+  // SAFETY: indexing the presets map with an arbitrary provider string yields `undefined` for an unknown key, which the guard below rejects before any call.
   const presetFn = OIDC_PROVIDER_PRESETS[params.provider as OidcProviderPreset];
   if (!presetFn) {
     throw new Error(
@@ -608,6 +623,7 @@ export function resolveOidcDiscoveryUrl(params: {
   }
 
   return presetFn({
+    // SAFETY: the presetFn lookup above succeeded, so params.provider is one of the OidcProviderPreset keys.
     provider: params.provider as OidcProviderPreset,
     stackUrl: params.stackUrl,
     tenantId: params.tenantId,
@@ -618,6 +634,8 @@ export function resolveOidcDiscoveryUrl(params: {
 // ── Factory ────────────────────────────────────────────────────────────────────
 
 export async function initOidc(cfg: OpenClawConfig, iam: IAMHandle): Promise<OidcService | null> {
+  // The config schema types this node as the OIDC config shape.
+  // SAFETY: the required fields (discoveryUrl, clientId) are re-checked below before the service is built.
   const oidcCfg = cfg.enterprise?.auth?.oidc as OidcConfig | undefined;
   if (!oidcCfg?.discoveryUrl || !oidcCfg.clientId) {
     return null;

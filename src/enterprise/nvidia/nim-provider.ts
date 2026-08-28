@@ -187,6 +187,7 @@ export async function initNimProvider(
       const elapsed = Date.now() - start;
 
       if (res.ok) {
+        // SAFETY: reached only under res.ok, so the body is the NIM /models listing (OpenAI-compatible) whose `data` array carries objects with string `id`; `data` is read optionally (?.), so a missing field degrades to [].
         const body = (await res.json()) as { data?: Array<{ id: string }> };
         const availableModels = body.data?.map((m) => m.id) ?? [];
         healthStatus = {
@@ -213,7 +214,7 @@ export async function initNimProvider(
         endpoint,
         availableModels: [],
         lastCheckMs: elapsed,
-        error: (err as Error).message,
+        error: err instanceof Error ? err.message : String(err),
       };
       metrics.nimHealthStatus.set({ endpoint }, 0);
     }
@@ -292,6 +293,7 @@ export async function initNimProvider(
           continue;
         }
 
+        // SAFETY: reached only after the non-ok branch returned/continued above, so the body is a success response from the NIM (OpenAI-compatible) chat/completions endpoint, matching NimResponse; optional fields (usage) are read with ?.
         const data = (await res.json()) as NimResponse;
         const elapsed = Date.now() - start;
 
@@ -320,7 +322,7 @@ export async function initNimProvider(
 
         return data;
       } catch (err) {
-        lastError = err as Error;
+        lastError = err instanceof Error ? err : new Error(String(err));
       }
     }
 

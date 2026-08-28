@@ -8,7 +8,7 @@ OpenClaw's gateway **never silently binds to `0.0.0.0`**. The default is `loopba
 
 ```yaml
 gateway:
-  bind: loopback   # default — only 127.0.0.1
+  bind: loopback # default — only 127.0.0.1
   # bind: lan       # WARNING: exposes to all network interfaces
   # bind: tailnet   # Tailscale IP only (recommended for remote access)
   # bind: custom
@@ -19,12 +19,12 @@ When `bind: lan` or any non-loopback config is detected, OpenClaw emits a promin
 
 ## Auth modes
 
-| Mode | When to use |
-|------|------------|
-| `none` | Local loopback only — acceptable for personal use |
-| `token` | Static bearer token — simple shared secret |
-| `password` | Password auth — required for Funnel |
-| `jwt` | Enterprise JWT (RS256/HS256) — recommended for multi-user |
+| Mode       | When to use                                               |
+| ---------- | --------------------------------------------------------- |
+| `none`     | Local loopback only — acceptable for personal use         |
+| `token`    | Static bearer token — simple shared secret                |
+| `password` | Password auth — required for Funnel                       |
+| `jwt`      | Enterprise JWT (RS256/HS256) — recommended for multi-user |
 
 > **Never use `auth.mode: none` with a non-loopback bind.** OpenClaw will warn loudly if this is detected.
 
@@ -35,7 +35,7 @@ Enterprise mode replaces all plaintext credential files with AES-256-GCM encrypt
 ```yaml
 enterprise:
   secrets:
-    backend: file       # encrypted local file (default enterprise)
+    backend: file # encrypted local file (default enterprise)
     # backend: vault    # HashiCorp Vault
     # backend: aws-sm   # AWS Secrets Manager
     # backend: gcp-sm   # GCP Secret Manager
@@ -59,23 +59,39 @@ All external content (channel messages, webhook payloads, tool results) passes t
 
 The guardrail engine evaluates every tool invocation against a rule set:
 
-| Rule | Action |
-|------|--------|
+| Rule                                                  | Action             |
+| ----------------------------------------------------- | ------------------ |
 | Credential harvest (reading `~/.ssh`, `~/.aws`, etc.) | `require-approval` |
-| Reverse shell patterns | `block` |
-| Mass delete (`rm -rf /`, `DROP TABLE`) | `require-approval` |
-| SSN pattern in output | `warn` |
-| Credit card number in output | `warn` |
+| Reverse shell patterns                                | `block`            |
+| Mass delete (`rm -rf /`, `DROP TABLE`)                | `require-approval` |
+| SSN pattern in output                                 | `warn`             |
+| Credit card number in output                          | `warn`             |
 
 Custom rules can be added via `enterprise.guardrails.rules` in config.
 
 ## Skill supply chain security
 
-### Code signing
+> **Not yet enforced at skill install.** The signing and SAST primitives below
+> ship and are unit-tested, but the skill-install path does **not** yet call
+> them: `enterprise.skills.requireSigning` / `requireSast` gate nothing at
+> install time. To avoid giving false assurance, setting either flag currently
+> makes the gateway **refuse to boot** (fail closed) — see the startup
+> enforcement guard in `src/enterprise/index.ts`. Treat skill signing/SAST as
+> experimental (library-only) until the install-time gate is wired.
+>
+> Enterprise **plugins** are different: plugins loaded through the enterprise
+> `PluginLoader` (`src/enterprise/plugins/loader.ts`) **are** Ed25519
+> signature-verified before their code is imported when `requireSigning` is set,
+> failing closed on a missing, malformed, tampered, or untrusted signature.
 
-Enterprise deployments can require that all skills are signed with a trusted Ed25519 key:
+### Code signing (library API)
+
+The signing primitives verify a skill directory against a trusted Ed25519 key.
+They are invoked programmatically today (and by the enterprise plugin loader),
+not by the skill-install path:
 
 ```yaml
+# Configured, but NOT enforced at skill install — enabling this refuses to boot.
 enterprise:
   skills:
     requireSigning: true
@@ -91,9 +107,11 @@ import { generateSigningKeyPair } from "./src/enterprise/skills/registry/code-si
 const { publicKey, privateKey } = generateSigningKeyPair();
 ```
 
-### Enterprise SAST
+### Enterprise SAST (library API)
 
-Before installing any skill, the enterprise SAST scanner checks for:
+The SAST scanner (`runEnterpriseScan`) is available as a library call but is
+**not** run automatically before a skill is installed in this build. When
+invoked, it checks for:
 
 - Credential harvest (reading SSH keys, token files)
 - Reverse shell patterns
@@ -105,7 +123,10 @@ Before installing any skill, the enterprise SAST scanner checks for:
 - Supply chain red flags (dynamic require, obfuscated code)
 - Sensitive data exfiltration (curl to external IPs)
 
-Each finding is tagged with CWE IDs and OWASP Top 10 categories. Skills scoring >70 risk points are **rejected**; 40–70 require **review**; <40 are **approved**.
+Each finding is tagged with CWE IDs and OWASP Top 10 categories. When run, the
+scanner classifies skills scoring >70 risk points as **reject**, 40–70 as
+**review**, and <40 as **approve** — but note (see the callout above) that no
+install-time path currently consults this recommendation.
 
 ## Recommended production checklist
 
@@ -117,4 +138,5 @@ Each finding is tagged with CWE IDs and OWASP Top 10 categories. Skills scoring 
 - [ ] `enterprise.audit.enabled: true` for SOC 2 / HIPAA compliance
 - [ ] `enterprise.iam.enabled: true` with role assignments
 - [ ] Regular review of `~/.openclaw/audit.db`
-- [ ] Skill signing enabled for production
+- [ ] Enterprise plugins signed (Ed25519) and loaded through the enterprise `PluginLoader` with `requireSigning`
+- [ ] Skill-install signing/SAST: **not yet enforced** — leave `enterprise.skills.requireSigning` / `requireSast` unset (enabling them refuses to boot)

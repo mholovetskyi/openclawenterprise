@@ -123,6 +123,8 @@ export async function createOciStreamingSink(
         // Non-literal specifier keeps TypeScript from statically resolving
         // this optional package; loading stays lazy at runtime.
         const specifier: string = "oci-sdk";
+        // Structural shape of the optional oci-sdk package.
+        // SAFETY: the StreamClient export it declares is re-checked at runtime immediately below before use.
         const mod = (await import(specifier)) as OciSdkModule;
         const ClientClass = mod.StreamClient ?? mod.streaming?.StreamClient;
         if (!ClientClass) {

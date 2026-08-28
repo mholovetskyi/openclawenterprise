@@ -37,7 +37,7 @@ export function validateScaffoldOptions(opts: ScaffoldOptions): string[] {
   }
 
   for (const cap of opts.capabilities) {
-    if (!VALID_CAPABILITIES.includes(cap as (typeof VALID_CAPABILITIES)[number])) {
+    if (!VALID_CAPABILITIES.some((valid) => valid === cap)) {
       errors.push(`Invalid capability: "${cap}". Valid: ${VALID_CAPABILITIES.join(", ")}`);
     }
   }

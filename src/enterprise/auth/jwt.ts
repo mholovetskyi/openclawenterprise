@@ -255,6 +255,8 @@ export class JWTService {
 
     let decoded: JWTPayload;
     try {
+      // verify() above validated the HMAC/signature over this payload, so it was minted by issue() with a full JWTPayload shape.
+      // SAFETY: the signature check guarantees the JWTPayload shape; malformed JSON is caught below and returns null.
       decoded = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as JWTPayload;
     } catch {
       return null;

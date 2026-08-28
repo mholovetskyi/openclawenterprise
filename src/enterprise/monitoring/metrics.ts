@@ -79,6 +79,7 @@ let registryEnabled = false;
 
 export async function initMetricsRegistry(): Promise<void> {
   try {
+    // SAFETY: PROM_CLIENT_MODULE resolves to the prom-client package, whose module namespace provides the PromClientModule surface used below; a missing/incompatible package throws and is handled by the catch.
     const mod = (await import(PROM_CLIENT_MODULE)) as PromClientModule;
     promClient = mod;
     mod.collectDefaultMetrics({ prefix: "openclaw_node_" });

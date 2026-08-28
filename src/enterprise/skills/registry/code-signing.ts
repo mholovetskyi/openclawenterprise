@@ -162,6 +162,7 @@ function derivePublicKey(privateKeyBase64: string): { publicKey: string } {
   const privateKeyDer = Buffer.from(privateKeyBase64, "base64url");
   const privateKeyObj = createPrivateKey({ key: privateKeyDer, format: "der", type: "pkcs8" });
   const publicKeyObj = createPublicKey(privateKeyObj);
+  // SAFETY: KeyObject.export with format "der" returns a Buffer (only "pem" returns a string and only "jwk" returns an object), so this spki/der export is a Buffer.
   const publicKeyDer = publicKeyObj.export({ type: "spki", format: "der" }) as Buffer;
   return { publicKey: publicKeyDer.toString("base64url") };
 }

@@ -31,7 +31,7 @@ function hasGitMarker(repoRoot: string): boolean {
     fs.readFileSync(gitPath);
     return true;
   } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
+    const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
     // EISDIR means .git is a directory (normal full clone) — still a valid marker.
     if (code === "EISDIR") {
       return true;
@@ -52,7 +52,8 @@ function resolveGitDirFromMarker(repoRoot: string): string | null {
     raw = fs.readFileSync(gitPath, "utf-8");
   } catch (err) {
     // If .git is a directory (normal full clone), it IS the git dir.
-    if ((err as NodeJS.ErrnoException).code === "EISDIR") {
+    const code = typeof err === "object" && err !== null && "code" in err ? err.code : undefined;
+    if (code === "EISDIR") {
       return gitPath;
     }
     return null;

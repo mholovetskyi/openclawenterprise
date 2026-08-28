@@ -93,6 +93,7 @@ const OCI_SDK_MODULE: string = "oci-sdk";
 async function loadOciSdk(): Promise<OciSdkModules> {
   let mod: OciSdkModuleShape;
   try {
+    // SAFETY: the dynamic import resolves to oci-sdk (the fixed OCI_SDK_MODULE specifier); OciSdkModuleShape marks every client-constructor location optional and VaultsClient/SecretsClient presence is explicitly validated below, so this widened structural view is sound.
     mod = (await import(OCI_SDK_MODULE)) as OciSdkModuleShape;
   } catch {
     throw new Error("OCI Vault secret backend requires oci-sdk. Install with: npm install oci-sdk");
@@ -161,9 +162,11 @@ export function createOciVaultBackend(
   }
 
   function mapError(err: unknown): Error {
-    const status = (err as { statusCode?: number }).statusCode;
-    const code = (err as { serviceCode?: string }).serviceCode;
-    const message = (err as { message?: string }).message ?? String(err);
+    // SAFETY: reading three optional properties off an unknown thrown value; every field is optional, so the cast asserts nothing beyond those optional reads (each yields its value or undefined).
+    const e = err as { statusCode?: number; serviceCode?: string; message?: string };
+    const status = e.statusCode;
+    const code = e.serviceCode;
+    const message = e.message ?? String(err);
 
     if (status === 404 || code === "SecretNotFound" || code === "NotAuthorizedOrNotFound") {
       return Object.assign(new Error(`Secret not found: ${message}`), {
@@ -218,6 +221,7 @@ export function createOciVaultBackend(
         // OCI Vault returns base64-encoded content
         return Buffer.from(content, "base64").toString("utf8");
       } catch (err: unknown) {
+        // SAFETY: optional read of `statusCode` off an unknown thrown value.
         const status = (err as { statusCode?: number }).statusCode;
         if (status === 404) {
           return null;
@@ -246,7 +250,9 @@ export function createOciVaultBackend(
           },
         });
       } catch (err: unknown) {
+        // SAFETY: optional read of `statusCode` off an unknown thrown value.
         const status = (err as { statusCode?: number }).statusCode;
+        // SAFETY: optional read of `serviceCode` off an unknown thrown value.
         const code = (err as { serviceCode?: string }).serviceCode;
 
         // Secret already exists — update with a new version
@@ -298,6 +304,7 @@ export function createOciVaultBackend(
           scheduleSecretDeletionDetails: {},
         });
       } catch (err: unknown) {
+        // SAFETY: optional read of `statusCode` off an unknown thrown value.
         const status = (err as { statusCode?: number }).statusCode;
         if (status === 404) {
           return;
