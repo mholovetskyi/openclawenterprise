@@ -53,6 +53,15 @@ describe("assertEnterpriseEnforcementWired", () => {
     ).toThrow(/MFA is configured/);
   });
 
+  it("throws when skill signing/SAST is required but unwired", () => {
+    expect(() =>
+      assertEnterpriseEnforcementWired(cfg({ skills: { requireSigning: true } })),
+    ).toThrow(/Skill supply-chain enforcement is configured/);
+    expect(() => assertEnterpriseEnforcementWired(cfg({ skills: { requireSast: true } }))).toThrow(
+      /Skill supply-chain enforcement is configured/,
+    );
+  });
+
   it("warns (no throw) when per-tenant limits are configured", () => {
     expect(() =>
       assertEnterpriseEnforcementWired(

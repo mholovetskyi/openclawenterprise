@@ -96,6 +96,24 @@ export function assertEnterpriseEnforcementWired(cfg: OpenClawConfig): void {
     );
   }
 
+  // ── Skill supply-chain (signing / SAST) — DANGEROUS: fail closed ────────────
+  // enterprise.skills.requireSigning / requireSast gate nothing at skill install:
+  // the skill-install path never calls verifySkillSignature or runEnterpriseScan.
+  // Booting with these "on" tells an operator that unsigned or high-risk skills
+  // are rejected when they are not — a supply-chain false assurance as dangerous
+  // as MFA-not-enforced. Refuse to boot. (Enterprise *plugins* loaded through the
+  // enterprise PluginLoader ARE signature-verified; this gap is skill install.)
+  const skills = ent.skills;
+  if (skills?.requireSigning === true || skills?.requireSast === true) {
+    throw new Error(
+      "[enterprise] Skill supply-chain enforcement is configured (enterprise.skills.requireSigning / " +
+        "requireSast) but is NOT enforced at skill install in this build: the skill-install path does not " +
+        "verify signatures or run the SAST scanner, so unsigned or high-risk skills still load. Refusing to " +
+        "boot rather than give false assurance. Remove enterprise.skills.requireSigning/requireSast until " +
+        "skill-install gating is wired.",
+    );
+  }
+
   // ── OIDC login — WARN ───────────────────────────────────────────────────────
   // OidcService is never initialized by initEnterprise; enabling OIDC in config
   // does not activate a login flow. (Both iam.oidc and auth.oidc are inert here.)
