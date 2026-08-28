@@ -57,10 +57,6 @@ apps/macos/.build
 apps/ios/build
 **/*.trace
 
-# Documentation — not needed at build or runtime; contains example credentials
-# that scanners (Trivy/Gitleaks) flag as false positives
-docs/
-
 # Test and spec files — not needed in the production image.
 # These contain realistic-looking fake credentials (RSA keys, API tokens, etc.)
 # used as test fixtures that cause false-positive secret scanner alerts.

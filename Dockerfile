@@ -282,9 +282,12 @@ COPY --from=runtime-assets --chown=node:node /app/node-version.mjs .
 COPY --from=runtime-assets --chown=node:node /app/openclaw.mjs .
 COPY --from=runtime-assets --chown=node:node /app/${OPENCLAW_BUNDLED_PLUGIN_DIR} ./${OPENCLAW_BUNDLED_PLUGIN_DIR}
 COPY --from=runtime-assets --chown=node:node /app/skills ./skills
-# Enterprise hardening: docs/ is excluded from the build context (.dockerignore)
-# and intentionally not shipped in the runtime image — its config-reference
-# examples contain realistic-looking credentials that secret scanners flag.
+# docs/ ships in the runtime image: the agent workspace templates
+# (docs/reference/templates/*.md — HEARTBEAT.md, BOOT.md, IDENTITY.md, …) are
+# loaded at runtime, so omitting them breaks with "Missing workspace template".
+# Secret-scanner false positives on doc example credentials are suppressed via
+# the docs/ allowlist in .gitleaks.toml, not by dropping runtime files.
+COPY --from=runtime-assets --chown=node:node /app/docs ./docs
 COPY --from=runtime-assets --chown=node:node /app/qa ./qa
 
 # Keep pnpm available in the runtime image for container-local workflows.
