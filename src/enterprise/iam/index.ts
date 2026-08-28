@@ -75,11 +75,15 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
           "(non-empty). Refusing to start under a forgeable empty secret.",
       );
     }
-    const MIN_HS256_SECRET_LEN = 32;
-    if (secret.length < MIN_HS256_SECRET_LEN) {
+    // Measure entropy in BYTES, not UTF-16 code units: a secret of multibyte
+    // characters can pass a `.length >= 32` check while carrying fewer than 32
+    // bytes of key material. Buffer.byteLength reflects the actual HMAC key size.
+    const MIN_HS256_SECRET_BYTES = 32;
+    const secretBytes = Buffer.byteLength(secret, "utf8");
+    if (secretBytes < MIN_HS256_SECRET_BYTES) {
       throw new Error(
-        `[enterprise/iam] HS256 JWT secret must be at least ${MIN_HS256_SECRET_LEN} characters ` +
-          `(got ${secret.length}). A short secret is brute-forceable and lets an attacker forge tokens.`,
+        `[enterprise/iam] HS256 JWT secret must be at least ${MIN_HS256_SECRET_BYTES} bytes ` +
+          `(got ${secretBytes}). A short secret is brute-forceable and lets an attacker forge tokens.`,
       );
     }
   }
@@ -129,18 +133,27 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
     }
   }
 
-  const jwt = new JWTService({
-    algorithm: jwtAlgorithm,
-    ...(jwtCfg.secret ? { secret: jwtCfg.secret } : {}),
-    ...(privateKey ? { privateKey } : {}),
-    ...(publicKey ? { publicKey } : {}),
-    accessTokenTtlMs: jwtCfg.expiresIn ? parseDurationMs(jwtCfg.expiresIn) : 900_000,
-    refreshTokenTtlMs: jwtCfg.refreshExpiresIn
-      ? parseDurationMs(jwtCfg.refreshExpiresIn)
-      : 604_800_000,
-    issuer: jwtCfg.issuer ?? "openclaw",
-    audience: "openclaw",
-  });
+  const jwt = new JWTService(
+    {
+      algorithm: jwtAlgorithm,
+      ...(jwtCfg.secret ? { secret: jwtCfg.secret } : {}),
+      ...(privateKey ? { privateKey } : {}),
+      ...(publicKey ? { publicKey } : {}),
+      accessTokenTtlMs: jwtCfg.expiresIn ? parseDurationMs(jwtCfg.expiresIn) : 900_000,
+      refreshTokenTtlMs: jwtCfg.refreshExpiresIn
+        ? parseDurationMs(jwtCfg.refreshExpiresIn)
+        : 604_800_000,
+      issuer: jwtCfg.issuer ?? "openclaw",
+      audience: "openclaw",
+    },
+    // Wire the persistent token store into the JWT service so refresh tokens are
+    // recorded and revoked access-token JTIs are rejected at decode time. Without
+    // this second argument, session listing and revocation are inert (the store
+    // is populated by nothing and consulted by nothing). `tokens` is null when
+    // better-sqlite3 is unavailable (in-memory fallback); JWTService treats a
+    // null sink as "no persistence", preserving community/basic behavior.
+    tokens,
+  );
 
   const rbac = new RBACEngine(store);
 

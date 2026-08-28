@@ -14,6 +14,7 @@ import { restartRunningChannelAccounts } from "./channel-thaw-restart.js";
 import type { ExecApprovalManager } from "./exec-approval-manager.js";
 import { revokeAttachGrantsForSession } from "./mcp-grant-store.js";
 import { ADMIN_SCOPE } from "./method-scopes.js";
+import type { GatewayMethodDescriptorInput } from "./methods/descriptor.js";
 import {
   createCoreGatewayMethodDescriptors,
   createGatewayMethodDescriptorsFromHandlers,
@@ -48,6 +49,42 @@ type GatewayStartupChannelPlugin = {
 
 const listGatewayStartupChannelPlugins = (): GatewayStartupChannelPlugin[] =>
   listLoadedChannelPlugins() as GatewayStartupChannelPlugin[];
+
+// State-mutating enterprise admin RPCs. They are registered as aux gateway
+// handlers (owner kind "aux"), so — unlike core mutating methods classified in
+// core-descriptors.ts — they are NOT seen by the control-plane write rate
+// limiter (server-methods.ts consults methodRegistry.isControlPlaneWrite) unless
+// their descriptor is marked here. Marking these makes admin mutations
+// (create/delete users, revoke sessions, erase PII, change MFA) share the same
+// write throttle as core admin mutations. Read-only enterprise methods
+// (users.list/get, roles.list, sessions.list, audit.query/export, gdpr.export,
+// mfa.enroll/verify, ip-allowlist.check) are intentionally omitted so
+// introspection/scraping is never throttled as a write.
+export const CONTROL_PLANE_WRITE_AUX_METHODS: ReadonlySet<string> = new Set([
+  "enterprise.users.upsert",
+  "enterprise.users.delete",
+  "enterprise.sessions.revoke",
+  "enterprise.gdpr.erase",
+  "enterprise.mfa.confirm-enroll",
+  "enterprise.mfa.disable",
+]);
+
+/**
+ * Flags mutating enterprise admin RPCs as control-plane writes on their aux
+ * descriptors so they are subject to the control-plane write rate limiter
+ * (server-methods.ts gates on methodRegistry.isControlPlaneWrite). Aux
+ * descriptors otherwise carry no per-method write classification. Read-only
+ * enterprise methods pass through unchanged.
+ */
+export function markControlPlaneWriteAuxDescriptors(
+  descriptors: readonly GatewayMethodDescriptorInput[],
+): GatewayMethodDescriptorInput[] {
+  return descriptors.map((descriptor) =>
+    CONTROL_PLANE_WRITE_AUX_METHODS.has(descriptor.name)
+      ? { ...descriptor, controlPlaneWrite: true as const }
+      : descriptor,
+  );
+}
 
 const MAX_MEDIA_TTL_HOURS = 24 * 7;
 
@@ -398,11 +435,13 @@ export async function startGatewayCoreRuntime(input: {
       [
         ...coreDescriptors,
         ...createPluginGatewayMethodDescriptors(nextPluginRegistry),
-        ...createGatewayMethodDescriptorsFromHandlers({
-          handlers: auxHandlers,
-          owner: { kind: "aux", area: "gateway-extra" },
-          defaultScope: ADMIN_SCOPE,
-        }),
+        ...markControlPlaneWriteAuxDescriptors(
+          createGatewayMethodDescriptorsFromHandlers({
+            handlers: auxHandlers,
+            owner: { kind: "aux", area: "gateway-extra" },
+            defaultScope: ADMIN_SCOPE,
+          }),
+        ),
       ],
       nextPluginRegistry,
     );

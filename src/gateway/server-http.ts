@@ -12,6 +12,8 @@ import { isCoreCanvasHostEnabled } from "../canvas/config.js";
 import { isCanvasDocumentHttpPath } from "../canvas/constants.js";
 import { getRuntimeConfig } from "../config/io.js";
 import type { OpenClawConfig } from "../config/types.openclaw.js";
+import { isEnterpriseEnabled } from "../enterprise/index.js";
+import type { MonitoringHandle } from "../enterprise/monitoring/index.js";
 import {
   createDiagnosticTraceContext,
   runWithDiagnosticTraceContext,
@@ -20,7 +22,7 @@ import { parseDevicePairingJoinRequestPath } from "../pairing/join-code.js";
 import { createLazyRuntimeModule } from "../shared/lazy-runtime.js";
 import { resolveAssistantIdentity } from "./assistant-identity.js";
 import type { AuthRateLimiter } from "./auth-rate-limit.js";
-import type { MonitoringHandle } from "../enterprise/monitoring/index.js";
+import { authorizeHttpGatewayConnect } from "./auth.js";
 import type { ResolvedGatewayAuth } from "./auth.js";
 import {
   parseControlUiUserAvatarPath,
@@ -53,6 +55,7 @@ import {
   type GatewayIngressTransport,
   type GatewayUnattributableProxyReporter,
 } from "./ingress-attribution.js";
+import { isLocalDirectRequest } from "./net.js";
 import { normalizePluginNodeCapabilityScopedUrl } from "./plugin-node-capability.js";
 import {
   getCachedPluginGatewayAuthBypassPaths,
@@ -133,6 +136,55 @@ function getEnterpriseMonitoring(cfg: OpenClawConfig): Promise<MonitoringHandle>
     mod.initMonitoring(cfg),
   );
   return enterpriseMonitoringPromise;
+}
+
+/**
+ * Test-only: clears the memoized enterprise monitoring handle so the next
+ * probe request re-initializes it from the current config snapshot. Production
+ * code never calls this — the handle is intentionally process-lifetime.
+ */
+export function resetEnterpriseMonitoringForTests(): void {
+  enterpriseMonitoringPromise = null;
+}
+
+/**
+ * Authorizes an inbound /metrics request served on the gateway port.
+ *
+ * /metrics exposes operational data, so it must not be world-readable. This
+ * mirrors the probe-detail auth model (see server-http-probes.ts): local-direct
+ * (loopback) callers are trusted; otherwise a valid gateway bearer credential is
+ * required. When no gateway auth is configured (`mode === "none"`) a remote
+ * caller cannot be authenticated, so it is denied — an operator who wants remote
+ * scraping should either front the gateway with auth or configure a dedicated,
+ * firewalled `monitoring.metricsPort`. K8s liveness uses /livez (unauthenticated
+ * by design); scrapers should target the loopback interface or send a token.
+ */
+async function isGatewayMetricsRequestAuthorized(params: {
+  req: IncomingMessage;
+  resolvedAuth: ResolvedGatewayAuth;
+  trustedProxies: string[];
+  allowRealIpFallback: boolean;
+  rateLimiter?: AuthRateLimiter;
+}): Promise<boolean> {
+  if (isLocalDirectRequest(params.req, params.trustedProxies, params.allowRealIpFallback)) {
+    return true;
+  }
+  if (params.resolvedAuth.mode === "none") {
+    return false;
+  }
+  const { getBearerToken, resolveHttpBrowserOriginPolicy } = await getHttpAuthUtilsModule();
+  const bearerToken = getBearerToken(params.req);
+  return (
+    await authorizeHttpGatewayConnect({
+      auth: params.resolvedAuth,
+      connectAuth: bearerToken ? { token: bearerToken, password: bearerToken } : null,
+      req: params.req,
+      trustedProxies: params.trustedProxies,
+      allowRealIpFallback: params.allowRealIpFallback,
+      rateLimiter: params.rateLimiter,
+      browserOriginPolicy: resolveHttpBrowserOriginPolicy(params.req),
+    })
+  ).ok;
 }
 
 function isWebSocketUpgradeRequest(req: IncomingMessage): boolean {
@@ -267,17 +319,54 @@ export function createGatewayHttpServer(opts: {
         return;
       }
 
-      // ── Enterprise health & metrics probes (no auth required — safe for K8s) ──
-      // Upstream now serves /health(z), /ready(z), /startup(z) natively above and via
-      // requestStages; the enterprise layer adds the /livez alias and Prometheus /metrics.
+      // ── Enterprise health & metrics probes ───────────────────────────────────
+      // Upstream serves /health(z), /ready(z), /startup(z) natively above and via
+      // requestStages; the enterprise layer adds the /livez alias and Prometheus
+      // /metrics. This block is gated on enterprise being ENABLED and monitoring
+      // being enabled: a community install (enterprise disabled) must NOT lazily
+      // spin up the metrics registry or serve Prometheus data here — /livez and
+      // /metrics fall through to upstream's native health handling below.
+      //
+      // /livez is liveness-only (no sensitive data) and stays unauthenticated so
+      // Kubernetes liveness probes work without credentials. /metrics exposes
+      // operational data, so non-local requests must authenticate (see
+      // isGatewayMetricsRequestAuthorized) UNLESS a dedicated
+      // monitoring.metricsPort is configured — in that case the metrics registry
+      // binds its own listener and the gateway-port handler declines (the network
+      // segmentation between the client-facing port and the firewalled metrics
+      // port is the boundary).
       if (requestPath === "/livez" || requestPath === "/metrics") {
-        const monitoring = await getEnterpriseMonitoring(loadGatewayConfig());
-        const handled =
-          requestPath === "/metrics"
-            ? await monitoring.handleMetricsRequest(req, res)
-            : await monitoring.handleHealthRequest(req, res);
-        if (handled) {
-          return;
+        const cfg = loadGatewayConfig();
+        const monitoringEnabled = cfg.enterprise?.monitoring?.enabled !== false;
+        if (isEnterpriseEnabled(cfg) && monitoringEnabled) {
+          if (requestPath === "/metrics") {
+            const metricsPort = cfg.enterprise?.monitoring?.metricsPort;
+            // Auth only when metrics are served on the gateway port; with a
+            // dedicated metricsPort the separate listener is the segmentation and
+            // the gateway-port handler declines below.
+            if (metricsPort === undefined) {
+              const authorized = await isGatewayMetricsRequestAuthorized({
+                req,
+                resolvedAuth: getResolvedAuth(),
+                trustedProxies: cfg.gateway?.trustedProxies ?? [],
+                allowRealIpFallback: cfg.gateway?.allowRealIpFallback === true,
+                rateLimiter,
+              });
+              if (!authorized) {
+                sendGatewayAuthFailure(res, { ok: false, reason: "unauthorized" });
+                return;
+              }
+            }
+            const monitoring = await getEnterpriseMonitoring(cfg);
+            if (await monitoring.handleMetricsRequest(req, res)) {
+              return;
+            }
+          } else {
+            const monitoring = await getEnterpriseMonitoring(cfg);
+            if (await monitoring.handleHealthRequest(req, res)) {
+              return;
+            }
+          }
         }
       }
 
