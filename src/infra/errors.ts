@@ -1,4 +1,7 @@
+// Normalizes error objects for codes, names, messages, and redacted logs.
+import { formatErrorMessage as formatSharedErrorMessage } from "@openclaw/normalization-core/error-coercion";
 import { redactSensitiveText } from "../logging/redact.js";
+export { hasErrnoCode, isErrno, isMissingPathError } from "./errno.js";
 
 export function extractErrorCode(err: unknown): string | undefined {
   if (!err || typeof err !== "object") {
@@ -14,38 +17,52 @@ export function extractErrorCode(err: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Type guard for NodeJS.ErrnoException (any error with a `code` property).
- */
-export function isErrno(err: unknown): err is NodeJS.ErrnoException {
-  return Boolean(err && typeof err === "object" && "code" in err);
+export function readErrorName(err: unknown): string {
+  if (!err || typeof err !== "object") {
+    return "";
+  }
+  const name = (err as { name?: unknown }).name;
+  return typeof name === "string" ? name : "";
 }
 
-/**
- * Check if an error has a specific errno code.
- */
-export function hasErrnoCode(err: unknown, code: string): boolean {
-  return isErrno(err) && err.code === code;
+export function collectErrorGraphCandidates(
+  err: unknown,
+  resolveNested?: (current: Record<string, unknown>) => Iterable<unknown>,
+): unknown[] {
+  const queue: unknown[] = [err];
+  const seen = new Set<unknown>();
+  const candidates: unknown[] = [];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (current == null || seen.has(current)) {
+      continue;
+    }
+    seen.add(current);
+    candidates.push(current);
+
+    if (!current || typeof current !== "object" || !resolveNested) {
+      continue;
+    }
+    for (const nested of resolveNested(current as Record<string, unknown>)) {
+      if (nested != null && !seen.has(nested)) {
+        queue.push(nested);
+      }
+    }
+  }
+
+  return candidates;
 }
 
 export function formatErrorMessage(err: unknown): string {
-  let formatted: string;
-  if (err instanceof Error) {
-    formatted = err.message || err.name || "Error";
-  } else if (typeof err === "string") {
-    formatted = err;
-  } else if (typeof err === "number" || typeof err === "boolean" || typeof err === "bigint") {
-    formatted = String(err);
-  } else {
-    try {
-      formatted = JSON.stringify(err);
-    } catch {
-      formatted = Object.prototype.toString.call(err);
-    }
-  }
-  // Security: best-effort token redaction before returning/logging.
-  return redactSensitiveText(formatted);
+  return formatSharedErrorMessage(err, { redact: redactSensitiveText });
 }
+
+export function formatErrorMessageWithCode(err: unknown): string {
+  return formatSharedErrorMessage(err, { includeCode: true, redact: redactSensitiveText });
+}
+
+export { stringifyNonErrorCause, toErrorObject } from "@openclaw/normalization-core/error-coercion";
 
 export function formatUncaughtError(err: unknown): string {
   if (extractErrorCode(err) === "INVALID_CONFIG") {

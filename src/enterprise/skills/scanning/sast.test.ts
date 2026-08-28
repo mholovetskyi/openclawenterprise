@@ -9,7 +9,7 @@ function makeTmpDir(): string {
 }
 
 // Mock the base scanner since we only want to test enterprise rules
-vi.mock("../../../security/skill-scanner.js", () => ({
+vi.mock("../../../skills/security/scanner.js", () => ({
   scanDirectoryWithSummary: vi.fn(async () => ({
     critical: 0,
     warn: 0,

@@ -1,0 +1,1433 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "approval page"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "browser panel"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "command palette"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "custodian panel"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "dashboard document"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "desktop panel"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/lazy-custom-element.ts",
+      "text": "terminal panel"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "Atkinson Hyperlegible"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "DM Sans"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "Fraunces"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "Geist"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "IBM Plex Sans"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "Instrument Sans"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "JetBrains Mono"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "Lora"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "Space Grotesk"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/app/typography.ts",
+      "text": "System"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "aria-label",
+      "path": "ui/src/components/app-topbar.ts",
+      "text": "OpenClaw"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/app-topbar.ts",
+      "text": "Enterprise"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/components/board/board-view.test-support.ts",
+      "text": "Alpha status"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/components/board/board-view.test-support.ts",
+      "text": "Beta chart"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/components/board/board-view.test-support.ts",
+      "text": "Main"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/components/board/board-view.test-support.ts",
+      "text": "Operations"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/components/board/board-view.test-support.ts",
+      "text": "Queue depth"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/components/command-palette-catalog-search.ts",
+      "text": "/verbose"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/command-palette.ts",
+      "text": "esc"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/file-preview-modal.ts",
+      "text": "esc"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/lobster-pet-look.ts",
+      "text": "z"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/lobster-pet-look.ts",
+      "text": "Z"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "alt",
+      "path": "ui/src/components/login-gate.ts",
+      "text": "OpenClaw"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/components/login-gate.ts",
+      "text": "OPENCLAW_GATEWAY_TOKEN ("
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/components/login-gate.ts",
+      "text": "ws://127.0.0.1:18789"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/login-gate.ts",
+      "text": "OpenClaw"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/components/mcp-server-form.ts",
+      "text": "context7"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/components/mcp-server-form.ts",
+      "text": "https://mcp.example.com/mcp · npx some-mcp-server"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/components/settings-sidebar.ts",
+      "text": "esc"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "description",
+      "path": "ui/src/lib/chat/commands.ts",
+      "text": "Abort and restart with a new message"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "description",
+      "path": "ui/src/lib/chat/commands.ts",
+      "text": "Clear chat history"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "help",
+      "path": "ui/src/lib/chat/commands.ts",
+      "text": "book"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "help",
+      "path": "ui/src/lib/chat/commands.ts",
+      "text": "tools"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/about/view.ts",
+      "text": "v"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/agents/github-identity-view.ts",
+      "text": "agentTools.githubStateConfiguredUnavailable"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/agents/github-identity-view.ts",
+      "text": "agentTools.githubStateRateLimited"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/agents/github-identity-view.ts",
+      "text": "agentTools.githubStateUnavailable"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/agents/github-identity-view.ts",
+      "text": "agentTools.githubStateUnverified"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/agents/github-identity-view.ts",
+      "text": "agentTools.githubStateVerified"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/agents/memory/view.ts",
+      "text": "memory-wiki"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/agents/memory/view.ts",
+      "text": "plugins.entries.memory-wiki.enabled = true"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/agents/memory/view.ts",
+      "text": "z"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/agents/memory/view.ts",
+      "text": "Z"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/agents/panels-overview.ts",
+      "text": "&times;"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/channels/view.nostr.ts",
+      "text": "NIP-05"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/chat/components/chat-message-timestamp.ts",
+      "text": "% ctx"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/chat/components/chat-message-timestamp.ts",
+      "text": "R"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/chat/components/chat-message-timestamp.ts",
+      "text": "W"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "title",
+      "path": "ui/src/pages/chat/components/chat-pane-header.test-support.ts",
+      "text": "Session title"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/config/mcp.ts",
+      "text": "openclaw mcp doctor --probe"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/config/mcp.ts",
+      "text": "openclaw mcp login &lt;name&gt;"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/config/mcp.ts",
+      "text": "openclaw mcp reload"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/config/mcp.ts",
+      "text": "openclaw mcp status --verbose"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/config/updates.ts",
+      "text": "openclaw update status --json openclaw update"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/config/view.ts",
+      "text": "48rem"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/config/view.ts",
+      "text": "https://tweakcn.com/editor/theme?theme=... or amethyst-haze"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/connection/view.ts",
+      "text": "ws://100.x.y.z:18789"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "placeholder",
+      "path": "ui/src/pages/connection/view.ts",
+      "text": "OPENCLAW_GATEWAY_TOKEN"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/cron/view.ts",
+      "text": "agent:main:main"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/cron/view.ts",
+      "text": "default"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/cron/view.ts",
+      "text": "last"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/debug/view.ts",
+      "text": "openclaw security audit --deep"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/devices/view-exec-approvals.ts",
+      "text": "exec host=gateway/node"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Enterprise Gateway"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "placeholder",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "OpenClaw Enterprise"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "title",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Discard changes"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "title",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Edit roles and status for"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "title",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Restore default OpenClaw Enterprise branding"
+    },
+    {
+      "count": 1,
+      "kind": "html-attribute",
+      "name": "title",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Save changes"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "↻ Refresh"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "~/.openclaw/audit.db"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "🦞 Enterprise"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Action"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "active"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Active defenses"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Active nodes"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Active tenants"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Actor"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "agents:*"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "AsyncLocalStorage context propagation"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Audit log"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "authentication"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Available roles"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "blocked"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "blocked by guardrails"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "built-in"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Cancel"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Click"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Cluster"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Cluster &amp; tenancy not enabled"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "config.yaml"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "connected"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Custom roles support wildcard patterns, e.g."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Customize the brand title and tagline for this browser. Leave blank to use the defaults ("
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Dashboard branding"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Dashboard title"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "disabled"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "disconnected"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Display name"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Edit"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Email"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Enable"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Enforcement"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Enterprise docs →"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Enterprise features are not enabled"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Enterprise Gateway"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "enterprise.cluster.enabled: true"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "enterprise.enabled: true"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "enterprise.iam"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "enterprise.iam.roles[]"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "enterprise.tenancy.enabled: true"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "enterprise.tenancy.tenants[]"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Events are recorded as you use OpenClaw with enterprise audit logging enabled."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Every gateway API call is checked against the IAM engine before execution."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "failure"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "for distributed multi-node mode and"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "for multi-tenant isolation."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Full IAM & RBAC documentation →"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Groups"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "IAM & RBAC docs →"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "ID"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "in your"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "in your config, or provisioned programmatically through the IAM API."
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "in your config."
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "inactive"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Inheritance"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Instance"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "IP"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Isolation"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Live metrics"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Loading audit events…"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Loading users…"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Message bus"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "most recent events · Full log in"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Multi-tenancy"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "No audit events yet"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "No authentication failures"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "No guardrail blocks"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "No users configured"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Node ID"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "ok"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "OpenClaw"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "or"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Outcome"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Permission model"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "recorded"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "request"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Reset to defaults"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Resource"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Resources"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Roles"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Roles are additive — a user with multiple roles gets the union of all permissions."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Save"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Save branding"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Security advisories →"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Security dashboard"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Security hardening guide →"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "sessions:read"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Set"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Showing"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Status"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Subsystems"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "success"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Tagline"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Tenant"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Tenant context is automatically propagated through all async operations without manual threading. Configure tenants under"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "These built-in roles are assignable to users in the Users &amp; roles tab. Custom roles can be defined in"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "This node"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Time (UTC)"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "to activate IAM, audit logging, Prometheus metrics, multi-tenancy, and more."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "to change a user's roles or active status. Changes are written to the gateway via the IAM API when connected."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "unhealthy"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Users &amp; roles"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Users and roles are managed via"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Users inherit all roles from their groups — useful for team-based access control."
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "v"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Version"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Wildcards"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Audit log"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Cluster"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Overview"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Security"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Settings"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/enterprise/view.ts",
+      "text": "Users & roles"
+    },
+    {
+      "count": 4,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/plugins/view.ts",
+      "text": "v"
+    },
+    {
+      "count": 1,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/profile/profile-page.ts",
+      "text": "OpenClaw"
+    },
+    {
+      "count": 2,
+      "kind": "html-text",
+      "name": "text",
+      "path": "ui/src/pages/skill-workshop/view.ts",
+      "text": "v"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "description",
+      "path": "ui/src/pages/skills/view.test-support.ts",
+      "text": "Skill description"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "agent:"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "channel:"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "has:errors"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "has:tools"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "maxCost:"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "minTokens:"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "model:"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "provider:"
+    },
+    {
+      "count": 1,
+      "kind": "object-property",
+      "name": "label",
+      "path": "ui/src/pages/usage/query.ts",
+      "text": "tool:"
+    }
+  ]
+}

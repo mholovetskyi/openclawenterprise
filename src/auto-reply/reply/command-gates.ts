@@ -1,8 +1,67 @@
-import type { CommandFlagKey } from "../../config/commands.js";
-import { isCommandFlagEnabled } from "../../config/commands.js";
+// Applies command feature gates before command handlers execute.
+import { isCommandFlagEnabled, type CommandFlagKey } from "../../config/commands.flags.js";
 import { logVerbose } from "../../globals.js";
+import { redactIdentifier } from "../../logging/redact-identifier.js";
+import { isNativeCommandTurn, resolveCommandTurnContext } from "../command-turn-context.js";
 import type { ReplyPayload } from "../types.js";
-import type { CommandHandlerResult, HandleCommandsParams } from "./commands-types.js";
+import type {
+  CommandHandler,
+  CommandHandlerResult,
+  HandleCommandsParams,
+} from "./commands-types.js";
+
+/** Builds the standard terminal text response shared by chat command handlers. */
+export function commandReply(text: string): CommandHandlerResult {
+  return { shouldContinue: false, reply: { text } };
+}
+
+/** Returns command arguments only when the complete slash-command token matches. */
+export function matchCommandPrefix(body: string, command: string): string | null {
+  return body === command
+    ? ""
+    : body.startsWith(`${command} `)
+      ? body.slice(command.length).trim()
+      : null;
+}
+
+/** Keeps matching, text-command enablement, and sender authorization in one owner. */
+export function defineAuthorizedTextCommand<T>(
+  options: {
+    label: string;
+    match: (body: string, params: HandleCommandsParams) => T | null;
+    ownerOnly?: boolean | ((params: HandleCommandsParams, match: T) => boolean);
+    silentUnauthorized?: boolean;
+  },
+  run: (
+    params: HandleCommandsParams,
+    match: T,
+  ) => Promise<CommandHandlerResult | null> | CommandHandlerResult | null,
+): CommandHandler {
+  return async (params, allowTextCommands) => {
+    if (!allowTextCommands) {
+      return null;
+    }
+    const match = options.match(params.command.commandBodyNormalized, params);
+    if (match === null) {
+      return null;
+    }
+    const unauthorized = rejectUnauthorizedCommand(params, options.label);
+    if (unauthorized) {
+      return options.silentUnauthorized ? { shouldContinue: false } : unauthorized;
+    }
+    const ownerOnly =
+      typeof options.ownerOnly === "function"
+        ? options.ownerOnly(params, match)
+        : options.ownerOnly;
+    return ownerOnly
+      ? (rejectNonOwnerCommand(params, options.label) ?? run(params, match))
+      : run(params, match);
+  };
+}
+
+function buildNativeCommandGateReply(text: string): CommandHandlerResult {
+  return commandReply(text);
+}
 
 export function rejectUnauthorizedCommand(
   params: HandleCommandsParams,
@@ -12,9 +71,49 @@ export function rejectUnauthorizedCommand(
     return null;
   }
   logVerbose(
-    `Ignoring ${commandLabel} from unauthorized sender: ${params.command.senderId || "<unknown>"}`,
+    `Ignoring ${commandLabel} from unauthorized sender: ${redactIdentifier(params.command.senderId)}`,
   );
+  if (isNativeCommandTurn(resolveCommandTurnContext(params.ctx))) {
+    return buildNativeCommandGateReply("You are not authorized to use this command.");
+  }
   return { shouldContinue: false };
+}
+
+export function rejectNonOwnerCommand(
+  params: HandleCommandsParams,
+  commandLabel: string,
+): CommandHandlerResult | null {
+  if (params.command.senderIsOwner) {
+    return null;
+  }
+  logVerbose(
+    `Ignoring ${commandLabel} from non-owner sender: ${redactIdentifier(params.command.senderId)}`,
+  );
+  if (isNativeCommandTurn(resolveCommandTurnContext(params.ctx))) {
+    return buildNativeCommandGateReply("You are not authorized to use this command.");
+  }
+  return { shouldContinue: false };
+}
+
+export function requireGatewayClientScope(
+  params: Pick<HandleCommandsParams, "ctx">,
+  config: {
+    label: string;
+    allowedScopes: string[];
+    missingText: string;
+  },
+): CommandHandlerResult | null {
+  const scopes = params.ctx.GatewayClientScopes;
+  if (!Array.isArray(scopes)) {
+    return null;
+  }
+  if (config.allowedScopes.some((scope) => scopes.includes(scope))) {
+    return null;
+  }
+  logVerbose(
+    `Ignoring ${config.label} from gateway client missing scope: ${config.allowedScopes.join(" or ")}`,
+  );
+  return commandReply(config.missingText);
 }
 
 export function buildDisabledCommandReply(params: {

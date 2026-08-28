@@ -1,7 +1,18 @@
+// Misc utility tests cover small shared helper behavior.
 import { describe, expect, it } from "vitest";
-import { parseBooleanValue } from "./boolean.js";
-import { isReasoningTagProvider } from "./provider-utils.js";
+import { z } from "zod";
+import { asBoolean, parseBooleanValue } from "./boolean.js";
 import { splitShellArgs } from "./shell-argv.js";
+import { safeParseJsonWithSchema, safeParseWithSchema } from "./zod-parse.js";
+
+describe("asBoolean", () => {
+  it("accepts booleans only", () => {
+    expect(asBoolean(true)).toBe(true);
+    expect(asBoolean(false)).toBe(false);
+    expect(asBoolean("true")).toBeUndefined();
+    expect(asBoolean(1)).toBeUndefined();
+  });
+});
 
 describe("parseBooleanValue", () => {
   it("handles boolean inputs", () => {
@@ -42,47 +53,10 @@ describe("parseBooleanValue", () => {
   });
 });
 
-describe("isReasoningTagProvider", () => {
-  it("returns false for ollama - native reasoning field, no tags needed (#2279)", () => {
-    expect(isReasoningTagProvider("ollama")).toBe(false);
-    expect(isReasoningTagProvider("Ollama")).toBe(false);
-  });
-
-  it("returns true for google-gemini-cli", () => {
-    expect(isReasoningTagProvider("google-gemini-cli")).toBe(true);
-  });
-
-  it("returns true for google-generative-ai", () => {
-    expect(isReasoningTagProvider("google-generative-ai")).toBe(true);
-  });
-
-  it("returns true for google-antigravity", () => {
-    expect(isReasoningTagProvider("google-antigravity")).toBe(true);
-    expect(isReasoningTagProvider("google-antigravity/gemini-3")).toBe(true);
-  });
-
-  it("returns true for minimax", () => {
-    expect(isReasoningTagProvider("minimax")).toBe(true);
-    expect(isReasoningTagProvider("minimax-cn")).toBe(true);
-  });
-
-  it("returns false for null/undefined/empty", () => {
-    expect(isReasoningTagProvider(null)).toBe(false);
-    expect(isReasoningTagProvider(undefined)).toBe(false);
-    expect(isReasoningTagProvider("")).toBe(false);
-  });
-
-  it("returns false for standard providers", () => {
-    expect(isReasoningTagProvider("anthropic")).toBe(false);
-    expect(isReasoningTagProvider("openai")).toBe(false);
-    expect(isReasoningTagProvider("openrouter")).toBe(false);
-  });
-});
-
 describe("splitShellArgs", () => {
   it("splits whitespace and respects quotes", () => {
-    expect(splitShellArgs(`qmd --foo "bar baz"`)).toEqual(["qmd", "--foo", "bar baz"]);
-    expect(splitShellArgs(`qmd --foo 'bar baz'`)).toEqual(["qmd", "--foo", "bar baz"]);
+    expect(splitShellArgs(`search --foo "bar baz"`)).toEqual(["search", "--foo", "bar baz"]);
+    expect(splitShellArgs(`search --foo 'bar baz'`)).toEqual(["search", "--foo", "bar baz"]);
   });
 
   it("supports backslash escapes inside double quotes", () => {
@@ -93,5 +67,26 @@ describe("splitShellArgs", () => {
   it("returns null for unterminated quotes", () => {
     expect(splitShellArgs(`echo "oops`)).toBeNull();
     expect(splitShellArgs(`echo 'oops`)).toBeNull();
+  });
+
+  it("stops at unquoted shell comments but keeps quoted hashes literal", () => {
+    expect(splitShellArgs(`echo hi # comment && whoami`)).toEqual(["echo", "hi"]);
+    expect(splitShellArgs(`echo "hi # still-literal"`)).toEqual(["echo", "hi # still-literal"]);
+    expect(splitShellArgs(`echo hi#tail`)).toEqual(["echo", "hi#tail"]);
+  });
+});
+
+describe("zod parse helpers", () => {
+  const schema = z.object({ name: z.string() });
+
+  it("returns parsed data for schema-valid values", () => {
+    expect(safeParseWithSchema(schema, { name: "Ada" })).toEqual({ name: "Ada" });
+    expect(safeParseJsonWithSchema(schema, `{"name":"Ada"}`)).toEqual({ name: "Ada" });
+  });
+
+  it("returns null for schema failures or invalid JSON", () => {
+    expect(safeParseWithSchema(schema, { name: 1 })).toBeNull();
+    expect(safeParseJsonWithSchema(schema, `{"name":1}`)).toBeNull();
+    expect(safeParseJsonWithSchema(schema, `{`)).toBeNull();
   });
 });

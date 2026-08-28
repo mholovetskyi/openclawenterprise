@@ -1,20 +1,12 @@
-import path from "node:path";
+// Exposes path-safety helpers backed by fs-safe defaults.
+import "./fs-safe-defaults.js";
 
-export function resolveSafeBaseDir(rootDir: string): string {
-  const resolved = path.resolve(rootDir);
-  return resolved.endsWith(path.sep) ? resolved : `${resolved}${path.sep}`;
-}
-
-export function isWithinDir(rootDir: string, targetPath: string): boolean {
-  const resolvedRoot = path.resolve(rootDir);
-  const resolvedTarget = path.resolve(targetPath);
-
-  // Windows paths are effectively case-insensitive; normalize to avoid false negatives.
-  if (process.platform === "win32") {
-    const relative = path.win32.relative(resolvedRoot.toLowerCase(), resolvedTarget.toLowerCase());
-    return relative === "" || (!relative.startsWith("..") && !path.win32.isAbsolute(relative));
-  }
-
-  const relative = path.relative(resolvedRoot, resolvedTarget);
-  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
-}
+// Back-compat import path for path guard helpers used across core surfaces.
+export {
+  isPathInside,
+  isPathInsideWithRealpath,
+  isWithinDir,
+  safeRealpathSync,
+  safeStatSync,
+} from "@openclaw/fs-safe/path";
+export { formatPosixMode } from "@openclaw/fs-safe/advanced";

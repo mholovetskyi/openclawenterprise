@@ -1,31 +1,27 @@
-import {
-  filterBootstrapFilesForSession,
-  loadExtraBootstrapFiles,
-} from "../../../agents/workspace.js";
+// Bootstrap extra files hook injects configured extra files into startup context.
+import { normalizeTrimmedStringList } from "@openclaw/normalization-core/string-normalization";
+import { loadExtraBootstrapFilesWithDiagnostics } from "../../../agents/workspace.js";
+import { createSubsystemLogger } from "../../../logging/subsystem.js";
 import { resolveHookConfig } from "../../config.js";
 import { isAgentBootstrapEvent, type HookHandler } from "../../hooks.js";
 
 const HOOK_KEY = "bootstrap-extra-files";
+const log = createSubsystemLogger("bootstrap-extra-files");
 
-function normalizeStringArray(value: unknown): string[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.map((v) => (typeof v === "string" ? v.trim() : "")).filter(Boolean);
-}
-
+/** Resolve legacy and current config keys for extra bootstrap file patterns. */
 function resolveExtraBootstrapPatterns(hookConfig: Record<string, unknown>): string[] {
-  const fromPaths = normalizeStringArray(hookConfig.paths);
+  const fromPaths = normalizeTrimmedStringList(hookConfig.paths);
   if (fromPaths.length > 0) {
     return fromPaths;
   }
-  const fromPatterns = normalizeStringArray(hookConfig.patterns);
+  const fromPatterns = normalizeTrimmedStringList(hookConfig.patterns);
   if (fromPatterns.length > 0) {
     return fromPatterns;
   }
-  return normalizeStringArray(hookConfig.files);
+  return normalizeTrimmedStringList(hookConfig.files);
 }
 
+/** Agent-bootstrap hook that appends configured extra files to the session bootstrap set. */
 const bootstrapExtraFilesHook: HookHandler = async (event) => {
   if (!isAgentBootstrapEvent(event)) {
     return;
@@ -43,16 +39,27 @@ const bootstrapExtraFilesHook: HookHandler = async (event) => {
   }
 
   try {
-    const extras = await loadExtraBootstrapFiles(context.workspaceDir, patterns);
+    const { files: extras, diagnostics } = await loadExtraBootstrapFilesWithDiagnostics(
+      context.workspaceDir,
+      patterns,
+    );
+    if (diagnostics.length > 0) {
+      log.debug("skipped extra bootstrap candidates", {
+        skipped: diagnostics.length,
+        reasons: diagnostics.reduce<Record<string, number>>((counts, item) => {
+          counts[item.reason] = (counts[item.reason] ?? 0) + 1;
+          return counts;
+        }, {}),
+      });
+    }
     if (extras.length === 0) {
       return;
     }
-    context.bootstrapFiles = filterBootstrapFilesForSession(
-      [...context.bootstrapFiles, ...extras],
-      context.sessionKey,
-    );
+    // The final bootstrap resolver owns session policy after every hook has run,
+    // using the authoritative chat type and loader provenance in one place.
+    context.bootstrapFiles = [...context.bootstrapFiles, ...extras];
   } catch (err) {
-    console.warn(`[bootstrap-extra-files] failed: ${String(err)}`);
+    log.warn(`failed: ${String(err)}`);
   }
 };
 

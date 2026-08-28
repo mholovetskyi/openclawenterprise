@@ -107,7 +107,7 @@ All of this — open source, MIT licensed, self-hostable anywhere.
 
 ## Install
 
-OpenClaw Enterprise is a source-available fork — build it from this repository. Requires Node.js ≥22.12.0 and [pnpm](https://pnpm.io).
+OpenClaw Enterprise is a source-available fork — build it from this repository. Requires Node.js 22.22.3+, 24.15.0+, or 25.9.0+ and [pnpm](https://pnpm.io).
 
 ```bash
 # 1. Clone the enterprise fork
@@ -117,6 +117,7 @@ cd openclawenterprise
 # 2. Install dependencies and build
 pnpm install
 pnpm build
+pnpm ui:build
 
 # 3. First-time setup (config, daemon, shell completion)
 pnpm openclaw onboard --install-daemon
@@ -125,7 +126,7 @@ pnpm openclaw onboard --install-daemon
 pnpm gateway:watch
 ```
 
-> **Node.js ≥22.12.0** is required. Install via [fnm](https://github.com/Schniz/fnm) (`fnm install 22`), [nvm](https://github.com/nvm-sh/nvm), or the [official installer](https://nodejs.org).
+> **Node.js 22.22.3+, 24.15.0+, or 25.9.0+** is required. Install via [fnm](https://github.com/Schniz/fnm) (`fnm install 24`), [nvm](https://github.com/nvm-sh/nvm), or the [official installer](https://nodejs.org).
 >
 > Looking for the community edition? `npm install -g openclaw@latest` — no build step needed.
 
@@ -1833,7 +1834,7 @@ WhatsApp (Baileys) · Telegram (grammY) · Slack (Bolt) · Discord (discord.js) 
 
 ### Quick start
 
-Runtime: **Node ≥22**
+Runtime: **Node 22.22.3+, 24.15.0+, or 25.9.0+**
 
 ```bash
 npm install -g openclaw@latest

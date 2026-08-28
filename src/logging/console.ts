@@ -1,60 +1,24 @@
+// Console logging helpers format and write messages to console streams.
 import util from "node:util";
-import type { OpenClawConfig } from "../config/types.js";
-import { isVerbose } from "../globals.js";
-import { stripAnsi } from "../terminal/ansi.js";
-import { readLoggingConfig } from "./config.js";
+import { stripAnsi } from "../../packages/terminal-core/src/ansi.js";
+import { clearActiveProgressLine } from "../../packages/terminal-core/src/progress-line.js";
+import { isVerbose } from "../global-state.js";
+import { resolveEnvLogLevelOverride } from "./env-log-level.js";
+import { formatJsonConsoleLine } from "./json-console-line.js";
 import { type LogLevel, normalizeLogLevel } from "./levels.js";
-import { getLogger, type LoggerSettings } from "./logger.js";
+import { getLogger, readLoggerConfig } from "./logger.js";
+import { redactSensitiveText } from "./redact.js";
 import { loggingState } from "./state.js";
-import { formatLocalIsoWithOffset } from "./timestamps.js";
+import { formatTimestamp } from "./timestamps.js";
+import type { ConsoleStyle, LoggerSettings } from "./types.js";
 
-export type ConsoleStyle = "pretty" | "compact" | "json";
+export type { ConsoleStyle } from "./types.js";
+export { formatJsonConsoleLine };
 type ConsoleSettings = {
   level: LogLevel;
   style: ConsoleStyle;
 };
 export type ConsoleLoggerSettings = ConsoleSettings;
-
-function resolveNodeRequire(): ((id: string) => NodeJS.Require) | null {
-  const getBuiltinModule = (
-    process as NodeJS.Process & {
-      getBuiltinModule?: (id: string) => unknown;
-    }
-  ).getBuiltinModule;
-  if (typeof getBuiltinModule !== "function") {
-    return null;
-  }
-  try {
-    const moduleNamespace = getBuiltinModule("module") as {
-      createRequire?: (id: string) => NodeJS.Require;
-    };
-    return typeof moduleNamespace.createRequire === "function"
-      ? moduleNamespace.createRequire
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-const requireConfig = resolveNodeRequire()?.(import.meta.url) ?? null;
-type ConsoleConfigLoader = () => OpenClawConfig["logging"] | undefined;
-const loadConfigFallbackDefault: ConsoleConfigLoader = () => {
-  try {
-    const loaded = requireConfig?.("../config/config.js") as
-      | {
-          loadConfig?: () => OpenClawConfig;
-        }
-      | undefined;
-    return loaded?.loadConfig?.().logging;
-  } catch {
-    return undefined;
-  }
-};
-let loadConfigFallback: ConsoleConfigLoader = loadConfigFallbackDefault;
-
-export function setConsoleConfigLoaderForTests(loader?: ConsoleConfigLoader): void {
-  loadConfigFallback = loader ?? loadConfigFallbackDefault;
-}
 
 function normalizeConsoleLevel(level?: string): LogLevel {
   if (isVerbose()) {
@@ -77,38 +41,32 @@ function normalizeConsoleStyle(style?: string): ConsoleStyle {
 }
 
 function resolveConsoleSettings(): ConsoleSettings {
-  let cfg: OpenClawConfig["logging"] | undefined =
-    (loggingState.overrideSettings as LoggerSettings | null) ?? readLoggingConfig();
-  if (!cfg) {
-    if (loggingState.resolvingConsoleSettings) {
-      cfg = undefined;
-    } else {
-      loggingState.resolvingConsoleSettings = true;
-      try {
-        cfg = loadConfigFallback();
-      } finally {
-        loggingState.resolvingConsoleSettings = false;
-      }
-    }
+  const envLevel = resolveEnvLogLevelOverride();
+  // Test runs default to silent console logging unless explicitly overridden.
+  // Skip config-file and full config fallback reads in this fast path.
+  if (
+    process.env.VITEST === "true" &&
+    process.env.OPENCLAW_TEST_CONSOLE !== "1" &&
+    !isVerbose() &&
+    !envLevel &&
+    !loggingState.overrideSettings
+  ) {
+    return { level: "silent", style: normalizeConsoleStyle(undefined) };
   }
-  const level = normalizeConsoleLevel(cfg?.consoleLevel);
+
+  const cfg = (loggingState.overrideSettings as LoggerSettings | null) ?? readLoggerConfig();
+  const level = envLevel ?? normalizeConsoleLevel(cfg?.consoleLevel);
   const style = normalizeConsoleStyle(cfg?.consoleStyle);
   return { level, style };
 }
 
-function consoleSettingsChanged(a: ConsoleSettings | null, b: ConsoleSettings) {
-  if (!a) {
-    return true;
-  }
-  return a.level !== b.level || a.style !== b.style;
-}
-
 export function getConsoleSettings(): ConsoleLoggerSettings {
-  const settings = resolveConsoleSettings();
   const cached = loggingState.cachedConsoleSettings as ConsoleSettings | null;
-  if (!cached || consoleSettingsChanged(cached, settings)) {
-    loggingState.cachedConsoleSettings = settings;
+  if (cached) {
+    return cached;
   }
+  const settings = resolveConsoleSettings();
+  loggingState.cachedConsoleSettings = settings;
   return loggingState.cachedConsoleSettings as ConsoleSettings;
 }
 
@@ -131,16 +89,43 @@ export function setConsoleSubsystemFilter(filters?: string[] | null): void {
   loggingState.consoleSubsystemFilter = normalized.length > 0 ? normalized : null;
 }
 
+/** Hides subsystem console lines for TTY-owned work while preserving file logging. */
+export async function withConsoleSubsystemsSuppressed<T>(work: () => Promise<T>): Promise<T> {
+  const previousFilter = loggingState.consoleSubsystemFilter
+    ? [...loggingState.consoleSubsystemFilter]
+    : null;
+  setConsoleSubsystemFilter(["__openclaw_tui_quiet__"]);
+  try {
+    return await work();
+  } finally {
+    setConsoleSubsystemFilter(previousFilter);
+  }
+}
+
 export function setConsoleTimestampPrefix(enabled: boolean): void {
   loggingState.consoleTimestampPrefix = enabled;
 }
 
-export function shouldLogSubsystemToConsole(subsystem: string): boolean {
+function normalizeConsoleSubsystem(subsystem?: string | null): string | null {
+  if (typeof subsystem !== "string") {
+    return null;
+  }
+  const normalized = subsystem.trim();
+  return normalized.length > 0 ? normalized : null;
+}
+
+export function shouldLogSubsystemToConsole(subsystem?: string | null): boolean {
   const filter = loggingState.consoleSubsystemFilter;
   if (!filter || filter.length === 0) {
     return true;
   }
-  return filter.some((prefix) => subsystem === prefix || subsystem.startsWith(`${prefix}/`));
+  const normalizedSubsystem = normalizeConsoleSubsystem(subsystem);
+  if (!normalizedSubsystem) {
+    return false;
+  }
+  return filter.some(
+    (prefix) => normalizedSubsystem === prefix || normalizedSubsystem.startsWith(`${prefix}/`),
+  );
 }
 
 const SUPPRESSED_CONSOLE_PREFIXES = [
@@ -152,17 +137,11 @@ const SUPPRESSED_CONSOLE_PREFIXES = [
 ] as const;
 
 function shouldSuppressConsoleMessage(message: string): boolean {
-  if (isVerbose()) {
-    return false;
-  }
   if (SUPPRESSED_CONSOLE_PREFIXES.some((prefix) => message.startsWith(prefix))) {
     return true;
   }
-  if (
-    message.startsWith("[EventQueue] Slow listener detected") &&
-    message.includes("DiscordMessageListener")
-  ) {
-    return true;
+  if (isVerbose()) {
+    return false;
   }
   return false;
 }
@@ -175,12 +154,21 @@ function isEpipeError(err: unknown): boolean {
 export function formatConsoleTimestamp(style: ConsoleStyle): string {
   const now = new Date();
   if (style === "pretty") {
-    const h = String(now.getHours()).padStart(2, "0");
-    const m = String(now.getMinutes()).padStart(2, "0");
-    const s = String(now.getSeconds()).padStart(2, "0");
-    return `${h}:${m}:${s}`;
+    return formatTimestamp(now, { style: "short" }).replace(/[+-]\d{2}:\d{2}$/, "");
   }
-  return formatLocalIsoWithOffset(now);
+  return formatTimestamp(now, { style: "long" });
+}
+
+function captureConsoleTraceStack(message: string, caller: (...args: unknown[]) => void): string {
+  const trace = new Error(message);
+  trace.name = "Trace";
+  // An Error instance lets both Node and Bun exclude the console wrapper structurally.
+  Error.captureStackTrace(trace, caller);
+  return trace.stack === undefined
+    ? `Trace: ${message}`
+    : typeof trace.stack === "string"
+      ? trace.stack
+      : util.format(trace.stack);
 }
 
 function hasTimestampPrefix(value: string): boolean {
@@ -189,17 +177,73 @@ function hasTimestampPrefix(value: string): boolean {
   );
 }
 
-function isJsonPayload(value: string): boolean {
-  const trimmed = value.trim();
-  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-    return false;
-  }
+function writeFormattedConsoleOutput(params: {
+  level: LogLevel;
+  args: unknown[];
+  formatted: string;
+  write: (...args: unknown[]) => void;
+  traceWrite: (...args: unknown[]) => void;
+  caller?: (...args: unknown[]) => void;
+}) {
+  const trimmed = stripAnsi(params.formatted).trimStart();
+  const consoleStyle = getConsoleSettings().style;
+  const shouldPrefixTimestamp =
+    consoleStyle !== "json" &&
+    loggingState.consoleTimestampPrefix &&
+    trimmed.length > 0 &&
+    !hasTimestampPrefix(trimmed);
+  const timestamp = shouldPrefixTimestamp ? formatConsoleTimestamp(consoleStyle) : "";
+  const jsonMessage = consoleStyle === "json" ? stripAnsi(params.formatted) : "";
+  const jsonMeta =
+    consoleStyle === "json" && params.level === "trace" && params.caller
+      ? { stack: stripAnsi(captureConsoleTraceStack(params.formatted, params.caller)) }
+      : undefined;
   try {
-    JSON.parse(trimmed);
-    return true;
-  } catch {
+    const redacted = redactSensitiveText(params.formatted);
+    const line =
+      consoleStyle === "json"
+        ? formatJsonConsoleLine({ level: params.level, message: jsonMessage, meta: jsonMeta })
+        : timestamp
+          ? `${timestamp} ${redacted}`
+          : redacted;
+    if (loggingState.forceConsoleToStderr) {
+      process.stderr.write(`${line}\n`);
+    } else if (consoleStyle === "json") {
+      // Node and Bun implement console.trace() through this.error(). Use the raw error
+      // sink so the structured trace does not re-enter as an error.
+      (params.level === "trace" ? params.traceWrite : params.write).call(console, line);
+    } else if (!timestamp && params.args.length === 0) {
+      params.write.apply(console, params.args as []);
+    } else {
+      params.write.call(console, line);
+    }
+  } catch (err) {
+    if (isEpipeError(err)) {
+      return;
+    }
+    throw err;
+  }
+}
+
+/** Writes a root logger line to the pre-capture console sink without re-entering file capture. */
+export function writeRootConsoleLine(method: "log" | "error", line: string): boolean {
+  const rawConsole = loggingState.rawConsole;
+  if (!rawConsole) {
     return false;
   }
+  clearActiveProgressLine();
+  if (shouldSuppressConsoleMessage(line)) {
+    return true;
+  }
+  const level = method === "error" ? "error" : "info";
+  writeFormattedConsoleOutput({
+    level,
+    args: [line],
+    formatted: line,
+    write: rawConsole[method],
+    traceWrite: rawConsole.error,
+  });
+  return true;
 }
 
 /**
@@ -223,20 +267,17 @@ export function enableConsoleCapture(): void {
     for (const stream of [process.stdout, process.stderr]) {
       stream.on("error", (err) => {
         if (isEpipeError(err)) {
+          // stdout/stderr broken means the process is orphaned (e.g. the parent
+          // service restarted and closed the journal pipe). Exit cleanly instead
+          // of spinning in a tight loop where every log attempt re-triggers EPIPE.
+          const exitCode = process.exitCode;
+          process.exit(exitCode !== undefined && exitCode !== 0 && exitCode !== "0" ? exitCode : 0);
           return;
         }
         throw err;
       });
     }
   }
-
-  let logger: ReturnType<typeof getLogger> | null = null;
-  const getLoggerLazy = () => {
-    if (!logger) {
-      logger = getLogger();
-    }
-    return logger;
-  };
 
   const original = {
     log: console.log,
@@ -253,24 +294,14 @@ export function enableConsoleCapture(): void {
     error: original.error,
   };
 
-  const forward =
-    (level: LogLevel, orig: (...args: unknown[]) => void) =>
-    (...args: unknown[]) => {
+  const forward = (level: LogLevel, orig: (...args: unknown[]) => void) => {
+    const forwardedConsoleCall = (...args: unknown[]) => {
       const formatted = util.format(...args);
       if (shouldSuppressConsoleMessage(formatted)) {
         return;
       }
-      const trimmed = stripAnsi(formatted).trimStart();
-      const shouldPrefixTimestamp =
-        loggingState.consoleTimestampPrefix &&
-        trimmed.length > 0 &&
-        !hasTimestampPrefix(trimmed) &&
-        !isJsonPayload(trimmed);
-      const timestamp = shouldPrefixTimestamp
-        ? formatConsoleTimestamp(getConsoleSettings().style)
-        : "";
       try {
-        const resolvedLogger = getLoggerLazy();
+        const resolvedLogger = getLogger();
         // Map console levels to file logger
         if (level === "trace") {
           resolvedLogger.trace(formatted);
@@ -288,40 +319,17 @@ export function enableConsoleCapture(): void {
       } catch {
         // never block console output on logging failures
       }
-      if (loggingState.forceConsoleToStderr) {
-        // in RPC/JSON mode, keep stdout clean
-        try {
-          const line = timestamp ? `${timestamp} ${formatted}` : formatted;
-          process.stderr.write(`${line}\n`);
-        } catch (err) {
-          if (isEpipeError(err)) {
-            return;
-          }
-          throw err;
-        }
-      } else {
-        try {
-          if (!timestamp) {
-            orig.apply(console, args as []);
-            return;
-          }
-          if (args.length === 0) {
-            orig.call(console, timestamp);
-            return;
-          }
-          if (typeof args[0] === "string") {
-            orig.call(console, `${timestamp} ${args[0]}`, ...args.slice(1));
-            return;
-          }
-          orig.call(console, timestamp, ...args);
-        } catch (err) {
-          if (isEpipeError(err)) {
-            return;
-          }
-          throw err;
-        }
-      }
+      writeFormattedConsoleOutput({
+        level,
+        args,
+        formatted,
+        write: orig,
+        traceWrite: original.error,
+        caller: forwardedConsoleCall,
+      });
     };
+    return forwardedConsoleCall;
+  };
 
   console.log = forward("info", original.log);
   console.info = forward("info", original.info);

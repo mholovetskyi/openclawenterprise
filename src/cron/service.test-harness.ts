@@ -1,3 +1,4 @@
+// Cron service test harness builds isolated stores, timers, and delivery fixtures.
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -5,10 +6,15 @@ import { afterAll, afterEach, beforeAll, beforeEach, vi } from "vitest";
 import type { MockFn } from "../test-utils/vitest-mock-fn.js";
 import type { CronEvent } from "./service.js";
 import { CronService } from "./service.js";
-import { createCronServiceState } from "./service/state.js";
+import {
+  createCronServiceState,
+  type CronServiceState,
+  type CronServiceDeps,
+} from "./service/state.js";
+import { saveCronStore } from "./store.js";
 import type { CronJob } from "./types.js";
 
-export type NoopLogger = {
+type NoopLogger = {
   debug: MockFn;
   info: MockFn;
   warn: MockFn;
@@ -27,12 +33,31 @@ export function createNoopLogger(): NoopLogger {
 export function createCronStoreHarness(options?: { prefix?: string }) {
   let fixtureRoot = "";
   let caseId = 0;
+  const stores = new Map<string, string>();
 
   beforeAll(async () => {
     fixtureRoot = await fs.mkdtemp(path.join(os.tmpdir(), options?.prefix ?? "openclaw-cron-"));
   });
 
+  async function cleanupStore(storePath: string, dir: string) {
+    if (!stores.has(storePath)) {
+      return;
+    }
+    await saveCronStore(storePath, { version: 1, jobs: [] });
+    await fs.rm(dir, { recursive: true, force: true });
+    stores.delete(storePath);
+  }
+
+  afterEach(async () => {
+    for (const [storePath, dir] of stores) {
+      await cleanupStore(storePath, dir);
+    }
+  });
+
   afterAll(async () => {
+    for (const [storePath, dir] of stores) {
+      await cleanupStore(storePath, dir);
+    }
     if (!fixtureRoot) {
       return;
     }
@@ -42,13 +67,22 @@ export function createCronStoreHarness(options?: { prefix?: string }) {
   async function makeStorePath() {
     const dir = path.join(fixtureRoot, `case-${caseId++}`);
     await fs.mkdir(dir, { recursive: true });
+    const storePath = path.join(dir, "cron", "jobs.json");
+    stores.set(storePath, dir);
     return {
-      storePath: path.join(dir, "cron", "jobs.json"),
-      cleanup: async () => {},
+      storePath,
+      cleanup: async () => await cleanupStore(storePath, dir),
     };
   }
 
   return { makeStorePath };
+}
+
+export async function writeCronStoreSnapshot(params: { storePath: string; jobs: CronJob[] }) {
+  await saveCronStore(params.storePath, {
+    version: 1,
+    jobs: params.jobs,
+  });
 }
 
 export function installCronTestHooks(options: {
@@ -57,6 +91,10 @@ export function installCronTestHooks(options: {
 }) {
   beforeEach(() => {
     vi.useFakeTimers();
+    // Shared unit-thread workers run with isolate disabled, so leaked cron
+    // timers from a previous file can still sit in the fake-timer queue.
+    // Clear them before advancing time in the next test file.
+    vi.clearAllTimers();
     vi.setSystemTime(new Date(options.baseTimeIso ?? "2025-12-13T00:00:00.000Z"));
     options.logger.debug.mockClear();
     options.logger.info.mockClear();
@@ -65,8 +103,19 @@ export function installCronTestHooks(options: {
   });
 
   afterEach(() => {
+    vi.clearAllTimers();
     vi.useRealTimers();
   });
+}
+
+export function setupCronServiceSuite(options?: { prefix?: string; baseTimeIso?: string }) {
+  const logger = createNoopLogger();
+  const { makeStorePath } = createCronStoreHarness({ prefix: options?.prefix });
+  installCronTestHooks({
+    logger,
+    baseTimeIso: options?.baseTimeIso,
+  });
+  return { logger, makeStorePath };
 }
 
 export function createFinishedBarrier() {
@@ -93,30 +142,70 @@ export function createFinishedBarrier() {
 export function createStartedCronServiceWithFinishedBarrier(params: {
   storePath: string;
   logger: ReturnType<typeof createNoopLogger>;
+  runSkillCollectionReview?: CronServiceDeps["runSkillCollectionReview"];
 }): {
   cron: CronService;
   enqueueSystemEvent: MockFn;
-  requestHeartbeatNow: MockFn;
+  requestHeartbeat: MockFn;
   finished: ReturnType<typeof createFinishedBarrier>;
 } {
   const enqueueSystemEvent = vi.fn();
-  const requestHeartbeatNow = vi.fn();
+  const requestHeartbeat = vi.fn();
   const finished = createFinishedBarrier();
   const cron = new CronService({
     storePath: params.storePath,
     cronEnabled: true,
     log: params.logger,
     enqueueSystemEvent,
-    requestHeartbeatNow,
+    requestHeartbeat,
     runIsolatedAgentJob: vi.fn(async () => ({ status: "ok" as const })),
+    ...(params.runSkillCollectionReview
+      ? { runSkillCollectionReview: params.runSkillCollectionReview }
+      : {}),
     onEvent: finished.onEvent,
   });
-  return { cron, enqueueSystemEvent, requestHeartbeatNow, finished };
+  return { cron, enqueueSystemEvent, requestHeartbeat, finished };
+}
+
+export async function withCronServiceForTest(
+  params: {
+    makeStorePath: () => Promise<{ storePath: string; cleanup: () => Promise<void> }>;
+    logger: ReturnType<typeof createNoopLogger>;
+    cronEnabled: boolean;
+    runIsolatedAgentJob?: CronServiceDeps["runIsolatedAgentJob"];
+  },
+  run: (context: {
+    cron: CronService;
+    enqueueSystemEvent: ReturnType<typeof vi.fn>;
+    requestHeartbeat: ReturnType<typeof vi.fn>;
+  }) => Promise<void>,
+): Promise<void> {
+  const store = await params.makeStorePath();
+  const enqueueSystemEvent = vi.fn();
+  const requestHeartbeat = vi.fn();
+  const cron = new CronService({
+    cronEnabled: params.cronEnabled,
+    storePath: store.storePath,
+    log: params.logger,
+    enqueueSystemEvent,
+    requestHeartbeat,
+    runIsolatedAgentJob:
+      params.runIsolatedAgentJob ??
+      (vi.fn(async () => ({ status: "ok" as const, summary: "done" })) as never),
+  });
+
+  await cron.start();
+  try {
+    await run({ cron, enqueueSystemEvent, requestHeartbeat });
+  } finally {
+    cron.stop();
+    await store.cleanup();
+  }
 }
 
 export function createRunningCronServiceState(params: {
   storePath: string;
-  log: ReturnType<typeof createNoopLogger>;
+  log: CronServiceDeps["log"];
   nowMs: () => number;
   jobs: CronJob[];
 }) {
@@ -126,13 +215,76 @@ export function createRunningCronServiceState(params: {
     log: params.log,
     nowMs: params.nowMs,
     enqueueSystemEvent: vi.fn(),
-    requestHeartbeatNow: vi.fn(),
+    requestHeartbeat: vi.fn(),
     runIsolatedAgentJob: vi.fn().mockResolvedValue({ status: "ok", summary: "ok" }),
   });
   state.running = true;
+  state.activeTimerTicks = 1;
   state.store = {
     version: 1,
     jobs: params.jobs,
   };
   return state;
+}
+
+function disposeCronServiceState(state: { timer: NodeJS.Timeout | null }): void {
+  if (state.timer) {
+    clearTimeout(state.timer);
+    state.timer = null;
+  }
+}
+
+export async function withCronServiceStateForTest<T>(
+  state: { timer: NodeJS.Timeout | null },
+  run: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await run();
+  } finally {
+    disposeCronServiceState(state);
+  }
+}
+
+export function createMockCronStateForJobs(params: {
+  jobs: CronJob[];
+  nowMs?: number;
+}): CronServiceState {
+  const nowMs = params.nowMs ?? Date.now();
+  return {
+    store: { version: 1, jobs: params.jobs },
+    durableNextRunAtMsByJobId: new Map<string, number | undefined>(),
+    running: false,
+    activeTimerTicks: 0,
+    stopped: false,
+    lifecycleGeneration: 0,
+    schedulingPaused: false,
+    schedulerStarted: false,
+    activeManualRunJobIds: new Set<string>(),
+    manualSetupTimeoutNotified: false,
+    runAdmission: { active: 0, waiters: [], capacityListener: null },
+    queuedRunReservationsByJobId: new Map(),
+    timer: null,
+    storeLoadedAtMs: nowMs,
+    op: Promise.resolve(),
+    warnedDisabled: false,
+    warnedInvalidPersistedJobKeys: new Set<string>(),
+    reportedUnavailableReaperAgentIds: new Set<string>(),
+    pendingQuarantineConfigJobs: [],
+    lastQuarantineFailureWarnKey: null,
+    deps: {
+      storePath: "/mock/path",
+      cronEnabled: true,
+      defaultAgentId: "main",
+      nowMs: () => nowMs,
+      enqueueSystemEvent: () => {},
+      requestHeartbeat: () => {},
+      runIsolatedAgentJob: async () => ({ status: "ok" }),
+      log: {
+        debug: () => {},
+        info: () => {},
+        warn: () => {},
+        error: () => {},
+      } as never,
+    },
+  };
 }

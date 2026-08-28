@@ -1,221 +1,157 @@
 /**
- * Test: subagent_spawning, subagent_delivery_target, subagent_spawned & subagent_ended hook wiring
+ * Test: subagent routing, progress, and terminal hook wiring.
  */
 import { describe, expect, it, vi } from "vitest";
-import { createHookRunner } from "./hooks.js";
-import { createMockPluginRegistry } from "./hooks.test-helpers.js";
+import { createHookRunnerWithRegistry } from "./hooks.test-fixtures.js";
 
 describe("subagent hook runner methods", () => {
-  it("runSubagentSpawning invokes registered subagent_spawning hooks", async () => {
+  const baseRequester = {
+    channel: "discord",
+    accountId: "work",
+    to: "channel:123",
+    threadId: "456",
+  };
+
+  const baseSubagentCtx = {
+    runId: "run-1",
+    childSessionKey: "agent:main:subagent:child",
+    requesterSessionKey: "agent:main:main",
+  };
+
+  async function invokeSubagentHook(params: {
+    hookName:
+      | "subagent_spawned"
+      | "subagent_progress"
+      | "subagent_delivery_target"
+      | "subagent_ended";
+    event: Record<string, unknown>;
+    ctx: Record<string, unknown>;
+    handlerResult?: unknown;
+  }) {
     const handler = vi.fn(async () => ({ status: "ok", threadBindingReady: true as const }));
-    const registry = createMockPluginRegistry([{ hookName: "subagent_spawning", handler }]);
-    const runner = createHookRunner(registry);
+    if (params.handlerResult !== undefined) {
+      handler.mockResolvedValue(params.handlerResult as never);
+    }
+    const { runner } = createHookRunnerWithRegistry([{ hookName: params.hookName, handler }]);
+    const result =
+      params.hookName === "subagent_spawned"
+        ? await runner.runSubagentSpawned(params.event as never, params.ctx as never)
+        : params.hookName === "subagent_progress"
+          ? await runner.runSubagentProgress(params.event as never, params.ctx as never)
+          : params.hookName === "subagent_delivery_target"
+            ? await runner.runSubagentDeliveryTarget(params.event as never, params.ctx as never)
+            : await runner.runSubagentEnded(params.event as never, params.ctx as never);
 
-    const result = await runner.runSubagentSpawning(
-      {
-        childSessionKey: "agent:main:subagent:child",
-        agentId: "main",
-        label: "research",
-        mode: "session",
-        requester: {
-          channel: "discord",
-          accountId: "work",
-          to: "channel:123",
-          threadId: "456",
-        },
-        threadRequested: true,
-      },
-      {
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
-    );
+    expect(handler).toHaveBeenCalledWith(params.event, params.ctx);
+    return result;
+  }
 
-    expect(handler).toHaveBeenCalledWith(
-      {
-        childSessionKey: "agent:main:subagent:child",
-        agentId: "main",
-        label: "research",
-        mode: "session",
-        requester: {
-          channel: "discord",
-          accountId: "work",
-          to: "channel:123",
-          threadId: "456",
-        },
-        threadRequested: true,
-      },
-      {
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
-    );
-    expect(result).toMatchObject({ status: "ok", threadBindingReady: true });
-  });
-
-  it("runSubagentSpawned invokes registered subagent_spawned hooks", async () => {
-    const handler = vi.fn();
-    const registry = createMockPluginRegistry([{ hookName: "subagent_spawned", handler }]);
-    const runner = createHookRunner(registry);
-
-    await runner.runSubagentSpawned(
-      {
+  it.each([
+    {
+      name: "runSubagentSpawned invokes registered subagent_spawned hooks",
+      hookName: "subagent_spawned" as const,
+      methodName: "runSubagentSpawned" as const,
+      event: {
         runId: "run-1",
         childSessionKey: "agent:main:subagent:child",
         agentId: "main",
         label: "research",
-        mode: "run",
-        requester: {
-          channel: "discord",
-          accountId: "work",
-          to: "channel:123",
-          threadId: "456",
-        },
+        mode: "run" as const,
+        requester: baseRequester,
         threadRequested: true,
       },
-      {
+      ctx: baseSubagentCtx,
+    },
+    {
+      name: "runSubagentProgress invokes registered subagent_progress hooks",
+      hookName: "subagent_progress" as const,
+      methodName: "runSubagentProgress" as const,
+      event: {
+        phase: "started" as const,
         runId: "run-1",
+        childSessionKey: "agent:main:subagent:child",
+        requester: { ...baseRequester, messageId: "message-1" },
+      },
+      ctx: baseSubagentCtx,
+    },
+    {
+      name: "runSubagentDeliveryTarget invokes registered subagent_delivery_target hooks",
+      hookName: "subagent_delivery_target" as const,
+      methodName: "runSubagentDeliveryTarget" as const,
+      event: {
         childSessionKey: "agent:main:subagent:child",
         requesterSessionKey: "agent:main:main",
+        requesterOrigin: baseRequester,
+        childRunId: "run-1",
+        spawnMode: "session" as const,
+        expectsCompletionMessage: true,
       },
-    );
-
-    expect(handler).toHaveBeenCalledWith(
-      {
-        runId: "run-1",
-        childSessionKey: "agent:main:subagent:child",
-        agentId: "main",
-        label: "research",
-        mode: "run",
-        requester: {
+      ctx: baseSubagentCtx,
+      handlerResult: {
+        origin: {
+          channel: "discord" as const,
+          accountId: "work",
+          to: "channel:777",
+          threadId: "777",
+        },
+      },
+      expectedResult: {
+        origin: {
           channel: "discord",
           accountId: "work",
-          to: "channel:123",
-          threadId: "456",
+          to: "channel:777",
+          threadId: "777",
         },
-        threadRequested: true,
       },
-      {
-        runId: "run-1",
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
-    );
-  });
-
-  it("runSubagentDeliveryTarget invokes registered subagent_delivery_target hooks", async () => {
-    const handler = vi.fn(async () => ({
-      origin: {
-        channel: "discord" as const,
+    },
+    {
+      name: "runSubagentEnded invokes registered subagent_ended hooks",
+      hookName: "subagent_ended" as const,
+      methodName: "runSubagentEnded" as const,
+      event: {
+        targetSessionKey: "agent:main:subagent:child",
+        targetKind: "subagent" as const,
+        reason: "subagent-complete",
+        sendFarewell: true,
         accountId: "work",
-        to: "channel:777",
-        threadId: "777",
+        runId: "run-1",
+        outcome: "ok" as const,
       },
-    }));
-    const registry = createMockPluginRegistry([{ hookName: "subagent_delivery_target", handler }]);
-    const runner = createHookRunner(registry);
+      ctx: baseSubagentCtx,
+    },
+  ] as const)("$name", async ({ hookName, event, ctx, handlerResult, expectedResult }) => {
+    const result = await invokeSubagentHook({ hookName, event, ctx, handlerResult });
+    if (expectedResult !== undefined) {
+      expect(result).toEqual(expectedResult);
+      return;
+    }
+    expect(result).toBeUndefined();
+  });
 
+  it("runSubagentDeliveryTarget returns undefined when no matching hooks are registered", async () => {
+    const { runner } = createHookRunnerWithRegistry([]);
     const result = await runner.runSubagentDeliveryTarget(
       {
         childSessionKey: "agent:main:subagent:child",
         requesterSessionKey: "agent:main:main",
-        requesterOrigin: {
-          channel: "discord",
-          accountId: "work",
-          to: "channel:123",
-          threadId: "456",
-        },
+        requesterOrigin: baseRequester,
         childRunId: "run-1",
         spawnMode: "session",
         expectsCompletionMessage: true,
       },
-      {
-        runId: "run-1",
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
+      baseSubagentCtx,
     );
-
-    expect(handler).toHaveBeenCalledWith(
-      {
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-        requesterOrigin: {
-          channel: "discord",
-          accountId: "work",
-          to: "channel:123",
-          threadId: "456",
-        },
-        childRunId: "run-1",
-        spawnMode: "session",
-        expectsCompletionMessage: true,
-      },
-      {
-        runId: "run-1",
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
-    );
-    expect(result).toEqual({
-      origin: {
-        channel: "discord",
-        accountId: "work",
-        to: "channel:777",
-        threadId: "777",
-      },
-    });
-  });
-
-  it("runSubagentEnded invokes registered subagent_ended hooks", async () => {
-    const handler = vi.fn();
-    const registry = createMockPluginRegistry([{ hookName: "subagent_ended", handler }]);
-    const runner = createHookRunner(registry);
-
-    await runner.runSubagentEnded(
-      {
-        targetSessionKey: "agent:main:subagent:child",
-        targetKind: "subagent",
-        reason: "subagent-complete",
-        sendFarewell: true,
-        accountId: "work",
-        runId: "run-1",
-        outcome: "ok",
-      },
-      {
-        runId: "run-1",
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
-    );
-
-    expect(handler).toHaveBeenCalledWith(
-      {
-        targetSessionKey: "agent:main:subagent:child",
-        targetKind: "subagent",
-        reason: "subagent-complete",
-        sendFarewell: true,
-        accountId: "work",
-        runId: "run-1",
-        outcome: "ok",
-      },
-      {
-        runId: "run-1",
-        childSessionKey: "agent:main:subagent:child",
-        requesterSessionKey: "agent:main:main",
-      },
-    );
+    expect(result).toBeUndefined();
   });
 
   it("hasHooks returns true for registered subagent hooks", () => {
-    const registry = createMockPluginRegistry([
-      { hookName: "subagent_spawning", handler: vi.fn() },
+    const { runner } = createHookRunnerWithRegistry([
       { hookName: "subagent_delivery_target", handler: vi.fn() },
     ]);
-    const runner = createHookRunner(registry);
 
-    expect(runner.hasHooks("subagent_spawning")).toBe(true);
     expect(runner.hasHooks("subagent_delivery_target")).toBe(true);
     expect(runner.hasHooks("subagent_spawned")).toBe(false);
+    expect(runner.hasHooks("subagent_progress")).toBe(false);
     expect(runner.hasHooks("subagent_ended")).toBe(false);
   });
 });

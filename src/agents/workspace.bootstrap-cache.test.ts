@@ -1,7 +1,13 @@
+/**
+ * Integration coverage for workspace bootstrap cache reads.
+ * Uses temp workspaces to verify real file loading through the cache layer.
+ */
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { describe, expect, it, beforeEach } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeTempWorkspace, writeWorkspaceFile } from "../test-helpers/workspace.js";
+import { getOrLoadBootstrapFiles } from "./bootstrap-cache.js";
 import { loadWorkspaceBootstrapFiles, DEFAULT_AGENTS_FILENAME } from "./workspace.js";
 
 describe("workspace bootstrap file caching", () => {
@@ -10,6 +16,24 @@ describe("workspace bootstrap file caching", () => {
   beforeEach(async () => {
     workspaceDir = await makeTempWorkspace("openclaw-bootstrap-cache-test-");
   });
+
+  const loadAgentsFile = async (dir: string) => {
+    const result = await loadWorkspaceBootstrapFiles(dir);
+    return result.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
+  };
+
+  const loadSessionAgentsFile = async (dir: string, sessionKey: string) => {
+    const result = await getOrLoadBootstrapFiles({ workspaceDir: dir, sessionKey });
+    return result.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
+  };
+
+  const expectAgentsContent = (
+    agentsFile: Awaited<ReturnType<typeof loadAgentsFile>>,
+    content: string,
+  ) => {
+    expect(agentsFile?.content).toBe(content);
+    expect(agentsFile?.missing).toBe(false);
+  };
 
   it("returns cached content when mtime unchanged", async () => {
     const content1 = "# Initial content";
@@ -20,16 +44,12 @@ describe("workspace bootstrap file caching", () => {
     });
 
     // First load
-    const result1 = await loadWorkspaceBootstrapFiles(workspaceDir);
-    const agentsFile1 = result1.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
-    expect(agentsFile1?.content).toBe(content1);
-    expect(agentsFile1?.missing).toBe(false);
+    const agentsFile1 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile1, content1);
 
     // Second load should use cached content (same mtime)
-    const result2 = await loadWorkspaceBootstrapFiles(workspaceDir);
-    const agentsFile2 = result2.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
-    expect(agentsFile2?.content).toBe(content1);
-    expect(agentsFile2?.missing).toBe(false);
+    const agentsFile2 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile2, content1);
 
     // Verify both calls returned the same content without re-reading
     expect(agentsFile1?.content).toBe(agentsFile2?.content);
@@ -38,6 +58,7 @@ describe("workspace bootstrap file caching", () => {
   it("invalidates cache when mtime changes", async () => {
     const content1 = "# Initial content";
     const content2 = "# Updated content";
+    const filePath = path.join(workspaceDir, DEFAULT_AGENTS_FILENAME);
 
     await writeWorkspaceFile({
       dir: workspaceDir,
@@ -46,12 +67,8 @@ describe("workspace bootstrap file caching", () => {
     });
 
     // First load
-    const result1 = await loadWorkspaceBootstrapFiles(workspaceDir);
-    const agentsFile1 = result1.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
-    expect(agentsFile1?.content).toBe(content1);
-
-    // Wait a bit to ensure mtime will be different
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    const agentsFile1 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile1, content1);
 
     // Modify the file
     await writeWorkspaceFile({
@@ -59,12 +76,153 @@ describe("workspace bootstrap file caching", () => {
       name: DEFAULT_AGENTS_FILENAME,
       content: content2,
     });
+    // Some filesystems have coarse mtime precision; bump it explicitly.
+    const bumpedTime = new Date(Date.now() + 1_000);
+    await fs.utimes(filePath, bumpedTime, bumpedTime);
 
     // Second load should detect the change and return new content
-    const result2 = await loadWorkspaceBootstrapFiles(workspaceDir);
-    const agentsFile2 = result2.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
-    expect(agentsFile2?.content).toBe(content2);
-    expect(agentsFile2?.missing).toBe(false);
+    const agentsFile2 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile2, content2);
+  });
+
+  it("refreshes session bootstrap snapshots after workspace file changes", async () => {
+    const content1 = "# Initial content";
+    const content2 = "# Updated content";
+    const filePath = path.join(workspaceDir, DEFAULT_AGENTS_FILENAME);
+
+    await writeWorkspaceFile({
+      dir: workspaceDir,
+      name: DEFAULT_AGENTS_FILENAME,
+      content: content1,
+    });
+
+    const agentsFile1 = await loadSessionAgentsFile(workspaceDir, "agent:main:main");
+    expectAgentsContent(agentsFile1, content1);
+
+    await writeWorkspaceFile({
+      dir: workspaceDir,
+      name: DEFAULT_AGENTS_FILENAME,
+      content: content2,
+    });
+    const bumpedTime = new Date(Date.now() + 1_000);
+    await fs.utimes(filePath, bumpedTime, bumpedTime);
+
+    const agentsFile2 = await loadSessionAgentsFile(workspaceDir, "agent:main:main");
+    expectAgentsContent(agentsFile2, content2);
+  });
+
+  it("invalidates cache when inode changes with same mtime", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    const content1 = "# old-content";
+    const content2 = "# new-content";
+    const filePath = path.join(workspaceDir, DEFAULT_AGENTS_FILENAME);
+    const tempPath = path.join(workspaceDir, ".AGENTS.tmp");
+
+    await writeWorkspaceFile({
+      dir: workspaceDir,
+      name: DEFAULT_AGENTS_FILENAME,
+      content: content1,
+    });
+    // Use integer-second mtime so utimes can restore it exactly, isolating ctime as the
+    // only changed stat field after the in-place edit.
+    const cleanTime = new Date(Math.floor(Date.now() / 1000) * 1000);
+    await fs.utimes(filePath, cleanTime, cleanTime);
+    const originalStat = await fs.stat(filePath);
+
+    const agentsFile1 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile1, content1);
+
+    await fs.writeFile(tempPath, content2, "utf-8");
+    await fs.utimes(tempPath, originalStat.atime, originalStat.mtime);
+    await fs.rename(tempPath, filePath);
+    await fs.utimes(filePath, originalStat.atime, originalStat.mtime);
+
+    const agentsFile2 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile2, content2);
+  });
+
+  it("invalidates cache when content changes in-place with restored mtime", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    const content1 = "# old guidance";
+    const content2 = "# new guidance";
+    const filePath = path.join(workspaceDir, DEFAULT_AGENTS_FILENAME);
+
+    await writeWorkspaceFile({
+      dir: workspaceDir,
+      name: DEFAULT_AGENTS_FILENAME,
+      content: content1,
+    });
+    // Use integer-second mtime so utimes can restore it exactly, isolating ctime as the
+    // only changed stat field after the in-place edit.
+    const cleanTime = new Date(Math.floor(Date.now() / 1000) * 1000);
+    await fs.utimes(filePath, cleanTime, cleanTime);
+    const originalStat = await fs.stat(filePath);
+
+    const agentsFile1 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile1, content1);
+
+    // A loaded runner can complete both writes within one ctime tick. Wait for the
+    // fixture's cache identity to change before asserting the production reload.
+    await vi.waitFor(
+      async () => {
+        await fs.writeFile(filePath, content2, "utf-8");
+        await fs.utimes(filePath, originalStat.atime, originalStat.mtime);
+        expect((await fs.stat(filePath)).ctimeMs).not.toBe(originalStat.ctimeMs);
+      },
+      { interval: 1, timeout: 1_000 },
+    );
+
+    const editedStat = await fs.stat(filePath);
+    expect(editedStat.dev).toBe(originalStat.dev);
+    expect(editedStat.ino).toBe(originalStat.ino);
+    expect(editedStat.size).toBe(originalStat.size);
+    expect(editedStat.mtimeMs).toBe(originalStat.mtimeMs);
+
+    const originalFstatSync = fsSync.fstatSync;
+    const fstatSync = vi.spyOn(fsSync, "fstatSync").mockImplementationOnce((fd) => {
+      const stat = originalFstatSync(fd);
+      // Filesystems may coalesce rapid ctime updates; isolate the identity contract.
+      stat.ctimeMs = originalStat.ctimeMs + 1;
+      return stat;
+    });
+    try {
+      const agentsFile2 = await loadAgentsFile(workspaceDir);
+      expectAgentsContent(agentsFile2, content2);
+    } finally {
+      fstatSync.mockRestore();
+    }
+  });
+
+  it("replaces a session snapshot when inode changes with identical bytes", async () => {
+    if (process.platform === "win32") {
+      return;
+    }
+    const content = "# stable-content";
+    const filePath = path.join(workspaceDir, DEFAULT_AGENTS_FILENAME);
+    const tempPath = path.join(workspaceDir, ".AGENTS.replacement");
+    const sessionKey = "agent:main:identity-refresh";
+
+    await writeWorkspaceFile({
+      dir: workspaceDir,
+      name: DEFAULT_AGENTS_FILENAME,
+      content,
+    });
+    const originalStat = await fs.stat(filePath);
+    const agentsFile1 = await loadSessionAgentsFile(workspaceDir, sessionKey);
+    expectAgentsContent(agentsFile1, content);
+
+    await fs.writeFile(tempPath, content, "utf-8");
+    await fs.utimes(tempPath, originalStat.atime, originalStat.mtime);
+    await fs.rename(tempPath, filePath);
+    await fs.utimes(filePath, originalStat.atime, originalStat.mtime);
+
+    const agentsFile2 = await loadSessionAgentsFile(workspaceDir, sessionKey);
+    expectAgentsContent(agentsFile2, content);
+    expect(agentsFile2).not.toBe(agentsFile1);
   });
 
   it("handles file deletion gracefully", async () => {
@@ -74,10 +232,8 @@ describe("workspace bootstrap file caching", () => {
     await writeWorkspaceFile({ dir: workspaceDir, name: DEFAULT_AGENTS_FILENAME, content });
 
     // First load
-    const result1 = await loadWorkspaceBootstrapFiles(workspaceDir);
-    const agentsFile1 = result1.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
-    expect(agentsFile1?.content).toBe(content);
-    expect(agentsFile1?.missing).toBe(false);
+    const agentsFile1 = await loadAgentsFile(workspaceDir);
+    expectAgentsContent(agentsFile1, content);
 
     // Delete the file
     await fs.unlink(filePath);
@@ -101,8 +257,7 @@ describe("workspace bootstrap file caching", () => {
     // All results should be identical
     for (const result of results) {
       const agentsFile = result.find((f) => f.name === DEFAULT_AGENTS_FILENAME);
-      expect(agentsFile?.content).toBe(content);
-      expect(agentsFile?.missing).toBe(false);
+      expectAgentsContent(agentsFile, content);
     }
   });
 
@@ -126,5 +281,11 @@ describe("workspace bootstrap file caching", () => {
 
     expect(agentsFile1?.content).toBe(content1);
     expect(agentsFile2?.content).toBe(content2);
+  });
+
+  it("returns missing=true when bootstrap file never existed", async () => {
+    const agentsFile = await loadAgentsFile(workspaceDir);
+    expect(agentsFile?.missing).toBe(true);
+    expect(agentsFile?.content).toBeUndefined();
   });
 });

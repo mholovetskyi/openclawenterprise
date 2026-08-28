@@ -3,13 +3,15 @@ import SwiftUI
 
 struct InstancesSettings: View {
     var store: InstancesStore
+    let isActive: Bool
 
-    init(store: InstancesStore = .shared) {
+    init(store: InstancesStore = .shared, isActive: Bool = true) {
         self.store = store
+        self.isActive = isActive
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 16) {
             self.header
             if let err = store.lastError {
                 Text("Error: \(err)")
@@ -29,30 +31,38 @@ struct InstancesSettings: View {
             }
             Spacer()
         }
-        .onAppear { self.store.start() }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .settingsDetailContent()
+        .onAppear { self.updateActiveWork(active: self.isActive) }
+        .onChange(of: self.isActive) { _, active in
+            self.updateActiveWork(active: active)
+        }
         .onDisappear { self.store.stop() }
     }
 
+    private func updateActiveWork(active: Bool) {
+        if active {
+            self.store.start()
+        } else {
+            self.store.stop()
+        }
+    }
+
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text("Connected Instances")
-                    .font(.headline)
+                    .font(.title3.weight(.semibold))
                 Text("Latest presence beacons from OpenClaw nodes. Updated periodically.")
-                    .font(.footnote)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
-            if self.store.isLoading {
-                ProgressView()
-            } else {
-                Button {
-                    Task { await self.store.refresh() }
-                } label: {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
-                .buttonStyle(.bordered)
-                .help("Refresh")
+
+            Spacer(minLength: 16)
+
+            SettingsRefreshButton(isLoading: self.store.isLoading) {
+                Task { await self.store.refresh() }
             }
         }
     }
@@ -276,7 +286,7 @@ struct InstancesSettings: View {
     }
 
     private func platformIcon(_ raw: String) -> String {
-        let (prefix, _) = self.parsePlatform(raw)
+        let (prefix, _) = PlatformLabelFormatter.parse(raw)
         switch prefix {
         case "macos":
             return "laptopcomputer"
@@ -294,31 +304,7 @@ struct InstancesSettings: View {
     }
 
     private func prettyPlatform(_ raw: String) -> String? {
-        let (prefix, version) = self.parsePlatform(raw)
-        if prefix.isEmpty { return nil }
-        let name: String = switch prefix {
-        case "macos": "macOS"
-        case "ios": "iOS"
-        case "ipados": "iPadOS"
-        case "tvos": "tvOS"
-        case "watchos": "watchOS"
-        default: prefix.prefix(1).uppercased() + prefix.dropFirst()
-        }
-        guard let version, !version.isEmpty else { return name }
-        let parts = version.split(separator: ".").map(String.init)
-        if parts.count >= 2 {
-            return "\(name) \(parts[0]).\(parts[1])"
-        }
-        return "\(name) \(version)"
-    }
-
-    private func parsePlatform(_ raw: String) -> (prefix: String, version: String?) {
-        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return ("", nil) }
-        let parts = trimmed.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
-        let prefix = parts.first?.lowercased() ?? ""
-        let versionToken = parts.dropFirst().first
-        return (prefix, versionToken)
+        PlatformLabelFormatter.pretty(raw)
     }
 
     private func presenceUpdateSourceShortText(_ reason: String) -> String? {
@@ -374,102 +360,6 @@ struct InstancesSettings: View {
 }
 
 #if DEBUG
-extension InstancesSettings {
-    static func exerciseForTesting() {
-        let view = InstancesSettings(store: InstancesStore(isPreview: true))
-        let mac = InstanceInfo(
-            id: "mac",
-            host: "studio",
-            ip: "10.0.0.2",
-            version: "1.2.3",
-            platform: "macOS 14.2",
-            deviceFamily: "Mac",
-            modelIdentifier: "Mac14,10",
-            lastInputSeconds: 12,
-            mode: "local",
-            reason: "self",
-            text: "Mac Studio",
-            ts: 1_700_000_000_000)
-        let genericIOS = InstanceInfo(
-            id: "iphone",
-            host: "phone",
-            ip: "10.0.0.3",
-            version: "2.0.0",
-            platform: "iOS 18.0",
-            deviceFamily: "iPhone",
-            modelIdentifier: nil,
-            lastInputSeconds: 35,
-            mode: "node",
-            reason: "connect",
-            text: "iPhone node",
-            ts: 1_700_000_100_000)
-        let android = InstanceInfo(
-            id: "android",
-            host: "pixel",
-            ip: nil,
-            version: "3.1.0",
-            platform: "Android 14",
-            deviceFamily: "Android",
-            modelIdentifier: nil,
-            lastInputSeconds: 90,
-            mode: "node",
-            reason: "seq gap",
-            text: "Android node",
-            ts: 1_700_000_200_000)
-        let gateway = InstanceInfo(
-            id: "gateway",
-            host: "gateway",
-            ip: "10.0.0.9",
-            version: "4.0.0",
-            platform: "Linux",
-            deviceFamily: nil,
-            modelIdentifier: nil,
-            lastInputSeconds: nil,
-            mode: "gateway",
-            reason: "periodic",
-            text: "Gateway",
-            ts: 1_700_000_300_000)
-
-        _ = view.instanceRow(mac)
-        _ = view.instanceRow(genericIOS)
-        _ = view.instanceRow(android)
-        _ = view.instanceRow(gateway)
-
-        _ = view.leadingDeviceSymbol(
-            mac,
-            device: DevicePresentation(title: "Mac Studio", symbol: "macstudio"))
-        _ = view.leadingDeviceSymbol(
-            mac,
-            device: DevicePresentation(title: "MacBook Pro", symbol: "laptopcomputer"))
-        _ = view.leadingDeviceSymbol(android, device: nil)
-        _ = view.platformIcon("tvOS 17.1")
-        _ = view.platformIcon("watchOS 10")
-        _ = view.platformIcon("unknown 1.0")
-        _ = view.prettyPlatform("macOS 14.2")
-        _ = view.prettyPlatform("iOS 18")
-        _ = view.prettyPlatform("ipados 17.1")
-        _ = view.prettyPlatform("linux")
-        _ = view.prettyPlatform("   ")
-        _ = view.parsePlatform("macOS 14.1")
-        _ = view.parsePlatform(" ")
-        _ = view.presenceUpdateSourceShortText("self")
-        _ = view.presenceUpdateSourceShortText("instances-refresh")
-        _ = view.presenceUpdateSourceShortText("seq gap")
-        _ = view.presenceUpdateSourceShortText("custom")
-        _ = view.presenceUpdateSourceShortText(" ")
-        _ = view.updateSummaryText(mac, isGateway: false)
-        _ = view.updateSummaryText(gateway, isGateway: true)
-        _ = view.presenceUpdateSourceHelp("")
-        _ = view.presenceUpdateSourceHelp("connect")
-        _ = view.safeSystemSymbol("not-a-symbol", fallback: "cpu")
-        _ = view.isSystemSymbolAvailable("sparkles")
-        _ = view.label(icon: "android", text: "Android")
-        _ = view.label(icon: "sparkles", text: "Sparkles")
-        _ = view.label(icon: nil, text: "Plain")
-        _ = AndroidMark().body
-    }
-}
-
 struct InstancesSettings_Previews: PreviewProvider {
     static var previews: some View {
         InstancesSettings(store: .preview())

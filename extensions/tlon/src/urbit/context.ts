@@ -1,15 +1,16 @@
-import type { SsrFPolicy } from "openclaw/plugin-sdk";
-import { validateUrbitBaseUrl } from "./base-url.js";
+// Tlon plugin module implements context behavior.
+import { normalizeUrbitHostname, validateUrbitBaseUrl } from "./base-url.js";
 import { UrbitUrlError } from "./errors.js";
+export { ssrfPolicyFromDangerouslyAllowPrivateNetwork } from "openclaw/plugin-sdk/ssrf-runtime";
 
-export type UrbitContext = {
+type UrbitContext = {
   baseUrl: string;
   hostname: string;
   ship: string;
 };
 
-export function resolveShipFromHostname(hostname: string): string {
-  const trimmed = hostname.trim().toLowerCase().replace(/\.$/, "");
+function resolveShipFromHostname(hostname: string): string {
+  const trimmed = normalizeUrbitHostname(hostname);
   if (!trimmed) {
     return "";
   }
@@ -19,7 +20,7 @@ export function resolveShipFromHostname(hostname: string): string {
   return trimmed;
 }
 
-export function normalizeUrbitShip(ship: string | undefined, hostname: string): string {
+function normalizeUrbitShip(ship: string | undefined, hostname: string): string {
   const raw = ship?.replace(/^~/, "") ?? resolveShipFromHostname(hostname);
   return raw.trim();
 }
@@ -38,10 +39,4 @@ export function getUrbitContext(url: string, ship?: string): UrbitContext {
     hostname: validated.hostname,
     ship: normalizeUrbitShip(ship, validated.hostname),
   };
-}
-
-export function ssrfPolicyFromAllowPrivateNetwork(
-  allowPrivateNetwork: boolean | null | undefined,
-): SsrFPolicy | undefined {
-  return allowPrivateNetwork ? { allowPrivateNetwork: true } : undefined;
 }

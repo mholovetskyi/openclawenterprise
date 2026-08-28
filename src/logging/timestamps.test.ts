@@ -1,58 +1,31 @@
+// Timestamp tests cover timestamp formatting and timezone fallback behavior.
 import { describe, expect, it } from "vitest";
-import { formatLocalIsoWithOffset } from "./timestamps.js";
+import { formatTimestamp } from "./timestamps.js";
 
-function buildFakeDate(parts: {
-  year: number;
-  month: number;
-  day: number;
-  hour: number;
-  minute: number;
-  second: number;
-  millisecond: number;
-  timezoneOffsetMinutes: number;
-}): Date {
-  return {
-    getFullYear: () => parts.year,
-    getMonth: () => parts.month - 1,
-    getDate: () => parts.day,
-    getHours: () => parts.hour,
-    getMinutes: () => parts.minute,
-    getSeconds: () => parts.second,
-    getMilliseconds: () => parts.millisecond,
-    getTimezoneOffset: () => parts.timezoneOffsetMinutes,
-  } as unknown as Date;
-}
+describe("formatTimestamp", () => {
+  const testDate = new Date("2024-01-15T14:30:45.123Z");
 
-describe("formatLocalIsoWithOffset", () => {
-  it("formats positive offset with millisecond padding", () => {
-    const value = formatLocalIsoWithOffset(
-      buildFakeDate({
-        year: 2026,
-        month: 1,
-        day: 2,
-        hour: 3,
-        minute: 4,
-        second: 5,
-        millisecond: 6,
-        timezoneOffsetMinutes: -150, // UTC+02:30
-      }),
-    );
-    expect(value).toBe("2026-01-02T03:04:05.006+02:30");
+  it("formats short style with explicit UTC offset", () => {
+    expect(formatTimestamp(testDate, { style: "short", timeZone: "UTC" })).toBe("14:30:45+00:00");
   });
 
-  it("formats negative offset", () => {
-    const value = formatLocalIsoWithOffset(
-      buildFakeDate({
-        year: 2026,
-        month: 12,
-        day: 31,
-        hour: 23,
-        minute: 59,
-        second: 58,
-        millisecond: 321,
-        timezoneOffsetMinutes: 300, // UTC-05:00
-      }),
+  it("formats medium style with milliseconds and offset", () => {
+    expect(formatTimestamp(testDate, { style: "medium", timeZone: "UTC" })).toBe(
+      "14:30:45.123+00:00",
     );
-    expect(value).toBe("2026-12-31T23:59:58.321-05:00");
+  });
+
+  it.each([
+    ["UTC", "2024-01-15T14:30:45.123+00:00"],
+    ["America/New_York", "2024-01-15T09:30:45.123-05:00"],
+    ["Europe/Paris", "2024-01-15T15:30:45.123+01:00"],
+  ])("formats long style in %s", (timeZone, expected) => {
+    expect(formatTimestamp(testDate, { style: "long", timeZone })).toBe(expected);
+  });
+
+  it("falls back to a valid offset when the timezone is invalid", () => {
+    expect(formatTimestamp(testDate, { style: "short", timeZone: "not-a-tz" })).toMatch(
+      /^\d{2}:\d{2}:\d{2}[+-]\d{2}:\d{2}$/,
+    );
   });
 });

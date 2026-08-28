@@ -1,8 +1,33 @@
+// Verifies Docker sandbox config parsing and validation.
 import { describe, expect, it } from "vitest";
-import { resolveSandboxBrowserConfig } from "../agents/sandbox/config.js";
-import { validateConfigObject } from "./config.js";
+import {
+  DANGEROUS_SANDBOX_DOCKER_BOOLEAN_KEYS,
+  resolveSandboxBrowserConfig,
+  resolveSandboxDockerConfig,
+} from "../agents/sandbox/config.js";
+import { validateConfigObject } from "./validation.js";
 
 describe("sandbox docker config", () => {
+  it("joins setupCommand arrays with newlines", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              setupCommand: ["apt-get update", "apt-get install -y curl"],
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.config.agents?.defaults?.sandbox?.docker?.setupCommand).toBe(
+        "apt-get update\napt-get install -y curl",
+      );
+    }
+  });
+
   it("accepts safe binds array in sandbox.docker config", () => {
     const res = validateConfigObject({
       agents: {
@@ -13,9 +38,8 @@ describe("sandbox docker config", () => {
             },
           },
         },
-        list: [
-          {
-            id: "main",
+        entries: {
+          main: {
             sandbox: {
               docker: {
                 image: "custom-sandbox:latest",
@@ -23,7 +47,7 @@ describe("sandbox docker config", () => {
               },
             },
           },
-        ],
+        },
       },
     });
     expect(res.ok).toBe(true);
@@ -32,10 +56,79 @@ describe("sandbox docker config", () => {
         "/home/user/source:/source:rw",
         "/var/data/myapp:/data:ro",
       ]);
-      expect(res.config.agents?.list?.[0]?.sandbox?.docker?.binds).toEqual([
+      expect(res.config.agents?.entries?.main?.sandbox?.docker?.binds).toEqual([
         "/home/user/projects:/projects:ro",
       ]);
     }
+  });
+
+  it("accepts Windows drive-letter binds in sandbox.docker config", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              binds: ["D:/data/openclaw/src:/src:ro", "D:\\data\\openclaw\\output:/output:rw"],
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.config.agents?.defaults?.sandbox?.docker?.binds).toEqual([
+        "D:/data/openclaw/src:/src:ro",
+        "D:\\data\\openclaw\\output:/output:rw",
+      ]);
+    }
+  });
+
+  it("rejects drive-relative Windows binds in sandbox.docker config", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              binds: ["D:relative\\path:/src:ro"],
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it("accepts non-empty Docker GPU passthrough config", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              gpus: "all",
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.config.agents?.defaults?.sandbox?.docker?.gpus).toBe("all");
+    }
+  });
+
+  it("rejects empty Docker GPU passthrough config", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              gpus: "",
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(false);
   });
 
   it("rejects network host mode via Zod schema validation", () => {
@@ -51,6 +144,62 @@ describe("sandbox docker config", () => {
       },
     });
     expect(res.ok).toBe(false);
+  });
+
+  it("rejects container namespace join by default", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              network: "container:peer",
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it("allows container namespace join with explicit dangerous override", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              network: "container:peer",
+              dangerouslyAllowContainerNamespaceJoin: true,
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(true);
+  });
+
+  it("uses agent override precedence for dangerous sandbox docker booleans", () => {
+    for (const key of DANGEROUS_SANDBOX_DOCKER_BOOLEAN_KEYS) {
+      const inherited = resolveSandboxDockerConfig({
+        scope: "agent",
+        globalDocker: { [key]: true },
+        agentDocker: {},
+      });
+      expect(inherited[key]).toBe(true);
+
+      const overridden = resolveSandboxDockerConfig({
+        scope: "agent",
+        globalDocker: { [key]: true },
+        agentDocker: { [key]: false },
+      });
+      expect(overridden[key]).toBe(false);
+
+      const sharedScope = resolveSandboxDockerConfig({
+        scope: "shared",
+        globalDocker: { [key]: true },
+        agentDocker: { [key]: false },
+      });
+      expect(sharedScope[key]).toBe(true);
+    }
   });
 
   it("rejects seccomp unconfined via Zod schema validation", () => {
@@ -106,7 +255,10 @@ describe("sandbox browser binds config", () => {
         defaults: {
           sandbox: {
             browser: {
-              binds: ["/home/user/.chrome-profile:/data/chrome:rw"],
+              binds: [
+                "/home/user/.chrome-profile:/data/chrome:rw",
+                "D:/data/openclaw/chrome:/data/chrome-windows:rw",
+              ],
             },
           },
         },
@@ -116,7 +268,28 @@ describe("sandbox browser binds config", () => {
     if (res.ok) {
       expect(res.config.agents?.defaults?.sandbox?.browser?.binds).toEqual([
         "/home/user/.chrome-profile:/data/chrome:rw",
+        "D:/data/openclaw/chrome:/data/chrome-windows:rw",
       ]);
+    }
+  });
+
+  it("rejects relative source paths in browser binds", () => {
+    for (const bind of [
+      "relative/profile:/data/chrome:rw",
+      "D:relative\\profile:/data/chrome:rw",
+    ]) {
+      const res = validateConfigObject({
+        agents: {
+          defaults: {
+            sandbox: {
+              browser: {
+                binds: [bind],
+              },
+            },
+          },
+        },
+      });
+      expect(res.ok, bind).toBe(false);
     }
   });
 
@@ -150,7 +323,7 @@ describe("sandbox browser binds config", () => {
       globalBrowser: { binds: [] },
       agentBrowser: {},
     });
-    expect(resolved.binds).toEqual([]);
+    expect(resolved.binds).toStrictEqual([]);
   });
 
   it("ignores agent browser binds under shared scope", () => {
@@ -218,5 +391,38 @@ describe("sandbox browser binds config", () => {
       },
     });
     expect(res.ok).toBe(false);
+  });
+
+  it("rejects container namespace join in sandbox.browser config by default", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            browser: {
+              network: "container:peer",
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(false);
+  });
+
+  it("allows container namespace join in sandbox.browser config with explicit dangerous override", () => {
+    const res = validateConfigObject({
+      agents: {
+        defaults: {
+          sandbox: {
+            docker: {
+              dangerouslyAllowContainerNamespaceJoin: true,
+            },
+            browser: {
+              network: "container:peer",
+            },
+          },
+        },
+      },
+    });
+    expect(res.ok).toBe(true);
   });
 });

@@ -3,7 +3,7 @@
  * Extends the built-in skill-scanner with enterprise-grade rules.
  */
 
-import type { SkillScanFinding, SkillScanSummary } from "../../../security/skill-scanner.js";
+import type { SkillScanFinding, SkillScanSummary } from "../../../skills/security/scanner.js";
 
 // ── Additional enterprise scan rules ──────────────────────────────────────────
 
@@ -162,7 +162,7 @@ export async function runEnterpriseScan(
   skillDir: string,
 ): Promise<EnterpriseSkillScanResult> {
   // Run base scanner first
-  const { scanDirectoryWithSummary } = await import("../../../security/skill-scanner.js");
+  const { scanDirectoryWithSummary } = await import("../../../skills/security/scanner.js");
   const base = await scanDirectoryWithSummary(skillDir);
 
   const enterpriseFindings: EnterpriseSkillScanResult["enterprise"]["findings"] = [];

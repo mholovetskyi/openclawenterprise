@@ -1,56 +1,86 @@
-import AppKit
 import Foundation
 import OpenClawDiscovery
-import OpenClawIPC
 import SwiftUI
 
 extension OnboardingView {
     func selectLocalGateway() {
-        self.state.connectionMode = .local
-        self.preferredGatewayID = nil
-        self.showAdvancedConnection = false
+        if state.connectionMode != .local {
+            resetGatewayBoundAIState()
+        }
+        defaultsToLocalGateway = false
+        state.connectionMode = .local
+        preferredGatewayID = nil
+        showAdvancedConnection = false
+        showRemoteChoices = false
         GatewayDiscoveryPreferences.setPreferredStableID(nil)
+        probeConfiguredGatewayForDashboard()
     }
 
     func selectUnconfiguredGateway() {
-        Task { await self.onboardingWizard.cancelIfRunning() }
-        self.state.connectionMode = .unconfigured
-        self.preferredGatewayID = nil
-        self.showAdvancedConnection = false
+        resetGatewayBoundAIState()
+        defaultsToLocalGateway = false
+        state.connectionMode = .unconfigured
+        preferredGatewayID = nil
+        showAdvancedConnection = false
+        showRemoteChoices = false
         GatewayDiscoveryPreferences.setPreferredStableID(nil)
     }
 
+    func handleRemoteSelection() {
+        defaultsToLocalGateway = false
+        state.connectionMode = .remote
+        showRemoteChoices.toggle()
+    }
+
     func selectRemoteGateway(_ gateway: GatewayDiscoveryModel.DiscoveredGateway) {
-        Task { await self.onboardingWizard.cancelIfRunning() }
-        self.preferredGatewayID = gateway.stableID
-        GatewayDiscoveryPreferences.setPreferredStableID(gateway.stableID)
-
-        if self.state.remoteTransport == .direct {
-            if let url = GatewayDiscoveryHelpers.directUrl(for: gateway) {
-                self.state.remoteUrl = url
-            }
-        } else if let host = GatewayDiscoveryHelpers.sanitizedTailnetHost(gateway.tailnetDns) ?? gateway.lanHost {
-            let user = NSUserName()
-            self.state.remoteTarget = GatewayDiscoveryModel.buildSSHTarget(
-                user: user,
-                host: host,
-                port: gateway.sshPort)
-            OpenClawConfigFile.setRemoteGatewayUrl(
-                host: gateway.serviceHost ?? host,
-                port: gateway.servicePort ?? gateway.gatewayPort)
+        let shouldResetGatewayState = Self.shouldResetGatewayBoundAIState(
+            connectionMode: state.connectionMode,
+            currentPreferredGatewayID: self.effectivePreferredGatewayID,
+            persistedPreferredGatewayID: GatewayDiscoveryPreferences.preferredStableID(),
+            selectedGatewayID: gateway.stableID)
+        if shouldResetGatewayState {
+            // The mode can remain `.remote` while the selected Gateway changes,
+            // so its onChange hook alone cannot retire route-bound state.
+            resetGatewayBoundAIState()
+            resetRemoteProbeFeedback()
         }
-        self.state.remoteCliPath = gateway.cliPath ?? ""
+        defaultsToLocalGateway = false
+        preferredGatewayID = gateway.stableID
+        GatewayDiscoverySelectionSupport.applyRemoteSelection(gateway: gateway, state: state)
 
-        self.state.connectionMode = .remote
-        MacNodeModeCoordinator.shared.setPreferredGatewayStableID(gateway.stableID)
+        state.connectionMode = .remote
+        MacNodeModeCoordinator.shared.setPreferredGatewayStableID(gateway.stableID, state: state)
+        probeConfiguredGatewayForDashboard()
+    }
+
+    static func shouldResetGatewayBoundAIState(
+        connectionMode: AppState.ConnectionMode,
+        currentPreferredGatewayID: String?,
+        persistedPreferredGatewayID: String?,
+        selectedGatewayID: String) -> Bool
+    {
+        let currentGatewayID = Self.normalizedGatewayID(currentPreferredGatewayID) ??
+            Self.normalizedGatewayID(persistedPreferredGatewayID)
+        return connectionMode != .remote || currentGatewayID != Self.normalizedGatewayID(selectedGatewayID)
+    }
+
+    private static func normalizedGatewayID(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed?.isEmpty == false ? trimmed : nil
+    }
+
+    var effectivePreferredGatewayID: String? {
+        let persisted = Self.normalizedGatewayID(GatewayDiscoveryPreferences.preferredStableID())
+        guard let local = Self.normalizedGatewayID(preferredGatewayID) else {
+            return persisted
+        }
+        // Config-watcher endpoint changes clear the persisted owner. Ignore the
+        // stale @State copy until the view's next render catches up.
+        return local == persisted ? local : persisted
     }
 
     func openSettings(tab: SettingsTab) {
-        SettingsTabRouter.request(tab)
-        self.openSettings()
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .openclawSelectSettingsTab, object: tab)
-        }
+        AppNavigationActions.openSettings(tab: tab)
     }
 
     func handleBack() {
@@ -60,91 +90,49 @@ extension OnboardingView {
     }
 
     func handleNext() {
-        if self.isWizardBlocking { return }
-        if self.currentPage < self.pageCount - 1 {
+        guard canAdvance else { return }
+        let remoteDecision = Self.remoteGatewayAdvanceDecision(
+            connectionMode: state.connectionMode,
+            activePageIndex: activePageIndex,
+            connectionPageIndex: connectionPageIndex,
+            authIssue: remoteAuthIssue,
+            probeState: remoteProbeState,
+            input: remoteGatewayProbeInput)
+        guard remoteDecision.canAdvance else {
+            if remoteDecision.shouldProbe {
+                Task { await self.probeRemoteConnection(advanceOnSuccess: true) }
+            }
+            return
+        }
+        self.commitRecommendedConnectionIfNeeded(for: activePageIndex)
+        if currentPage < pageCount - 1 {
             withAnimation { self.currentPage += 1 }
         } else {
             self.finish()
         }
     }
 
-    func finish() {
-        UserDefaults.standard.set(true, forKey: "openclaw.onboardingSeen")
-        UserDefaults.standard.set(currentOnboardingVersion, forKey: onboardingVersionKey)
+    func commitRecommendedConnectionIfNeeded(for pageIndex: Int) {
+        if pageIndex == connectionPageIndex,
+           defaultsToLocalGateway,
+           state.connectionMode == .unconfigured
+        {
+            self.selectLocalGateway()
+        }
+    }
+
+    @discardableResult
+    func finish() -> Bool {
+        guard !finishState.didFinish else { return false }
+        finishState.didFinish = true
+        aiSetup.clearCompletedHandoffIfOwned()
+        OnboardingController.markComplete()
         OnboardingController.shared.close()
-    }
-
-    func copyToPasteboard(_ text: String) {
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
-        self.copied = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { self.copied = false }
-    }
-
-    func startAnthropicOAuth() {
-        guard !self.anthropicAuthBusy else { return }
-        self.anthropicAuthBusy = true
-        defer { self.anthropicAuthBusy = false }
-
-        do {
-            let pkce = try AnthropicOAuth.generatePKCE()
-            self.anthropicAuthPKCE = pkce
-            let url = AnthropicOAuth.buildAuthorizeURL(pkce: pkce)
-            NSWorkspace.shared.open(url)
-            self.anthropicAuthStatus = "Browser opened. After approving, paste the `code#state` value here."
-        } catch {
-            self.anthropicAuthStatus = "Failed to start OAuth: \(error.localizedDescription)"
-        }
-    }
-
-    @MainActor
-    func finishAnthropicOAuth() async {
-        guard !self.anthropicAuthBusy else { return }
-        guard let pkce = self.anthropicAuthPKCE else { return }
-        self.anthropicAuthBusy = true
-        defer { self.anthropicAuthBusy = false }
-
-        guard let parsed = AnthropicOAuthCodeState.parse(from: self.anthropicAuthCode) else {
-            self.anthropicAuthStatus = "OAuth failed: missing or invalid code/state."
-            return
-        }
-
-        do {
-            let creds = try await AnthropicOAuth.exchangeCode(
-                code: parsed.code,
-                state: parsed.state,
-                verifier: pkce.verifier)
-            try OpenClawOAuthStore.saveAnthropicOAuth(creds)
-            self.refreshAnthropicOAuthStatus()
-            self.anthropicAuthStatus = "Connected. OpenClaw can now use Claude."
-        } catch {
-            self.anthropicAuthStatus = "OAuth failed: \(error.localizedDescription)"
-        }
-    }
-
-    func pollAnthropicClipboardIfNeeded() {
-        guard self.currentPage == self.anthropicAuthPageIndex else { return }
-        guard self.anthropicAuthPKCE != nil else { return }
-        guard !self.anthropicAuthBusy else { return }
-        guard self.anthropicAuthAutoDetectClipboard else { return }
-
-        let pb = NSPasteboard.general
-        let changeCount = pb.changeCount
-        guard changeCount != self.anthropicAuthLastPasteboardChangeCount else { return }
-        self.anthropicAuthLastPasteboardChangeCount = changeCount
-
-        guard let raw = pb.string(forType: .string), !raw.isEmpty else { return }
-        guard let parsed = AnthropicOAuthCodeState.parse(from: raw) else { return }
-        guard let pkce = self.anthropicAuthPKCE, parsed.state == pkce.verifier else { return }
-
-        let next = "\(parsed.code)#\(parsed.state)"
-        if self.anthropicAuthCode != next {
-            self.anthropicAuthCode = next
-            self.anthropicAuthStatus = "Detected `code#state` from clipboard."
-        }
-
-        guard self.anthropicAuthAutoConnectClipboard else { return }
-        Task { await self.finishAnthropicOAuth() }
+        guard state.connectionMode != .unconfigured else { return true }
+        // Fresh activation hands off to the dashboard's custodian onboarding, which
+        // owns the remaining first-run steps (memory import, channels, permissions,
+        // hatch). A live-verified pre-existing setup reopens the normal dashboard.
+        dashboardHandoffOpener(aiSetup.verifiedExistingInference ? .dashboard : .custodianOnboarding)
+        return true
     }
 }

@@ -1,72 +1,23 @@
-import type { Api, Model } from "@mariozechner/pi-ai";
-import { resolveOpenClawAgentDir } from "../../agents/agent-paths.js";
-import type { AuthProfileStore } from "../../agents/auth-profiles.js";
-import { listProfilesForProvider } from "../../agents/auth-profiles.js";
-import {
-  getCustomProviderApiKey,
-  resolveAwsSdkEnvVarName,
-  resolveEnvApiKey,
-} from "../../agents/model-auth.js";
-import {
-  ANTIGRAVITY_OPUS_46_FORWARD_COMPAT_CANDIDATES,
-  resolveForwardCompatModel,
-} from "../../agents/model-forward-compat.js";
-import { ensureOpenClawModelsJson } from "../../agents/models-config.js";
-import { ensurePiAuthJsonFromAuthProfiles } from "../../agents/pi-auth-json.js";
-import type { ModelRegistry } from "../../agents/pi-model-discovery.js";
-import { discoverAuthStorage, discoverModels } from "../../agents/pi-model-discovery.js";
-import type { OpenClawConfig } from "../../config/config.js";
-import {
-  formatErrorWithStack,
-  MODEL_AVAILABILITY_UNAVAILABLE_CODE,
-  shouldFallbackToAuthHeuristics,
-} from "./list.errors.js";
-import type { ModelRow } from "./list.types.js";
-import { isLocalBaseUrl, modelKey } from "./shared.js";
+/** Registry access for full and configured-only model lists. */
+import { modelKey } from "../../agents/model-ref-shared.js";
+import { shouldSuppressBuiltInModelCore } from "../../agents/model-suppression.js";
+import { loadPreparedAgentModelRegistry as loadAgentModelRegistry } from "../../agents/prepared-model-registry.js";
+import type { OpenClawConfig } from "../../config/types.openclaw.js";
+import type { Model } from "../../llm/types.js";
+import { formatErrorWithStack } from "./list.errors.js";
+import type { ConfiguredEntry } from "./list.types.js";
 
-const hasAuthForProvider = (
-  provider: string,
-  cfg?: OpenClawConfig,
-  authStore?: AuthProfileStore,
-) => {
-  if (!cfg || !authStore) {
-    return false;
-  }
-  if (listProfilesForProvider(authStore, provider).length > 0) {
-    return true;
-  }
-  if (provider === "amazon-bedrock" && resolveAwsSdkEnvVarName()) {
-    return true;
-  }
-  if (resolveEnvApiKey(provider)) {
-    return true;
-  }
-  if (getCustomProviderApiKey(cfg, provider)) {
-    return true;
-  }
-  return false;
+type ModelListRegistryOptions = {
+  agentId?: string;
+  agentDir?: string;
+  providerFilter?: string;
+  normalizeModels?: boolean;
+  workspaceDir?: string;
 };
 
-function createAvailabilityUnavailableError(message: string): Error {
-  const err = new Error(message);
-  (err as { code?: string }).code = MODEL_AVAILABILITY_UNAVAILABLE_CODE;
-  return err;
-}
-
-function normalizeAvailabilityError(err: unknown): Error {
-  if (shouldFallbackToAuthHeuristics(err) && err instanceof Error) {
-    return err;
-  }
-  return createAvailabilityUnavailableError(
-    `Model availability unavailable: getAvailable() failed.\n${formatErrorWithStack(err)}`,
-  );
-}
-
-function validateAvailableModels(availableModels: unknown): Model<Api>[] {
+function validateAvailableModels(availableModels: unknown): Model[] {
   if (!Array.isArray(availableModels)) {
-    throw createAvailabilityUnavailableError(
-      "Model availability unavailable: getAvailable() returned a non-array value.",
-    );
+    throw new Error("Model availability unavailable: getAvailable() returned a non-array value.");
   }
 
   for (const model of availableModels) {
@@ -76,164 +27,68 @@ function validateAvailableModels(availableModels: unknown): Model<Api>[] {
       typeof (model as { provider?: unknown }).provider !== "string" ||
       typeof (model as { id?: unknown }).id !== "string"
     ) {
-      throw createAvailabilityUnavailableError(
+      throw new Error(
         "Model availability unavailable: getAvailable() returned invalid model entries.",
       );
     }
   }
 
-  return availableModels as Model<Api>[];
+  return availableModels as Model[];
 }
 
-function loadAvailableModels(registry: ModelRegistry): Model<Api>[] {
-  let availableModels: unknown;
-  try {
-    availableModels = registry.getAvailable();
-  } catch (err) {
-    throw normalizeAvailabilityError(err);
-  }
-  try {
-    return validateAvailableModels(availableModels);
-  } catch (err) {
-    throw normalizeAvailabilityError(err);
-  }
-}
-
-export async function loadModelRegistry(cfg: OpenClawConfig) {
-  await ensureOpenClawModelsJson(cfg);
-  const agentDir = resolveOpenClawAgentDir();
-  await ensurePiAuthJsonFromAuthProfiles(agentDir);
-  const authStorage = discoverAuthStorage(agentDir);
-  const registry = discoverModels(authStorage, agentDir);
-  const appended = appendAntigravityForwardCompatModels(registry.getAll(), registry);
-  const models = appended.models;
-  const synthesizedForwardCompat = appended.synthesizedForwardCompat;
+/** Loads the full registry, discovered keys, and model-level availability. */
+export async function loadModelRegistry(cfg: OpenClawConfig, opts?: ModelListRegistryOptions) {
+  const { config: runtimeConfig, registry } = await loadAgentModelRegistry(cfg, opts);
+  const isVisible = (model: Model) =>
+    !shouldSuppressBuiltInModelCore({
+      provider: model.provider,
+      id: model.id,
+      baseUrl: model.baseUrl,
+      config: runtimeConfig,
+    });
+  const models = registry.getAll().filter(isVisible);
+  const discoveredKeys = new Set(models.map((model) => modelKey(model.provider, model.id)));
   let availableKeys: Set<string> | undefined;
   let availabilityErrorMessage: string | undefined;
-
   try {
-    const availableModels = loadAvailableModels(registry);
+    const availableModels = validateAvailableModels(registry.getAvailable()).filter(isVisible);
     availableKeys = new Set(availableModels.map((model) => modelKey(model.provider, model.id)));
-    for (const synthesized of synthesizedForwardCompat) {
-      if (hasAvailableTemplate(availableKeys, synthesized.templatePrefixes)) {
-        availableKeys.add(synthesized.key);
-      }
-    }
   } catch (err) {
-    if (!shouldFallbackToAuthHeuristics(err)) {
-      throw err;
-    }
-
-    // Some providers can report model-level availability as unavailable.
-    // Fall back to provider-level auth heuristics when availability is undefined.
-    availableKeys = undefined;
-    if (!availabilityErrorMessage) {
-      availabilityErrorMessage = formatErrorWithStack(err);
-    }
+    // Availability failures use provider auth hints; an empty result remains authoritative.
+    // Registry discovery failures above still abort the command.
+    availabilityErrorMessage = `Model availability unavailable: getAvailable() failed.\n${formatErrorWithStack(err)}`;
   }
-  return { registry, models, availableKeys, availabilityErrorMessage };
+  return { registry, models, discoveredKeys, availableKeys, availabilityErrorMessage };
 }
 
-type SynthesizedForwardCompat = {
-  key: string;
-  templatePrefixes: readonly string[];
-};
-
-function appendAntigravityForwardCompatModels(
-  models: Model<Api>[],
-  modelRegistry: ModelRegistry,
-): { models: Model<Api>[]; synthesizedForwardCompat: SynthesizedForwardCompat[] } {
-  const nextModels = [...models];
-  const synthesizedForwardCompat: SynthesizedForwardCompat[] = [];
-
-  for (const candidate of ANTIGRAVITY_OPUS_46_FORWARD_COMPAT_CANDIDATES) {
-    const key = modelKey("google-antigravity", candidate.id);
-    const hasForwardCompat = nextModels.some((model) => modelKey(model.provider, model.id) === key);
-    if (hasForwardCompat) {
+/** Loads only configured registry entries and their auth availability. */
+export async function loadConfiguredListModelRegistry(
+  cfg: OpenClawConfig,
+  entries: ConfiguredEntry[],
+  opts?: Omit<ModelListRegistryOptions, "normalizeModels">,
+) {
+  // Configured-only rows use the credential-aware owner's targeted lookups.
+  const { config: runtimeConfig, registry } = await loadAgentModelRegistry(cfg, opts);
+  const discoveredKeys = new Set<string>();
+  const availableKeys = new Set<string>();
+  for (const entry of entries) {
+    const model = registry.find(entry.ref.provider, entry.ref.model);
+    if (
+      !model ||
+      shouldSuppressBuiltInModelCore({
+        provider: model.provider,
+        id: model.id,
+        baseUrl: model.baseUrl,
+        config: runtimeConfig,
+      })
+    ) {
       continue;
     }
-
-    const fallback = resolveForwardCompatModel("google-antigravity", candidate.id, modelRegistry);
-    if (!fallback) {
-      continue;
-    }
-
-    nextModels.push(fallback);
-    synthesizedForwardCompat.push({
-      key,
-      templatePrefixes: candidate.templatePrefixes,
-    });
-  }
-
-  return { models: nextModels, synthesizedForwardCompat };
-}
-
-function hasAvailableTemplate(
-  availableKeys: Set<string>,
-  templatePrefixes: readonly string[],
-): boolean {
-  for (const key of availableKeys) {
-    if (templatePrefixes.some((prefix) => key.startsWith(prefix))) {
-      return true;
+    const key = modelKey(model.provider, model.id);
+    discoveredKeys.add(key);
+    if (registry.hasConfiguredAuth(model)) {
+      availableKeys.add(key);
     }
   }
-  return false;
-}
-
-export function toModelRow(params: {
-  model?: Model<Api>;
-  key: string;
-  tags: string[];
-  aliases?: string[];
-  availableKeys?: Set<string>;
-  cfg?: OpenClawConfig;
-  authStore?: AuthProfileStore;
-}): ModelRow {
-  const { model, key, tags, aliases = [], availableKeys, cfg, authStore } = params;
-  if (!model) {
-    return {
-      key,
-      name: key,
-      input: "-",
-      contextWindow: null,
-      local: null,
-      available: null,
-      tags: [...tags, "missing"],
-      missing: true,
-    };
-  }
-
-  const input = model.input.join("+") || "text";
-  const local = isLocalBaseUrl(model.baseUrl);
-  // Prefer model-level registry availability when present.
-  // Fall back to provider-level auth heuristics only if registry availability isn't available.
-  const available =
-    availableKeys !== undefined
-      ? availableKeys.has(modelKey(model.provider, model.id))
-      : cfg && authStore
-        ? hasAuthForProvider(model.provider, cfg, authStore)
-        : false;
-  const aliasTags = aliases.length > 0 ? [`alias:${aliases.join(",")}`] : [];
-  const mergedTags = new Set(tags);
-  if (aliasTags.length > 0) {
-    for (const tag of mergedTags) {
-      if (tag === "alias" || tag.startsWith("alias:")) {
-        mergedTags.delete(tag);
-      }
-    }
-    for (const tag of aliasTags) {
-      mergedTags.add(tag);
-    }
-  }
-
-  return {
-    key,
-    name: model.name || model.id,
-    input,
-    contextWindow: model.contextWindow ?? null,
-    local,
-    available,
-    tags: Array.from(mergedTags),
-    missing: false,
-  };
+  return { registry, discoveredKeys, availableKeys };
 }

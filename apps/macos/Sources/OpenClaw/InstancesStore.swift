@@ -46,8 +46,6 @@ final class InstancesStore {
     private let interval: TimeInterval = 30
     private var eventTask: Task<Void, Never>?
     private var startCount = 0
-    private var lastPresenceById: [String: InstanceInfo] = [:]
-    private var lastLoginNotifiedAtMs: [String: Double] = [:]
 
     private struct PresenceEventPayload: Codable {
         let presence: [PresenceEntry]
@@ -62,14 +60,11 @@ final class InstancesStore {
         self.startCount += 1
         guard self.startCount == 1 else { return }
         guard self.task == nil else { return }
-        self.startGatewaySubscription()
-        self.task = Task.detached { [weak self] in
-            guard let self else { return }
-            await self.refresh()
-            while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: UInt64(self.interval * 1_000_000_000))
-                await self.refresh()
-            }
+        GatewayPushSubscription.restartTask(task: &self.eventTask) { [weak self] push in
+            self?.handle(push: push)
+        }
+        SimpleTaskSupport.startDetachedLoop(task: &self.task, interval: self.interval) { [weak self] in
+            await self?.refresh()
         }
     }
 
@@ -82,20 +77,6 @@ final class InstancesStore {
         self.task = nil
         self.eventTask?.cancel()
         self.eventTask = nil
-    }
-
-    private func startGatewaySubscription() {
-        self.eventTask?.cancel()
-        self.eventTask = Task { [weak self] in
-            guard let self else { return }
-            let stream = await GatewayConnection.shared.subscribe()
-            for await push in stream {
-                if Task.isCancelled { return }
-                await MainActor.run { [weak self] in
-                    self?.handle(push: push)
-                }
-            }
-        }
     }
 
     private func handle(push: GatewayPush) {
@@ -172,7 +153,7 @@ final class InstancesStore {
             platform: platform,
             deviceFamily: "Mac",
             modelIdentifier: InstanceIdentity.modelIdentifier,
-            lastInputSeconds: SystemPresenceInfo.lastInputSeconds(),
+            lastInputSeconds: nil,
             mode: "local",
             reason: reason,
             text: text,
@@ -238,16 +219,6 @@ final class InstancesStore {
         }
     }
 
-    private func decodeAndApplyPresenceData(_ data: Data) {
-        do {
-            let decoded = try JSONDecoder().decode([PresenceEntry].self, from: data)
-            self.applyPresence(decoded)
-        } catch {
-            self.logger.error("presence decode from event failed: \(error.localizedDescription, privacy: .public)")
-            self.lastError = error.localizedDescription
-        }
-    }
-
     func handlePresenceEventPayload(_ payload: OpenClawProtocol.AnyCodable) {
         do {
             let wrapper = try GatewayPayloadDecoding.decode(payload, as: PresenceEventPayload.self)
@@ -279,36 +250,9 @@ final class InstancesStore {
 
     private func applyPresence(_ entries: [PresenceEntry]) {
         let withIDs = self.normalizePresence(entries)
-        self.notifyOnNodeLogin(withIDs)
-        self.lastPresenceById = Dictionary(uniqueKeysWithValues: withIDs.map { ($0.id, $0) })
         self.instances = withIDs
         self.statusMessage = nil
         self.lastError = nil
-    }
-
-    private func notifyOnNodeLogin(_ instances: [InstanceInfo]) {
-        for inst in instances {
-            guard let reason = inst.reason?.trimmingCharacters(in: .whitespacesAndNewlines) else { continue }
-            guard reason == "node-connected" else { continue }
-            if let mode = inst.mode?.lowercased(), mode == "local" { continue }
-
-            let previous = self.lastPresenceById[inst.id]
-            if previous?.reason == "node-connected", previous?.ts == inst.ts { continue }
-
-            let lastNotified = self.lastLoginNotifiedAtMs[inst.id] ?? 0
-            if inst.ts <= lastNotified { continue }
-            self.lastLoginNotifiedAtMs[inst.id] = inst.ts
-
-            let name = inst.host?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let device = name?.isEmpty == false ? name! : inst.id
-            Task { @MainActor in
-                _ = await NotificationManager().send(
-                    title: "Node connected",
-                    body: device,
-                    sound: nil,
-                    priority: .active)
-            }
-        }
     }
 }
 

@@ -1,33 +1,103 @@
-// Prevent duplicate processing when WebSocket reconnects or Feishu redelivers messages.
-const DEDUP_TTL_MS = 30 * 60 * 1000; // 30 minutes
-const DEDUP_MAX_SIZE = 1_000;
-const DEDUP_CLEANUP_INTERVAL_MS = 5 * 60 * 1000; // cleanup every 5 minutes
-const processedMessageIds = new Map<string, number>(); // messageId -> timestamp
-let lastCleanupTime = Date.now();
+// PERMANENT logical-identity guard above durable event_id tombstones. Feishu
+// can redeliver one text message with a fresh message_id/event_id (#46778),
+// and multi-account groups receive one logical broadcast per bot account.
+// Queue tombstones cannot cover either twin; claims commit at turn adoption.
+import type { ChannelReplayClaimHandle } from "openclaw/plugin-sdk/persistent-dedupe";
+import { feishuDedupeState } from "./dedup-state.js";
 
-export function tryRecordMessage(messageId: string): boolean {
-  const now = Date.now();
+type FeishuDedupeLog = (...args: unknown[]) => void;
 
-  // Throttled cleanup: evict expired entries at most once per interval.
-  if (now - lastCleanupTime > DEDUP_CLEANUP_INTERVAL_MS) {
-    for (const [id, ts] of processedMessageIds) {
-      if (now - ts > DEDUP_TTL_MS) {
-        processedMessageIds.delete(id);
-      }
-    }
-    lastCleanupTime = now;
-  }
+export type FeishuMessageProcessingClaim = ChannelReplayClaimHandle;
 
-  if (processedMessageIds.has(messageId)) {
+type FeishuMessageClaim =
+  | { kind: "claimed"; handle: FeishuMessageProcessingClaim }
+  | { kind: "duplicate" }
+  | { kind: "inflight"; pending: Promise<boolean> }
+  | { kind: "invalid" };
+
+function dedupeKey(messageId: string | undefined | null): string {
+  return messageId?.trim() ?? "";
+}
+
+function dedupeOptions(namespace: string | undefined, log: FeishuDedupeLog | undefined) {
+  return {
+    ...(namespace ? { namespace } : {}),
+    // Persistence is best effort: a broken state DB must never block inbound
+    // handling, so disk errors surface to the caller's log while the memory
+    // layer keeps deduping.
+    ...(log
+      ? {
+          onDiskError: (error: unknown) =>
+            log(`feishu-dedup: persistent state error: ${String(error)}`),
+        }
+      : {}),
+  };
+}
+
+/**
+ * Claims a dedupe key for exclusive handling. Duplicate (already committed)
+ * and in-flight keys are reported; blank keys fail open as invalid so an
+ * unidentifiable event is never suppressed.
+ */
+export async function claimUnprocessedFeishuMessage(params: {
+  messageId: string | undefined | null;
+  namespace?: string;
+  log?: FeishuDedupeLog;
+}): Promise<FeishuMessageClaim> {
+  const claim = await feishuDedupeState.guard.claim(
+    params.messageId,
+    dedupeOptions(params.namespace, params.log),
+  );
+  return claim;
+}
+
+/**
+ * Claims (unless the caller already holds the claim) and commits a message.
+ * False means another handler owns it, it was already handled, or the key is
+ * blank; handlers must skip dispatch then.
+ */
+export async function finalizeFeishuMessageProcessing(params: {
+  messageId: string | undefined | null;
+  namespace?: string;
+  log?: FeishuDedupeLog;
+  processingClaim?: FeishuMessageProcessingClaim;
+}): Promise<boolean> {
+  const key = dedupeKey(params.messageId);
+  if (!key) {
     return false;
   }
-
-  // Evict oldest entries if cache is full.
-  if (processedMessageIds.size >= DEDUP_MAX_SIZE) {
-    const first = processedMessageIds.keys().next().value!;
-    processedMessageIds.delete(first);
+  const options = dedupeOptions(params.namespace, params.log);
+  const claim = params.processingClaim ?? (await feishuDedupeState.guard.claim(key, options));
+  if ("kind" in claim && claim.kind !== "claimed") {
+    return false;
   }
+  return await ("kind" in claim ? claim.handle : claim).commit();
+}
 
-  processedMessageIds.set(messageId, now);
-  return true;
+/** Forgets a recorded message so a retryable synthetic event can be handled on redelivery. */
+export async function forgetProcessedFeishuMessage(
+  messageId: string | undefined | null,
+  namespace = "global",
+  log?: FeishuDedupeLog,
+): Promise<boolean> {
+  return await feishuDedupeState.guard.forget(messageId, dedupeOptions(namespace, log));
+}
+
+/** Checks recency without claiming or recording. */
+export async function hasProcessedFeishuMessage(
+  messageId: string | undefined | null,
+  namespace = "global",
+  log?: FeishuDedupeLog,
+): Promise<boolean> {
+  return await feishuDedupeState.guard.hasRecent(messageId, dedupeOptions(namespace, log));
+}
+
+/** Loads recent persisted entries into memory at account start; returns the loaded count. */
+export async function warmupDedupFromPluginState(
+  namespace: string,
+  log?: FeishuDedupeLog,
+): Promise<number> {
+  return await feishuDedupeState.guard.warmup(namespace, (error) =>
+    log?.(`feishu-dedup: warmup persistent state error: ${String(error)}`),
+  );
 }

@@ -1,0 +1,34 @@
+# Scripts Guide
+
+This directory owns local tooling, script wrappers, and generated-artifact helper rules.
+
+## Wrapper Rules
+
+- Prefer existing wrappers over raw tool entrypoints when the repo already has a curated seam.
+- For tests, prefer `scripts/run-vitest.mjs` or the root `pnpm test ...` entrypoints over raw `vitest run` calls.
+- Never use bare `vitest ...` in automation; it starts local watch mode unless `run` or `--run` is explicit.
+- For lint/typecheck flows, prefer `scripts/run-oxlint.mjs` and `scripts/run-tsgo.mjs` when adding or editing package scripts or CI steps that should honor repo-local runtime behavior.
+- For changed-file verification, prefer `scripts/check-changed.mjs` and keep lane classification in `scripts/changed-lanes.mjs`. Use `node scripts/check-changed.mjs --dry-run [--staged|-- <files...>]` to inspect the plan before running anything expensive. Do not copy path-scope rules into new hooks or ad hoc CI snippets.
+- For one/few lint files, prefer direct `node scripts/run-oxlint.mjs --tsconfig <matching config> <files...>` over sharded `pnpm lint`; `check-changed.mjs` owns this targeting for core, extension, and script diffs.
+
+## TypeScript Syntax
+
+- Keep TypeScript implementation files under `scripts/**` erasable by Node without transformation. Do not use parameter properties, runtime enums or namespaces, import-equals, export-assignment, or other transform-required TypeScript syntax.
+- This syntax rule does not make every script a plain-Node entrypoint. Keep `tsx` for closures that intentionally depend on source runtime trees, frozen checkouts, package aliases, or tsconfig/path resolution.
+- Native Node execution is opt-in per entrypoint and import closure. Use it only when runtime imports remain Node-resolvable and do not pull broader source trees into this syntax policy.
+
+## PR Prepare Gates
+
+- `scripts/pr` serializes review, prepare, and merge operations per PR across linked worktrees; `scripts/pr gc` skips active or indeterminate locks. Its subcommand classification table is the canonical wrapper trust boundary: a mismatched local wrapper may run only a classified `advisory` subcommand with `--dev-wrapper` or `OPENCLAW_PR_DEV_WRAPPER=1`; classified `landing` subcommands always require canonical/origin-main wrapper code. A worktree whose wrapper differs from origin/main (stale base or wrapper-editing branch) loudly substitutes the canonical checkout's wrapper when that checkout is clean and byte-identical to fetched `refs/remotes/origin/main`; it refuses only when no anchor-matching wrapper is available. A successful command return is the trusted synchronous-completion contract: every PR-state-mutating child must be joined before returning, and such work must never daemonize or explicitly escape both the operation group and lock-notification FD. Release on clean exit requires the leader's completion marker; an escaped descendant that merely holds the notify pipe then produces a loud warned release instead of retention (#124583), while all failure shapes still retain. A failed command auto-releases only while its explicit pre-side-effect validation marker remains active; failures after mutation/tool launch, interruptions, and controller loss stay locked because detached children cannot be disproved. After verifying no child tools remain, use the reported exact-OID `scripts/pr lock-recover` command. Never bypass or delete these refs manually.
+- `OPENCLAW_PR_GATES_REMOTE=testbox` runs the full-suite `pnpm test` gate on a Blacksmith Testbox through `scripts/crabbox-wrapper.mjs` (same delegation as `check:changed`); `pnpm build`/`pnpm check` stay local. The `tbx_` lease id and Actions run URL land in `.local/gates.env` (`REMOTE_GATES_*`) and `.local/prep.md`. Use it for reviewed trusted code when a loaded host makes the local 88-shard run stall-kill; contributor/fork code stays on secretless CI or sanitized AWS unless a maintainer explicitly approves credentialed execution.
+- `OPENCLAW_PR_GATES_REMOTE=crabbox-aws` is an explicit active-org-admin fallback, never the default. `prepare-gates` records a pending handle; only after `prepare-push` proves the exact remote head does released Crabbox v0.46 run sanitized direct AWS with `umask 022`, trusted `scripts/crabbox-untrusted-bootstrap.sh`, `pnpm build`, `pnpm check`, and the fail-closed PR-derived test plan from the repository's changed-test owner. Every executable changed path must independently resolve to concrete matched test files; broad fallback, partial plans, deleted executable paths, and unmatched/config targets are refused. Only explicit docs and `AGENTS.md`/`CLAUDE.md` instruction surfaces may produce zero tests. The canonical broker command binds the exact PR base, head, bootstrap hash, and plan digest. `.local/gates.env` records provider/run/lease/URL for operator recovery but grants no authority. `scripts/pr-lib/ci-dispatch.mjs --backend crabbox` dispatches the protected-main publisher, which requires the PR base to be the merge base of its exact workflow SHA and independently validates the immutable broker run, ordered complete events, canonical bootstrap hash, exact command/base/head/plan, active admin actor, and open same-repository PR target before GitHub Actions adds the workflow SHA to the strict summary and publishes the distinct `openclaw/crabbox-gate`; draft rejection remains a merge-time rule. Retained logs are checked when present but are optional because released v0.46 can retain zero log bytes for a successful run. Normal `openclaw/ci-gate` semantics stay unchanged. Native merge may add `--admin` only when the exact Crabbox check is successful from GitHub Actions, the check's workflow SHA equals a final live protected-main read, the actor is still an active organization admin, and the sole unsatisfied required check is a normal CI gate with GitHub-owned workflow `startup_failure` or a recognized hosted, unacquired, zero-step `failure`/`timed_out` job; cancellation, action-required, stale, an assigned runner, job log text, and any failed or executed workflow step never authorize bypass. The flow repeats this verification immediately before the pinned-head merge request; GitHub has no expected-base-OID merge precondition, so the Crabbox path stores the landed squash-parent comparison in `.local/merge-crabbox-parent-audit.json` and reports a match or any intervening authorized main advance after the completed merge. Normal merge paths do not perform this audit.
+
+## Generated Outputs
+
+- If a script writes generated artifacts, keep the source-of-truth generator, the package script, and the matching verification/check command aligned.
+- Prefer additive generator/check pairs like `*:gen` and `*:check` over one-off undocumented scripts.
+
+## Scope
+
+- Keep script-runner behavior, wrapper expectations, and generated-artifact guidance here.
+- Leave repo-global verification policy in the root `AGENTS.md`.

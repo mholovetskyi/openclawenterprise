@@ -1,12 +1,12 @@
-import net from "node:net";
+// Checks gateway port usage and reports listener diagnostics.
 import { danger, info, shouldLogVerbose, warn } from "../globals.js";
 import { logDebug } from "../logger.js";
 import type { RuntimeEnv } from "../runtime.js";
 import { defaultRuntime } from "../runtime.js";
 import { isErrno } from "./errors.js";
 import { formatPortDiagnostics } from "./ports-format.js";
-import { inspectPortUsage } from "./ports-inspect.js";
-import type { PortListener, PortListenerKind, PortUsage, PortUsageStatus } from "./ports-types.js";
+import { tryListenOnPort } from "./ports-probe.js";
+import type { PortUsage } from "./ports-types.js";
 
 class PortInUseError extends Error {
   port: number;
@@ -21,6 +21,7 @@ class PortInUseError extends Error {
 }
 
 export async function describePortOwner(port: number): Promise<string | undefined> {
+  const { inspectPortUsage } = await import("./ports-inspect.js");
   const diagnostics = await inspectPortUsage(port);
   if (diagnostics.listeners.length === 0) {
     return undefined;
@@ -28,18 +29,16 @@ export async function describePortOwner(port: number): Promise<string | undefine
   return formatPortDiagnostics(diagnostics).join("\n");
 }
 
-export async function ensurePortAvailable(port: number): Promise<void> {
+/** Probes Node's wildcard bind by default; callers may scope checks to their owned interface. */
+export async function ensurePortAvailable(
+  port: number,
+  host?: string,
+  signal?: AbortSignal,
+): Promise<void> {
   // Detect EADDRINUSE early with a friendly message.
   try {
-    await new Promise<void>((resolve, reject) => {
-      const tester = net
-        .createServer()
-        .once("error", (err) => reject(err))
-        .once("listening", () => {
-          tester.close(() => resolve());
-        })
-        .listen(port);
-    });
+    const probe = { port, ...(host ? { host } : {}), ...(signal ? { signal } : {}) };
+    await tryListenOnPort(probe);
   } catch (err) {
     if (isErrno(err) && err.code === "EADDRINUSE") {
       throw new PortInUseError(port);
@@ -93,6 +92,10 @@ export async function handlePortError(
 }
 
 export { PortInUseError };
-export type { PortListener, PortListenerKind, PortUsage, PortUsageStatus };
-export { buildPortHints, classifyPortListener, formatPortDiagnostics } from "./ports-format.js";
-export { inspectPortUsage } from "./ports-inspect.js";
+export type { PortUsage };
+export {
+  classifyPortListener,
+  formatPortDiagnostics,
+  isDualStackLoopbackGatewayListeners,
+  isExpectedGatewayListeners,
+} from "./ports-format.js";

@@ -1,16 +1,38 @@
-import fs from "node:fs";
-import os from "node:os";
+// Voice Call plugin module implements cli behavior.
 import path from "node:path";
 import type { Command } from "commander";
-import { sleep } from "openclaw/plugin-sdk";
-import type { VoiceCallConfig } from "./config.js";
+import { MAX_TCP_PORT } from "openclaw/plugin-sdk/number-runtime";
+import {
+  isRecord,
+  normalizeOptionalLowercaseString,
+} from "openclaw/plugin-sdk/string-coerce-runtime";
+import { registerVoiceCallLogs } from "./cli-call-log.js";
+import { parseCliInteger, writeCliJson, writeCliLine } from "./cli-command-io.js";
+import {
+  callVoiceCallGateway,
+  initiateVoiceCall,
+  isUnknownMethod,
+  pollContinueGateway,
+  resolveContinueTimeout,
+  resolveOperationTimeout,
+  runGatewayManagerCommand,
+} from "./cli-gateway-call.js";
+import {
+  resolveVoiceCallStreamExposurePaths,
+  validateProviderConfig,
+  type VoiceCallConfig,
+} from "./config.js";
+import { findCallMatchesInStore, loadActiveCallsFromStore } from "./manager/store.js";
+import { setVoiceCallStateRuntime, type VoiceCallStateRuntime } from "./runtime-state.js";
 import type { VoiceCallRuntime } from "./runtime.js";
+import { resolveDefaultVoiceCallStoreDir } from "./store-path.js";
 import { resolveUserPath } from "./utils.js";
+import { resolveWebhookExposureStatus } from "./webhook-exposure.js";
 import {
   cleanupTailscaleExposureRoute,
   getTailscaleSelfInfo,
-  setupTailscaleExposureRoute,
-} from "./webhook.js";
+  setupTailscaleExposureRoutes,
+} from "./webhook/tailscale.js";
 
 type Logger = {
   info: (message: string) => void;
@@ -18,8 +40,19 @@ type Logger = {
   error: (message: string) => void;
 };
 
+type SetupCheck = {
+  id: string;
+  ok: boolean;
+  message: string;
+};
+
+type SetupStatus = {
+  ok: boolean;
+  checks: SetupCheck[];
+};
+
 function resolveMode(input: string): "off" | "serve" | "funnel" {
-  const raw = input.trim().toLowerCase();
+  const raw = normalizeOptionalLowercaseString(input) ?? "";
   if (raw === "serve" || raw === "off") {
     return raw;
   }
@@ -27,71 +60,165 @@ function resolveMode(input: string): "off" | "serve" | "funnel" {
 }
 
 function resolveDefaultStorePath(config: VoiceCallConfig): string {
-  const preferred = path.join(os.homedir(), ".openclaw", "voice-calls");
-  const resolvedPreferred = resolveUserPath(preferred);
-  const existing =
-    [resolvedPreferred].find((dir) => {
-      try {
-        return fs.existsSync(path.join(dir, "calls.jsonl")) || fs.existsSync(dir);
-      } catch {
-        return false;
-      }
-    }) ?? resolvedPreferred;
-  const base = config.store?.trim() ? resolveUserPath(config.store) : existing;
+  const base = config.store?.trim()
+    ? resolveUserPath(config.store)
+    : resolveDefaultVoiceCallStoreDir();
   return path.join(base, "calls.jsonl");
 }
 
-function percentile(values: number[], p: number): number {
-  if (values.length === 0) {
-    return 0;
-  }
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
-  return sorted[idx] ?? 0;
+function buildSetupStatus(config: VoiceCallConfig): SetupStatus {
+  const validation = validateProviderConfig(config);
+  const webhookExposure = resolveWebhookExposureStatus(config);
+  const checks: SetupCheck[] = [
+    {
+      id: "plugin-enabled",
+      ok: config.enabled,
+      message: config.enabled
+        ? "Voice Call plugin is enabled"
+        : "Enable plugins.entries.voice-call.enabled",
+    },
+    {
+      id: "provider",
+      ok: Boolean(config.provider),
+      message: config.provider
+        ? `Provider configured: ${config.provider}`
+        : "Set plugins.entries.voice-call.config.provider",
+    },
+    {
+      id: "provider-config",
+      ok: validation.valid,
+      message: validation.valid
+        ? "Provider credentials/config look complete"
+        : validation.errors.join("; "),
+    },
+    {
+      id: "webhook-exposure",
+      ok: webhookExposure.ok,
+      message: webhookExposure.message,
+    },
+    {
+      id: "mode",
+      ok: !(config.streaming.enabled && config.realtime.enabled),
+      message:
+        config.streaming.enabled && config.realtime.enabled
+          ? "streaming.enabled and realtime.enabled cannot both be true"
+          : config.realtime.enabled
+            ? `Realtime voice enabled (${config.realtime.provider ?? "first registered provider"})`
+            : config.streaming.enabled
+              ? `Streaming transcription enabled (${config.streaming.provider ?? "first registered provider"})`
+              : "Notify/conversation calls use normal TTS/STT flow",
+    },
+  ];
+  return {
+    ok: checks.every((check) => check.ok),
+    checks,
+  };
 }
 
-function summarizeSeries(values: number[]): {
-  count: number;
-  minMs: number;
-  maxMs: number;
-  avgMs: number;
-  p50Ms: number;
-  p95Ms: number;
-} {
-  if (values.length === 0) {
-    return { count: 0, minMs: 0, maxMs: 0, avgMs: 0, p50Ms: 0, p95Ms: 0 };
+function writeSetupStatus(status: SetupStatus): void {
+  writeCliLine("Voice Call setup: %s", status.ok ? "OK" : "needs attention");
+  for (const check of status.checks) {
+    writeCliLine("%s %s: %s", check.ok ? "OK" : "FAIL", check.id, check.message);
   }
-
-  const minMs = values.reduce(
-    (min, value) => (value < min ? value : min),
-    Number.POSITIVE_INFINITY,
-  );
-  const maxMs = values.reduce(
-    (max, value) => (value > max ? value : max),
-    Number.NEGATIVE_INFINITY,
-  );
-  const avgMs = values.reduce((sum, value) => sum + value, 0) / values.length;
-  return {
-    count: values.length,
-    minMs,
-    maxMs,
-    avgMs,
-    p50Ms: percentile(values, 50),
-    p95Ms: percentile(values, 95),
-  };
 }
 
 export function registerVoiceCallCli(params: {
   program: Command;
   config: VoiceCallConfig;
   ensureRuntime: () => Promise<VoiceCallRuntime>;
+  stateRuntime?: VoiceCallStateRuntime["state"];
   logger: Logger;
 }) {
-  const { program, config, ensureRuntime, logger } = params;
+  const { program, config, ensureRuntime, stateRuntime } = params;
+  const ensureHistoryStateRuntime = (): void => {
+    if (stateRuntime) {
+      setVoiceCallStateRuntime({ state: stateRuntime });
+    }
+  };
   const root = program
     .command("voicecall")
     .description("Voice call utilities")
     .addHelpText("after", () => `\nDocs: https://docs.openclaw.ai/cli/voicecall\n`);
+
+  root
+    .command("setup")
+    .description("Show Voice Call provider and webhook setup status")
+    .option("--json", "Print machine-readable JSON")
+    .action((options: { json?: boolean }) => {
+      const status = buildSetupStatus(config);
+      if (options.json) {
+        writeCliJson(status);
+        return;
+      }
+      writeSetupStatus(status);
+    });
+
+  root
+    .command("smoke")
+    .description("Check Voice Call readiness and optionally place a short outbound test call")
+    .option("-t, --to <phone>", "Phone number to call for a live smoke")
+    .option(
+      "--message <text>",
+      "Message to speak during the smoke call",
+      "OpenClaw voice call smoke test.",
+    )
+    .option("--mode <mode>", "Call mode: notify or conversation", "notify")
+    .option("--yes", "Actually place the live outbound call")
+    .option("--json", "Print machine-readable JSON")
+    .action(
+      async (options: {
+        to?: string;
+        message?: string;
+        mode?: string;
+        yes?: boolean;
+        json?: boolean;
+      }) => {
+        const setup = buildSetupStatus(config);
+        if (!setup.ok) {
+          if (options.json) {
+            writeCliJson({ ok: false, setup });
+          } else {
+            writeSetupStatus(setup);
+          }
+          process.exitCode = 1;
+          return;
+        }
+        if (!options.to) {
+          if (options.json) {
+            writeCliJson({ ok: true, setup, liveCall: false });
+          } else {
+            writeSetupStatus(setup);
+            writeCliLine("live-call: skipped (pass --to and --yes to place one)");
+          }
+          return;
+        }
+        if (!options.yes) {
+          if (options.json) {
+            writeCliJson({ ok: true, setup, liveCall: false, wouldCall: options.to });
+          } else {
+            writeSetupStatus(setup);
+            writeCliLine("live-call: dry run for %s (add --yes to place it)", options.to);
+          }
+          return;
+        }
+        const callId = await initiateVoiceCall({
+          ensureRuntime,
+          config,
+          method: "voicecall.start",
+          to: options.to,
+          message: options.message,
+          mode: options.mode,
+          defaultMode: "notify",
+          failureMessage: "smoke call failed",
+        });
+        if (options.json) {
+          writeCliJson({ ok: true, setup, liveCall: true, callId });
+          return;
+        }
+        writeSetupStatus(setup);
+        writeCliLine("live-call: started %s", callId);
+      },
+    );
 
   root
     .command("call")
@@ -107,21 +234,15 @@ export function registerVoiceCallCli(params: {
       "conversation",
     )
     .action(async (options: { message: string; to?: string; mode?: string }) => {
-      const rt = await ensureRuntime();
-      const to = options.to ?? rt.config.toNumber;
-      if (!to) {
-        throw new Error("Missing --to and no toNumber configured");
-      }
-      const result = await rt.manager.initiateCall(to, undefined, {
+      const callId = await initiateVoiceCall({
+        ensureRuntime,
+        config,
+        method: "voicecall.initiate",
+        to: options.to,
         message: options.message,
-        mode:
-          options.mode === "notify" || options.mode === "conversation" ? options.mode : undefined,
+        mode: options.mode,
       });
-      if (!result.success) {
-        throw new Error(result.error || "initiate failed");
-      }
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify({ callId: result.callId }, null, 2));
+      writeCliJson({ callId });
     });
 
   root
@@ -135,17 +256,15 @@ export function registerVoiceCallCli(params: {
       "conversation",
     )
     .action(async (options: { to: string; message?: string; mode?: string }) => {
-      const rt = await ensureRuntime();
-      const result = await rt.manager.initiateCall(options.to, undefined, {
+      const callId = await initiateVoiceCall({
+        ensureRuntime,
+        config,
+        method: "voicecall.start",
+        to: options.to,
         message: options.message,
-        mode:
-          options.mode === "notify" || options.mode === "conversation" ? options.mode : undefined,
+        mode: options.mode,
       });
-      if (!result.success) {
-        throw new Error(result.error || "initiate failed");
-      }
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify({ callId: result.callId }, null, 2));
+      writeCliJson({ callId });
     });
 
   root
@@ -154,13 +273,29 @@ export function registerVoiceCallCli(params: {
     .requiredOption("--call-id <id>", "Call ID")
     .requiredOption("--message <text>", "Message to speak")
     .action(async (options: { callId: string; message: string }) => {
-      const rt = await ensureRuntime();
-      const result = await rt.manager.continueCall(options.callId, options.message);
-      if (!result.success) {
-        throw new Error(result.error || "continue failed");
-      }
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(result, null, 2));
+      const gatewayParams = { callId: options.callId, message: options.message };
+      const continueTimeoutMs = resolveContinueTimeout(config);
+      await runGatewayManagerCommand({
+        config,
+        ensureRuntime,
+        gatewayCall: async () => {
+          try {
+            return await callVoiceCallGateway("voicecall.continue.start", gatewayParams, {
+              timeoutMs: resolveOperationTimeout(config),
+            });
+          } catch (err) {
+            if (!isUnknownMethod(err, "voicecall.continue.start")) {
+              throw err;
+            }
+            return callVoiceCallGateway("voicecall.continue", gatewayParams, {
+              timeoutMs: continueTimeoutMs,
+            });
+          }
+        },
+        resolveGatewayPayload: (payload) => pollContinueGateway(payload, continueTimeoutMs),
+        managerFallback: (manager) => manager.continueCall(options.callId, options.message),
+        failureLabel: "continue",
+      });
     });
 
   root
@@ -169,13 +304,36 @@ export function registerVoiceCallCli(params: {
     .requiredOption("--call-id <id>", "Call ID")
     .requiredOption("--message <text>", "Message to speak")
     .action(async (options: { callId: string; message: string }) => {
-      const rt = await ensureRuntime();
-      const result = await rt.manager.speak(options.callId, options.message);
-      if (!result.success) {
-        throw new Error(result.error || "speak failed");
-      }
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(result, null, 2));
+      await runGatewayManagerCommand({
+        config,
+        ensureRuntime,
+        gatewayCall: () =>
+          callVoiceCallGateway("voicecall.speak", {
+            callId: options.callId,
+            message: options.message,
+          }),
+        managerFallback: (manager) => manager.speak(options.callId, options.message),
+        failureLabel: "speak",
+      });
+    });
+
+  root
+    .command("dtmf")
+    .description("Send DTMF digits to an active call")
+    .requiredOption("--call-id <id>", "Call ID")
+    .requiredOption("--digits <digits>", "DTMF digits")
+    .action(async (options: { callId: string; digits: string }) => {
+      await runGatewayManagerCommand({
+        config,
+        ensureRuntime,
+        gatewayCall: () =>
+          callVoiceCallGateway("voicecall.dtmf", {
+            callId: options.callId,
+            digits: options.digits,
+          }),
+        managerFallback: (manager) => manager.sendDtmf(options.callId, options.digits),
+        failureLabel: "dtmf",
+      });
     });
 
   root
@@ -183,137 +341,60 @@ export function registerVoiceCallCli(params: {
     .description("Hang up an active call")
     .requiredOption("--call-id <id>", "Call ID")
     .action(async (options: { callId: string }) => {
-      const rt = await ensureRuntime();
-      const result = await rt.manager.endCall(options.callId);
-      if (!result.success) {
-        throw new Error(result.error || "end failed");
-      }
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(result, null, 2));
+      await runGatewayManagerCommand({
+        config,
+        ensureRuntime,
+        gatewayCall: () => callVoiceCallGateway("voicecall.end", { callId: options.callId }),
+        managerFallback: (manager) => manager.endCall(options.callId),
+        failureLabel: "end",
+      });
     });
 
   root
     .command("status")
     .description("Show call status")
-    .requiredOption("--call-id <id>", "Call ID")
-    .action(async (options: { callId: string }) => {
-      const rt = await ensureRuntime();
-      const call = rt.manager.getCall(options.callId);
-      // eslint-disable-next-line no-console
-      console.log(JSON.stringify(call ?? { found: false }, null, 2));
-    });
-
-  root
-    .command("tail")
-    .description("Tail voice-call JSONL logs (prints new lines; useful during provider tests)")
-    .option("--file <path>", "Path to calls.jsonl", resolveDefaultStorePath(config))
-    .option("--since <n>", "Print last N lines first", "25")
-    .option("--poll <ms>", "Poll interval in ms", "250")
-    .action(async (options: { file: string; since?: string; poll?: string }) => {
-      const file = options.file;
-      const since = Math.max(0, Number(options.since ?? 0));
-      const pollMs = Math.max(50, Number(options.poll ?? 250));
-
-      let initial: string;
-      try {
-        initial = fs.readFileSync(file, "utf8");
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          logger.error(`No log file at ${file}`);
-          process.exit(1);
-        }
-        throw err;
-      }
-      const lines = initial.split("\n").filter(Boolean);
-      for (const line of lines.slice(Math.max(0, lines.length - since))) {
-        // eslint-disable-next-line no-console
-        console.log(line);
-      }
-
-      let offset = Buffer.byteLength(initial, "utf8");
-
-      for (;;) {
-        try {
-          const fd = fs.openSync(file, "r");
-          try {
-            const stat = fs.fstatSync(fd);
-            if (stat.size < offset) {
-              offset = 0;
-            }
-            if (stat.size > offset) {
-              const buf = Buffer.alloc(stat.size - offset);
-              fs.readSync(fd, buf, 0, buf.length, offset);
-              offset = stat.size;
-              const text = buf.toString("utf8");
-              for (const line of text.split("\n").filter(Boolean)) {
-                // eslint-disable-next-line no-console
-                console.log(line);
-              }
-            }
-          } finally {
-            fs.closeSync(fd);
-          }
-        } catch {
-          // ignore and retry
-        }
-        await sleep(pollMs);
-      }
-    });
-
-  root
-    .command("latency")
-    .description("Summarize turn latency metrics from voice-call JSONL logs")
-    .option("--file <path>", "Path to calls.jsonl", resolveDefaultStorePath(config))
-    .option("--last <n>", "Analyze last N records", "200")
-    .action(async (options: { file: string; last?: string }) => {
-      const file = options.file;
-      const last = Math.max(1, Number(options.last ?? 200));
-
-      let content: string;
-      try {
-        content = fs.readFileSync(file, "utf8");
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          throw new Error("No log file at " + file);
-        }
-        throw err;
-      }
-      const lines = content.split("\n").filter(Boolean).slice(-last);
-
-      const turnLatencyMs: number[] = [];
-      const listenWaitMs: number[] = [];
-
-      for (const line of lines) {
-        try {
-          const parsed = JSON.parse(line) as {
-            metadata?: { lastTurnLatencyMs?: unknown; lastTurnListenWaitMs?: unknown };
-          };
-          const latency = parsed.metadata?.lastTurnLatencyMs;
-          const listenWait = parsed.metadata?.lastTurnListenWaitMs;
-          if (typeof latency === "number" && Number.isFinite(latency)) {
-            turnLatencyMs.push(latency);
-          }
-          if (typeof listenWait === "number" && Number.isFinite(listenWait)) {
-            listenWaitMs.push(listenWait);
-          }
-        } catch {
-          // ignore malformed JSON lines
-        }
-      }
-
-      // eslint-disable-next-line no-console
-      console.log(
-        JSON.stringify(
-          {
-            recordsScanned: lines.length,
-            turnLatency: summarizeSeries(turnLatencyMs),
-            listenWait: summarizeSeries(listenWaitMs),
-          },
-          null,
-          2,
-        ),
+    .option("--call-id <id>", "Call ID")
+    .option("--json", "Print machine-readable JSON")
+    .action(async (options: { callId?: string; json?: boolean }) => {
+      const gateway = await callVoiceCallGateway(
+        "voicecall.status",
+        options.callId ? { callId: options.callId } : undefined,
       );
+      if (gateway.ok) {
+        if (options.callId && isRecord(gateway.payload)) {
+          if (gateway.payload.found === true && "call" in gateway.payload) {
+            writeCliJson(gateway.payload.call);
+            return;
+          }
+          if (gateway.payload.found === false) {
+            writeCliJson({ found: false });
+            return;
+          }
+        }
+        writeCliJson(gateway.payload);
+        return;
+      }
+      // Status is a read-only command. Starting the telephony runtime here would
+      // bind the webhook port and keep this one-shot CLI process alive.
+      ensureHistoryStateRuntime();
+      const storePath = path.dirname(resolveDefaultStorePath(config));
+      if (options.callId) {
+        const persisted = await findCallMatchesInStore(storePath, options.callId);
+        const call = persisted.byCallId ?? persisted.byProviderCallId;
+        writeCliJson(call ?? { found: false });
+        return;
+      }
+      writeCliJson({
+        found: true,
+        calls: Array.from(loadActiveCallsFromStore(storePath).activeCalls.values()),
+      });
     });
+
+  registerVoiceCallLogs({
+    root,
+    defaultFile: resolveDefaultStorePath(config),
+    ensureHistoryStateRuntime,
+  });
 
   root
     .command("expose")
@@ -325,24 +406,44 @@ export function registerVoiceCallCli(params: {
     .action(
       async (options: { mode?: string; port?: string; path?: string; servePath?: string }) => {
         const mode = resolveMode(options.mode ?? "funnel");
-        const servePort = Number(options.port ?? config.serve.port ?? 3334);
-        const servePath = String(options.servePath ?? config.serve.path ?? "/voice/webhook");
-        const tsPath = String(options.path ?? config.tailscale?.path ?? servePath);
-
-        const localUrl = `http://127.0.0.1:${servePort}`;
+        const servePort = parseCliInteger(
+          options.port ?? String(config.serve.port ?? 3334),
+          "--port",
+          { min: 1, max: MAX_TCP_PORT },
+        );
+        const servePath = options.servePath ?? config.serve.path ?? "/voice/webhook";
+        const tsPath = options.path ?? config.tailscale?.path ?? servePath;
+        const streamExposurePaths = resolveVoiceCallStreamExposurePaths(config, {
+          publicWebhookPath: tsPath,
+          localWebhookPath: servePath,
+        });
+        const streamPaths = streamExposurePaths.map(({ publicPath }) => publicPath);
+        const localUrl = `http://127.0.0.1:${servePort}${servePath}`;
 
         if (mode === "off") {
-          await cleanupTailscaleExposureRoute({ mode: "serve", path: tsPath });
-          await cleanupTailscaleExposureRoute({ mode: "funnel", path: tsPath });
-          // eslint-disable-next-line no-console
-          console.log(JSON.stringify({ ok: true, mode: "off", path: tsPath }, null, 2));
+          for (const exposurePath of [tsPath, ...streamPaths]) {
+            for (const tailscaleMode of ["serve", "funnel"] as const) {
+              await cleanupTailscaleExposureRoute({
+                mode: tailscaleMode,
+                port: config.tailscale.port,
+                path: exposurePath,
+              });
+            }
+          }
+          writeCliJson({ ok: true, mode: "off", path: tsPath, streamPaths });
           return;
         }
 
-        const publicUrl = await setupTailscaleExposureRoute({
+        const publicUrl = await setupTailscaleExposureRoutes({
           mode,
-          path: tsPath,
-          localUrl,
+          port: config.tailscale.port,
+          routes: [
+            { path: tsPath, localUrl },
+            ...streamExposurePaths.map(({ publicPath, localPath }) => ({
+              path: publicPath,
+              localUrl: `http://127.0.0.1:${servePort}${localPath}`,
+            })),
+          ],
         });
 
         const tsInfo = publicUrl ? null : await getTailscaleSelfInfo();
@@ -350,26 +451,20 @@ export function registerVoiceCallCli(params: {
           ? `https://login.tailscale.com/f/${mode}?node=${tsInfo.nodeId}`
           : null;
 
-        // eslint-disable-next-line no-console
-        console.log(
-          JSON.stringify(
-            {
-              ok: Boolean(publicUrl),
-              mode,
-              path: tsPath,
-              localUrl,
-              publicUrl,
-              hint: publicUrl
-                ? undefined
-                : {
-                    note: "Tailscale serve/funnel may be disabled on this tailnet (or require admin enable).",
-                    enableUrl,
-                  },
-            },
-            null,
-            2,
-          ),
-        );
+        writeCliJson({
+          ok: Boolean(publicUrl),
+          mode,
+          path: tsPath,
+          streamPaths,
+          localUrl,
+          publicUrl,
+          hint: publicUrl
+            ? undefined
+            : {
+                note: "Tailscale serve/funnel may be disabled on this tailnet (or require admin enable).",
+                enableUrl,
+              },
+        });
       },
     );
 }

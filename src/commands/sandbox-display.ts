@@ -6,7 +6,6 @@ import type { SandboxBrowserInfo, SandboxContainerInfo } from "../agents/sandbox
 import { formatCliCommand } from "../cli/command-format.js";
 import { formatDurationCompact } from "../infra/format-time/format-duration.ts";
 import type { RuntimeEnv } from "../runtime.js";
-import { formatImageMatch, formatSimpleStatus, formatStatus } from "./sandbox-formatters.js";
 
 type DisplayConfig<T> = {
   emptyMessage: string;
@@ -30,12 +29,15 @@ export function displayContainers(containers: SandboxContainerInfo[], runtime: R
   displayItems(
     containers,
     {
-      emptyMessage: "No sandbox containers found.",
-      title: "📦 Sandbox Containers:",
+      emptyMessage: "No sandbox runtimes found.",
+      title: "📦 Sandbox Runtimes:",
       renderItem: (container, rt) => {
-        rt.log(`  ${container.containerName}`);
-        rt.log(`    Status:  ${formatStatus(container.running)}`);
-        rt.log(`    Image:   ${container.image} ${formatImageMatch(container.imageMatch)}`);
+        rt.log(`  ${container.runtimeLabel ?? container.containerName}`);
+        rt.log(`    Status:  ${container.running ? "🟢 running" : "⚫ stopped"}`);
+        rt.log(
+          `    ${container.configLabelKind ?? "Image"}:   ${container.image} ${container.imageMatch ? "✓" : "⚠️  mismatch"}`,
+        );
+        rt.log(`    Backend: ${container.backendId ?? "docker"}`);
         rt.log(
           `    Age:     ${formatDurationCompact(Date.now() - container.createdAtMs, { spaced: true }) ?? "0s"}`,
         );
@@ -58,8 +60,8 @@ export function displayBrowsers(browsers: SandboxBrowserInfo[], runtime: Runtime
       title: "🌐 Sandbox Browser Containers:",
       renderItem: (browser, rt) => {
         rt.log(`  ${browser.containerName}`);
-        rt.log(`    Status:  ${formatStatus(browser.running)}`);
-        rt.log(`    Image:   ${browser.image} ${formatImageMatch(browser.imageMatch)}`);
+        rt.log(`    Status:  ${browser.running ? "🟢 running" : "⚫ stopped"}`);
+        rt.log(`    Image:   ${browser.image} ${browser.imageMatch ? "✓" : "⚠️  mismatch"}`);
         rt.log(`    CDP:     ${browser.cdpPort}`);
         if (browser.noVncPort) {
           rt.log(`    noVNC:   ${browser.noVncPort}`);
@@ -92,9 +94,9 @@ export function displaySummary(
   runtime.log(`Total: ${totalCount} (${runningCount} running)`);
 
   if (mismatchCount > 0) {
-    runtime.log(`\n⚠️  ${mismatchCount} container(s) with image mismatch detected.`);
+    runtime.log(`\n⚠️  ${mismatchCount} runtime(s) with config mismatch detected.`);
     runtime.log(
-      `   Run '${formatCliCommand("openclaw sandbox recreate --all")}' to update all containers.`,
+      `   Run '${formatCliCommand("openclaw sandbox recreate --all")}' to update all runtimes.`,
     );
   }
 }
@@ -104,24 +106,26 @@ export function displayRecreatePreview(
   browsers: SandboxBrowserInfo[],
   runtime: RuntimeEnv,
 ): void {
-  runtime.log("\nContainers to be recreated:\n");
+  runtime.log("\nSandbox runtimes to be recreated:\n");
 
   if (containers.length > 0) {
-    runtime.log("📦 Sandbox Containers:");
+    runtime.log("📦 Sandbox Runtimes:");
     for (const container of containers) {
-      runtime.log(`  - ${container.containerName} (${formatSimpleStatus(container.running)})`);
+      runtime.log(
+        `  - ${container.runtimeLabel ?? container.containerName} [${container.backendId ?? "docker"}] (${container.running ? "running" : "stopped"})`,
+      );
     }
   }
 
   if (browsers.length > 0) {
     runtime.log("\n🌐 Browser Containers:");
     for (const browser of browsers) {
-      runtime.log(`  - ${browser.containerName} (${formatSimpleStatus(browser.running)})`);
+      runtime.log(`  - ${browser.containerName} (${browser.running ? "running" : "stopped"})`);
     }
   }
 
   const total = containers.length + browsers.length;
-  runtime.log(`\nTotal: ${total} container(s)`);
+  runtime.log(`\nTotal: ${total} runtime(s)`);
 }
 
 export function displayRecreateResult(
@@ -131,6 +135,6 @@ export function displayRecreateResult(
   runtime.log(`\nDone: ${result.successCount} removed, ${result.failCount} failed`);
 
   if (result.successCount > 0) {
-    runtime.log("\nContainers will be automatically recreated when the agent is next used.");
+    runtime.log("\nRuntimes will be automatically recreated when the agent is next used.");
   }
 }

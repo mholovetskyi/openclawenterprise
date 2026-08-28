@@ -1,0 +1,516 @@
+/* Enterprise admin page (ui/src/pages/enterprise/). Lazily imported by
+ * enterprise-page.ts, matching the per-page stylesheet pattern. */
+
+.ent-shell {
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.ent-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 0 8px;
+}
+
+.ent-header-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.ent-header-version {
+  font-size: 11px;
+}
+
+/* Sub-tab bar */
+.ent-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 6px 0 0;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+
+.ent-tab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  transition:
+    color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
+}
+
+.ent-tab:hover {
+  color: var(--text);
+}
+
+.ent-tab--active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 500;
+}
+
+.ent-content {
+  flex: 1;
+  padding: 16px 0;
+}
+
+/* Sections */
+.ent-section {
+  margin-bottom: 20px;
+}
+
+.ent-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.ent-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--text-strong);
+}
+
+.ent-section-subtitle {
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 8px;
+  color: var(--muted);
+}
+
+/* Badges */
+.ent-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
+}
+
+.ent-badge--ok {
+  background: var(--ok-subtle);
+  color: var(--ok);
+}
+
+.ent-badge--error {
+  background: var(--danger-subtle);
+  color: var(--danger);
+}
+
+.ent-badge--warn {
+  background: var(--warn-subtle);
+  color: var(--warn);
+}
+
+.ent-badge--info {
+  background: var(--info-subtle);
+  color: var(--info);
+}
+
+.ent-badge--disabled {
+  background: var(--bg-elevated);
+  color: var(--muted);
+}
+
+/* Subsystem grid */
+.ent-subsystem-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ent-subsystem-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.ent-subsystem-icon {
+  width: 20px;
+  text-align: center;
+}
+
+.ent-subsystem-label {
+  flex: 1;
+}
+
+.ent-subsystem-detail {
+  font-size: 11px;
+}
+
+/* Metrics grid */
+.ent-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px;
+}
+
+.ent-metric-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+}
+
+.ent-metric-value {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ent-metric-label {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
+.ent-metric-sub {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 1px;
+}
+
+/* KV grid */
+.ent-kv-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 4px 12px;
+  align-items: baseline;
+}
+
+.ent-kv-key {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ent-kv-val {
+  font-size: 12px;
+}
+
+/* Tables */
+.ent-table-wrap {
+  overflow-x: auto;
+}
+
+.ent-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.ent-table th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+
+.ent-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+.ent-table tr:hover td {
+  background: var(--bg-hover);
+}
+
+.ent-row--inactive td {
+  opacity: 0.5;
+}
+
+.ent-td-ts {
+  white-space: nowrap;
+}
+
+.ent-td-truncate {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ent-table-footer {
+  margin-top: 8px;
+  font-size: 11px;
+}
+
+/* Buttons */
+.ent-btn-sm {
+  padding: 3px 8px;
+  font-size: 11px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+}
+
+.ent-btn-sm:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.ent-btn-sm:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Empty state */
+.ent-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 24px;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.ent-empty-icon {
+  font-size: 32px;
+}
+
+.ent-empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-strong);
+}
+
+.ent-empty-body {
+  font-size: 12px;
+  max-width: 360px;
+}
+
+/* Loading */
+.ent-loading {
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+}
+
+/* Pills */
+.ent-pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.ent-pill {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+
+.ent-pill--role {
+  background: var(--info-subtle);
+  color: var(--info);
+}
+
+.ent-pill--group {
+  background: var(--accent-subtle);
+  color: var(--accent);
+}
+
+/* Alerts */
+.ent-alert-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ent-alert {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  font-size: 12px;
+}
+
+.ent-alert--ok {
+  background: var(--ok-subtle);
+  border: 1px solid color-mix(in srgb, var(--ok) 30%, transparent);
+}
+
+.ent-alert--warn {
+  background: var(--warn-subtle);
+  border: 1px solid color-mix(in srgb, var(--warn) 30%, transparent);
+}
+
+.ent-alert--info {
+  background: var(--info-subtle);
+  border: 1px solid color-mix(in srgb, var(--info) 30%, transparent);
+}
+
+.ent-alert--error {
+  background: var(--danger-subtle);
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+/* Defense list */
+.ent-defense-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ent-defense-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+}
+
+.ent-defense-row--inactive {
+  opacity: 0.5;
+}
+
+.ent-defense-icon {
+  width: 20px;
+  text-align: center;
+}
+
+.ent-defense-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ent-defense-label {
+  font-weight: 500;
+}
+
+.ent-defense-desc {
+  font-size: 11px;
+}
+
+.ent-defense-state {
+  flex-shrink: 0;
+}
+
+/* Form fields (settings tab) */
+.ent-field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ent-field-label {
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.ent-input {
+  width: 100%;
+  max-width: 360px;
+  padding: 6px 10px;
+  font-size: 13px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-family: inherit;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color var(--duration-fast) ease;
+}
+
+.ent-input:focus {
+  border-color: var(--accent);
+}
+
+.ent-input::placeholder {
+  color: var(--muted);
+}
+
+.ent-btn-sm--primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-foreground);
+  font-weight: 600;
+}
+
+.ent-btn-sm--primary:hover:not(:disabled) {
+  opacity: 0.85;
+  color: var(--accent-foreground);
+}
+
+/* Inline edit row in users table */
+.ent-edit-row td {
+  background: var(--panel);
+  vertical-align: middle;
+}
+
+.ent-role-checkboxes {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ent-role-check {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ent-active-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.ent-edit-actions {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* Links */
+.ent-link {
+  display: inline-block;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 12px;
+  margin: 4px 0;
+  cursor: pointer;
+}
+
+.ent-link:hover {
+  text-decoration: underline;
+}
+
+.ent-link-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Overview */
+.ent-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}

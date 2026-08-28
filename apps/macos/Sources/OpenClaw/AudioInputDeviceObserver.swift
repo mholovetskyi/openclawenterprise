@@ -2,13 +2,125 @@ import CoreAudio
 import Foundation
 import OSLog
 
-final class AudioInputDeviceObserver {
+struct AudioInputDeviceDescriptor: Equatable, Identifiable, Sendable {
+    let uid: String
+    let name: String
+
+    var id: String {
+        self.uid
+    }
+}
+
+struct AudioInputDeviceResolution: Equatable, Sendable {
+    let selectedUID: String?
+    let resolvedUID: String?
+    let fellBackToSystemDefault: Bool
+
+    var shouldBindSelectedDevice: Bool {
+        self.selectedUID != nil && !self.fellBackToSystemDefault && self.resolvedUID != nil
+    }
+
+    func shouldRestart(availableUIDs: Set<String>, defaultUID: String?) -> Bool {
+        guard let resolvedUID, availableUIDs.contains(resolvedUID) else { return true }
+        guard self.selectedUID == nil || self.fellBackToSystemDefault else { return false }
+        return defaultUID != resolvedUID
+    }
+}
+
+enum AudioInputDeviceSelectionResolver {
+    static func resolve(
+        selectedUID: String?,
+        availableUIDs: Set<String>,
+        defaultUID: String?) -> AudioInputDeviceResolution
+    {
+        let selected = selectedUID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalizedSelection = selected?.isEmpty == false ? selected : nil
+        let usableDefault = defaultUID.flatMap { availableUIDs.contains($0) ? $0 : nil }
+
+        guard let normalizedSelection else {
+            return AudioInputDeviceResolution(
+                selectedUID: nil,
+                resolvedUID: usableDefault,
+                fellBackToSystemDefault: false)
+        }
+        if availableUIDs.contains(normalizedSelection) {
+            return AudioInputDeviceResolution(
+                selectedUID: normalizedSelection,
+                resolvedUID: normalizedSelection,
+                fellBackToSystemDefault: false)
+        }
+        return AudioInputDeviceResolution(
+            selectedUID: normalizedSelection,
+            resolvedUID: usableDefault,
+            fellBackToSystemDefault: true)
+    }
+}
+
+final class AudioInputDeviceObserver: @unchecked Sendable {
     private let logger = Logger(subsystem: "ai.openclaw", category: "audio.devices")
     private var isActive = false
     private var devicesListener: AudioObjectPropertyListenerBlock?
     private var defaultInputListener: AudioObjectPropertyListenerBlock?
 
     static func defaultInputDeviceUID() -> String? {
+        guard let deviceID = self.defaultInputDeviceID() else { return nil }
+        return self.deviceUID(for: deviceID)
+    }
+
+    static func aliveInputDeviceUIDs() -> Set<String> {
+        var output = Set<String>()
+        for deviceID in self.deviceIDs() {
+            guard self.deviceIsAlive(deviceID) else { continue }
+            guard self.deviceHasInput(deviceID) else { continue }
+            if let uid = self.deviceUID(for: deviceID) {
+                output.insert(uid)
+            }
+        }
+        return output
+    }
+
+    static func availableInputDevices() -> [AudioInputDeviceDescriptor] {
+        self.deviceIDs().compactMap { deviceID in
+            guard self.deviceIsAlive(deviceID), self.deviceHasInput(deviceID) else { return nil }
+            guard let uid = self.deviceUID(for: deviceID), let name = self.deviceName(for: deviceID) else { return nil }
+            return AudioInputDeviceDescriptor(uid: uid, name: name)
+        }.sorted { lhs, rhs in
+            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    static func inputDeviceID(forUID uid: String) -> AudioObjectID? {
+        self.deviceIDs().first { deviceID in
+            self.deviceIsAlive(deviceID) && self.deviceHasInput(deviceID) && self.deviceUID(for: deviceID) == uid
+        }
+    }
+
+    static func resolveSelection(_ selectedUID: String?) -> AudioInputDeviceResolution {
+        AudioInputDeviceSelectionResolver.resolve(
+            selectedUID: selectedUID,
+            availableUIDs: self.aliveInputDeviceUIDs(),
+            defaultUID: self.defaultInputDeviceUID())
+    }
+
+    /// Returns true when the system default input device exists and is alive with input channels.
+    /// Use this preflight before accessing `AVAudioEngine.inputNode` to avoid SIGABRT on Macs
+    /// without a built-in microphone (Mac mini, Mac Pro, Mac Studio) or when an external mic
+    /// is disconnected.
+    static func hasUsableDefaultInputDevice() -> Bool {
+        guard let uid = self.defaultInputDeviceUID() else { return false }
+        return self.aliveInputDeviceUIDs().contains(uid)
+    }
+
+    static func defaultInputDeviceSummary() -> String {
+        guard let deviceID = self.defaultInputDeviceID() else {
+            return "defaultInput=unknown"
+        }
+        let uid = self.deviceUID(for: deviceID) ?? "unknown"
+        let name = self.deviceName(for: deviceID) ?? "unknown"
+        return "defaultInput=\(name) (\(uid))"
+    }
+
+    private static func defaultInputDeviceID() -> AudioObjectID? {
         let systemObject = AudioObjectID(kAudioObjectSystemObject)
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDefaultInputDevice,
@@ -24,10 +136,10 @@ final class AudioInputDeviceObserver {
             &size,
             &deviceID)
         guard status == noErr, deviceID != 0 else { return nil }
-        return self.deviceUID(for: deviceID)
+        return deviceID
     }
 
-    static func aliveInputDeviceUIDs() -> Set<String> {
+    private static func deviceIDs() -> [AudioObjectID] {
         let systemObject = AudioObjectID(kAudioObjectSystemObject)
         var address = AudioObjectPropertyAddress(
             mSelector: kAudioHardwarePropertyDevices,
@@ -40,40 +152,7 @@ final class AudioInputDeviceObserver {
         let count = Int(size) / MemoryLayout<AudioObjectID>.size
         var deviceIDs = [AudioObjectID](repeating: 0, count: count)
         status = AudioObjectGetPropertyData(systemObject, &address, 0, nil, &size, &deviceIDs)
-        guard status == noErr else { return [] }
-
-        var output = Set<String>()
-        for deviceID in deviceIDs {
-            guard self.deviceIsAlive(deviceID) else { continue }
-            guard self.deviceHasInput(deviceID) else { continue }
-            if let uid = self.deviceUID(for: deviceID) {
-                output.insert(uid)
-            }
-        }
-        return output
-    }
-
-    static func defaultInputDeviceSummary() -> String {
-        let systemObject = AudioObjectID(kAudioObjectSystemObject)
-        var address = AudioObjectPropertyAddress(
-            mSelector: kAudioHardwarePropertyDefaultInputDevice,
-            mScope: kAudioObjectPropertyScopeGlobal,
-            mElement: kAudioObjectPropertyElementMain)
-        var deviceID = AudioObjectID(0)
-        var size = UInt32(MemoryLayout<AudioObjectID>.size)
-        let status = AudioObjectGetPropertyData(
-            systemObject,
-            &address,
-            0,
-            nil,
-            &size,
-            &deviceID)
-        guard status == noErr, deviceID != 0 else {
-            return "defaultInput=unknown"
-        }
-        let uid = self.deviceUID(for: deviceID) ?? "unknown"
-        let name = self.deviceName(for: deviceID) ?? "unknown"
-        return "defaultInput=\(name) (\(uid))"
+        return status == noErr ? deviceIDs : []
     }
 
     func start(onChange: @escaping @Sendable () -> Void) {

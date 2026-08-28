@@ -1,61 +1,46 @@
-import { getChannelPlugin } from "../channels/plugins/index.js";
-import type { ChannelId, ChannelMessageActionName } from "../channels/plugins/types.js";
+/** Human-readable formatter for `openclaw message` action results. */
+import { normalizeOptionalString } from "@openclaw/normalization-core/string-coerce";
+import { normalizeStringEntries } from "@openclaw/normalization-core/string-normalization";
+import { getTerminalTableWidth, renderTable } from "../../packages/terminal-core/src/table.js";
+import { isRich, theme } from "../../packages/terminal-core/src/theme.js";
+import { getLoadedChannelPlugin } from "../channels/plugins/index.js";
+import type { ChannelId } from "../channels/plugins/types.public.js";
 import type { OutboundDeliveryResult } from "../infra/outbound/deliver.js";
 import { formatGatewaySummary, formatOutboundDeliverySummary } from "../infra/outbound/format.js";
-import type { MessageActionRunResult } from "../infra/outbound/message-action-runner.js";
+import {
+  resolveMessageActionOutcome,
+  type MessageActionResult,
+} from "../infra/outbound/message-action-contracts.js";
 import { formatTargetDisplay } from "../infra/outbound/target-resolver.js";
-import { renderTable } from "../terminal/table.js";
-import { isRich, theme } from "../terminal/theme.js";
-
-const shortenText = (value: string, maxLen: number) => {
-  const chars = Array.from(value);
-  if (chars.length <= maxLen) {
-    return value;
-  }
-  return `${chars.slice(0, Math.max(0, maxLen - 1)).join("")}…`;
-};
+import { shortenText } from "./text-format.js";
 
 const resolveChannelLabel = (channel: ChannelId) =>
-  getChannelPlugin(channel)?.meta.label ?? channel;
+  getLoadedChannelPlugin(channel)?.meta.label ?? channel;
 
 function extractMessageId(payload: unknown): string | null {
   if (!payload || typeof payload !== "object") {
     return null;
   }
   const direct = (payload as { messageId?: unknown }).messageId;
-  if (typeof direct === "string" && direct.trim()) {
-    return direct.trim();
+  const directId = normalizeOptionalString(direct);
+  if (directId) {
+    return directId;
   }
   const result = (payload as { result?: unknown }).result;
   if (result && typeof result === "object") {
     const nested = (result as { messageId?: unknown }).messageId;
-    if (typeof nested === "string" && nested.trim()) {
-      return nested.trim();
+    const nestedId = normalizeOptionalString(nested);
+    if (nestedId) {
+      return nestedId;
     }
   }
   return null;
 }
 
-export type MessageCliJsonEnvelope = {
-  action: ChannelMessageActionName;
-  channel: ChannelId;
-  dryRun: boolean;
-  handledBy: "plugin" | "core" | "dry-run";
-  payload: unknown;
-};
-
-export function buildMessageCliJson(result: MessageActionRunResult): MessageCliJsonEnvelope {
-  return {
-    action: result.action,
-    channel: result.channel,
-    dryRun: result.dryRun,
-    handledBy: result.handledBy,
-    payload: result.payload,
-  };
-}
-
 type FormatOpts = {
   width: number;
+  /** Max rows to render. Defaults to 25 when omitted. */
+  displayLimit?: number;
 };
 
 function renderObjectSummary(payload: unknown, opts: FormatOpts): string[] {
@@ -107,7 +92,8 @@ function renderObjectSummary(payload: unknown, opts: FormatOpts): string[] {
 }
 
 function renderMessageList(messages: unknown[], opts: FormatOpts, emptyLabel: string): string[] {
-  const rows = messages.slice(0, 25).map((m) => {
+  const cap = opts.displayLimit ?? 25;
+  const rows = messages.slice(0, cap).map((m) => {
     const msg = m as Record<string, unknown>;
     const id =
       (typeof msg.id === "string" && msg.id) ||
@@ -193,7 +179,7 @@ function extractDiscordSearchResultsMessages(results: unknown): unknown[] | null
       flattened.push(entry);
     }
   }
-  return flattened.length ? flattened : null;
+  return flattened;
 }
 
 function renderReactions(payload: unknown, opts: FormatOpts): string[] | null {
@@ -205,7 +191,7 @@ function renderReactions(payload: unknown, opts: FormatOpts): string[] | null {
     return null;
   }
 
-  const rows = reactions.slice(0, 50).map((r) => {
+  const rows = reactions.slice(0, opts.displayLimit ?? 50).map((r) => {
     const entry = r as Record<string, unknown>;
     const emojiObj = entry.emoji as Record<string, unknown> | undefined;
     const emoji =
@@ -258,19 +244,52 @@ function renderReactions(payload: unknown, opts: FormatOpts): string[] | null {
   ];
 }
 
-export function formatMessageCliText(result: MessageActionRunResult): string[] {
+/**
+ * Emit a muted hint when the provider payload signals more results are available
+ * beyond the current page (e.g. hasMore, nextBatch, @odata.nextLink).
+ */
+function renderPaginationHint(payload: unknown, muted: (text: string) => string): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+  const obj = payload as Record<string, unknown>;
+  if (obj.hasMore === true) {
+    return muted(
+      "More results available. Use --limit to fetch more, or --json for the raw cursor.",
+    );
+  }
+  if (typeof obj.nextBatch === "string" && obj.nextBatch) {
+    return muted(
+      "More results available. Use --limit to fetch more, or --json for the raw cursor.",
+    );
+  }
+  if (typeof obj["@odata.nextLink"] === "string" && obj["@odata.nextLink"]) {
+    return muted(
+      "More results available. Use --limit to fetch more, or --json for the raw cursor.",
+    );
+  }
+  return null;
+}
+
+export function formatMessageCliText(
+  result: MessageActionResult,
+  opts?: { displayLimit?: number },
+): string[] {
   const rich = isRich();
   const ok = (text: string) => (rich ? theme.success(text) : text);
+  const fail = (text: string) => (rich ? theme.error(text) : text);
   const muted = (text: string) => (rich ? theme.muted(text) : text);
   const heading = (text: string) => (rich ? theme.heading(text) : text);
 
-  const width = Math.max(60, (process.stdout.columns ?? 120) - 1);
-  const opts: FormatOpts = { width };
+  const width = getTerminalTableWidth();
+  const displayLimit = opts?.displayLimit;
+  const formatOpts: FormatOpts = { width, displayLimit };
 
-  if (result.handledBy === "dry-run") {
+  if (result.dryRun) {
     return [muted(`[dry-run] would run ${result.action} via ${result.channel}`)];
   }
 
+  const outcome = resolveMessageActionOutcome(result);
   if (result.kind === "broadcast") {
     const results = result.payload.results ?? [];
     const rows = results.map((entry) => ({
@@ -281,22 +300,28 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
     }));
     const okCount = results.filter((entry) => entry.ok).length;
     const total = results.length;
-    const headingLine = ok(
-      `✅ Broadcast complete (${okCount}/${total} succeeded, ${total - okCount} failed)`,
+    const successful = outcome.ok;
+    const headingLine = (successful ? ok : fail)(
+      `${successful ? "✅ Broadcast complete" : "❌ Broadcast failed"} (${okCount}/${total} succeeded, ${total - okCount} failed)`,
     );
     return [
       headingLine,
       renderTable({
-        width: opts.width,
+        width: formatOpts.width,
         columns: [
           { key: "Channel", header: "Channel", minWidth: 10 },
           { key: "Target", header: "Target", minWidth: 12, flex: true },
           { key: "Status", header: "Status", minWidth: 6 },
           { key: "Error", header: "Error", minWidth: 20, flex: true },
         ],
-        rows: rows.slice(0, 50),
+        rows,
       }).trimEnd(),
     ];
+  }
+
+  if (!outcome.ok) {
+    const messageId = result.kind === "send" ? result.sendResult?.result?.messageId : undefined;
+    return [fail(`❌ ${outcome.error}${messageId ? ` Message ID: ${messageId}` : ""}`)];
   }
 
   if (result.kind === "send") {
@@ -327,6 +352,22 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
       const poll = result.pollResult;
       const pollId = (poll.result as { pollId?: string } | undefined)?.pollId;
       const msgId = poll.result?.messageId ?? null;
+      if (poll.via === "direct") {
+        const directResult = poll.result
+          ? ({ ...poll.result, channel: poll.channel } satisfies OutboundDeliveryResult)
+          : undefined;
+        const lines = [
+          ok(
+            formatOutboundDeliverySummary(poll.channel, directResult, {
+              action: "Poll sent",
+            }),
+          ),
+        ];
+        if (pollId) {
+          lines.push(ok(`Poll id: ${pollId}`));
+        }
+        return lines;
+      }
       const lines = [
         ok(
           formatGatewaySummary({
@@ -347,7 +388,8 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
     return [ok(`✅ Poll sent via ${label}.${msgId ? ` Message ID: ${msgId}` : ""}`)];
   }
 
-  // channel actions (non-send/poll)
+  // Channel actions share the generic plugin-action payload shape, so format
+  // known read/reaction shapes first and fall back to a compact object table.
   const payload = result.payload;
   const lines: string[] = [];
 
@@ -363,10 +405,7 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
       return lines;
     }
     if (Array.isArray(removed)) {
-      const list = removed
-        .map((x) => String(x).trim())
-        .filter(Boolean)
-        .join(", ");
+      const list = normalizeStringEntries(removed).join(", ");
       lines.push(ok(`✅ Reactions removed${list ? `: ${list}` : ""}`));
       return lines;
     }
@@ -374,7 +413,7 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
     return lines;
   }
 
-  const reactionsTable = renderReactions(payload, opts);
+  const reactionsTable = renderReactions(payload, formatOpts);
   if (reactionsTable && result.action === "reactions") {
     lines.push(heading("Reactions"));
     lines.push(reactionsTable[0] ?? "");
@@ -382,19 +421,27 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
   }
 
   if (result.action === "read") {
-    const messagesTable = renderMessagesFromPayload(payload, opts);
+    const messagesTable = renderMessagesFromPayload(payload, formatOpts);
     if (messagesTable) {
       lines.push(heading("Messages"));
       lines.push(messagesTable[0] ?? "");
+      const hint = renderPaginationHint(payload, muted);
+      if (hint) {
+        lines.push(hint);
+      }
       return lines;
     }
   }
 
   if (result.action === "list-pins") {
-    const pinsTable = renderPinsFromPayload(payload, opts);
+    const pinsTable = renderPinsFromPayload(payload, formatOpts);
     if (pinsTable) {
       lines.push(heading("Pinned messages"));
       lines.push(pinsTable[0] ?? "");
+      const hint = renderPaginationHint(payload, muted);
+      if (hint) {
+        lines.push(hint);
+      }
       return lines;
     }
   }
@@ -404,14 +451,19 @@ export function formatMessageCliText(result: MessageActionRunResult): string[] {
     const list = extractDiscordSearchResultsMessages(results);
     if (list) {
       lines.push(heading("Search results"));
-      lines.push(renderMessageList(list, opts, "No results.")[0] ?? "");
+      lines.push(renderMessageList(list, formatOpts, "No results.")[0] ?? "");
+      // Discord's approximate result count cannot prove another page exists.
+      const hint = renderPaginationHint(payload, muted) ?? renderPaginationHint(results, muted);
+      if (hint) {
+        lines.push(hint);
+      }
       return lines;
     }
   }
 
   // Generic success + compact details table.
   lines.push(ok(`✅ ${result.action} via ${resolveChannelLabel(result.channel)}.`));
-  const summary = renderObjectSummary(payload, opts);
+  const summary = renderObjectSummary(payload, formatOpts);
   if (summary.length) {
     lines.push("");
     lines.push(...summary);

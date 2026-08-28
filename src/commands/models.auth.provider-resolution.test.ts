@@ -1,3 +1,4 @@
+// Models auth provider-resolution tests cover provider auth status grouping and selection.
 import { describe, expect, it } from "vitest";
 import type { ProviderPlugin } from "../plugins/types.js";
 import { resolveRequestedLoginProviderOrThrow } from "./models/auth.js";
@@ -12,37 +13,35 @@ function makeProvider(params: { id: string; label?: string; aliases?: string[] }
 }
 
 describe("resolveRequestedLoginProviderOrThrow", () => {
-  it("returns null when no provider was requested", () => {
-    const providers = [makeProvider({ id: "google-antigravity" })];
-    const result = resolveRequestedLoginProviderOrThrow(providers, undefined);
-    expect(result).toBeNull();
-  });
-
-  it("resolves requested provider by id", () => {
+  it("returns null and resolves provider by id/alias", () => {
     const providers = [
-      makeProvider({ id: "google-antigravity" }),
-      makeProvider({ id: "google-gemini-cli" }),
+      makeProvider({ id: "google-gemini-cli", aliases: ["gemini-cli"] }),
+      makeProvider({ id: "openai", aliases: ["openai"] }),
+      makeProvider({ id: "minimax-portal" }),
     ];
-    const result = resolveRequestedLoginProviderOrThrow(providers, "google-antigravity");
-    expect(result?.id).toBe("google-antigravity");
-  });
+    const scenarios = [
+      { requested: undefined, expectedId: null },
+      { requested: "google-gemini-cli", expectedId: "google-gemini-cli" },
+      { requested: "gemini-cli", expectedId: "google-gemini-cli" },
+      { requested: "openai", expectedId: "openai" },
+    ] as const;
 
-  it("resolves requested provider by alias", () => {
-    const providers = [makeProvider({ id: "google-antigravity", aliases: ["antigravity"] })];
-    const result = resolveRequestedLoginProviderOrThrow(providers, "antigravity");
-    expect(result?.id).toBe("google-antigravity");
+    for (const scenario of scenarios) {
+      const result = resolveRequestedLoginProviderOrThrow(providers, scenario.requested);
+      expect(result?.id ?? null).toBe(scenario.expectedId);
+    }
   });
 
   it("throws when requested provider is not loaded", () => {
-    const providers = [
+    const loadedProviders = [
       makeProvider({ id: "google-gemini-cli" }),
-      makeProvider({ id: "qwen-portal" }),
+      makeProvider({ id: "minimax-portal" }),
     ];
 
     expect(() =>
-      resolveRequestedLoginProviderOrThrow(providers, "google-antigravity"),
+      resolveRequestedLoginProviderOrThrow(loadedProviders, "google-antigravity"),
     ).toThrowError(
-      'Unknown provider "google-antigravity". Loaded providers: google-gemini-cli, qwen-portal. Verify plugins via `openclaw plugins list --json`.',
+      'Unknown provider "google-antigravity". Loaded providers: google-gemini-cli, minimax-portal. Verify plugins via `openclaw plugins list --json`.',
     );
   });
 });

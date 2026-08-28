@@ -1,7 +1,7 @@
-import OpenClawKit
 import Foundation
 import Network
 import Observation
+import OpenClawKit
 
 @MainActor
 @Observable
@@ -13,7 +13,10 @@ final class GatewayDiscoveryModel {
     }
 
     struct DiscoveredGateway: Identifiable, Equatable {
-        var id: String { self.stableID }
+        var id: GatewayStableIdentifier.Key {
+            GatewayStableIdentifier.Key(self.stableID)
+        }
+
         var name: String
         var endpoint: NWEndpoint
         var stableID: String
@@ -21,21 +24,33 @@ final class GatewayDiscoveryModel {
         var lanHost: String?
         var tailnetDns: String?
         var gatewayPort: Int?
-        var canvasPort: Int?
         var tlsEnabled: Bool
         var tlsFingerprintSha256: String?
         var cliPath: String?
+
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            lhs.name == rhs.name &&
+                lhs.endpoint == rhs.endpoint &&
+                GatewayStableIdentifier.matches(lhs.stableID, rhs.stableID) &&
+                lhs.debugID == rhs.debugID &&
+                lhs.lanHost == rhs.lanHost &&
+                lhs.tailnetDns == rhs.tailnetDns &&
+                lhs.gatewayPort == rhs.gatewayPort &&
+                lhs.tlsEnabled == rhs.tlsEnabled &&
+                lhs.tlsFingerprintSha256 == rhs.tlsFingerprintSha256 &&
+                lhs.cliPath == rhs.cliPath
+        }
     }
 
     var gateways: [DiscoveredGateway] = []
-    var statusText: String = "Idle"
+    var statusText: String = GatewayDiscoveryStatusText.idle
     private(set) var debugLog: [DebugLogEntry] = []
 
     private var browsers: [String: NWBrowser] = [:]
     private var gatewaysByDomain: [String: [DiscoveredGateway]] = [:]
     private var statesByDomain: [String: NWBrowser.State] = [:]
     private var debugLoggingEnabled = false
-    private var lastStableIDs = Set<String>()
+    private var lastStableIDs = Set<GatewayStableIdentifier.Key>()
 
     func setDebugLoggingEnabled(_ enabled: Bool) {
         let wasEnabled = self.debugLoggingEnabled
@@ -53,23 +68,17 @@ final class GatewayDiscoveryModel {
         self.appendDebugLog("start()")
 
         for domain in OpenClawBonjour.gatewayServiceDomains {
-            let params = NWParameters.tcp
-            params.includePeerToPeer = true
-            let browser = NWBrowser(
-                for: .bonjour(type: OpenClawBonjour.gatewayServiceType, domain: domain),
-                using: params)
-
-            browser.stateUpdateHandler = { [weak self] state in
-                Task { @MainActor in
+            let browser = GatewayDiscoveryBrowserSupport.makeBrowser(
+                serviceType: OpenClawBonjour.gatewayServiceType,
+                domain: domain,
+                queueLabelPrefix: "ai.openclawfoundation.app.gateway-discovery",
+                onState: { [weak self] state in
                     guard let self else { return }
                     self.statesByDomain[domain] = state
                     self.updateStatusText()
                     self.appendDebugLog("state[\(domain)]: \(Self.prettyState(state))")
-                }
-            }
-
-            browser.browseResultsChangedHandler = { [weak self] results, _ in
-                Task { @MainActor in
+                },
+                onResults: { [weak self] results in
                     guard let self else { return }
                     self.gatewaysByDomain[domain] = results.compactMap { result -> DiscoveredGateway? in
                         switch result.endpoint {
@@ -89,7 +98,6 @@ final class GatewayDiscoveryModel {
                                 lanHost: Self.txtValue(txt, key: "lanHost"),
                                 tailnetDns: Self.txtValue(txt, key: "tailnetDns"),
                                 gatewayPort: Self.txtIntValue(txt, key: "gatewayPort"),
-                                canvasPort: Self.txtIntValue(txt, key: "canvasPort"),
                                 tlsEnabled: Self.txtBoolValue(txt, key: "gatewayTls"),
                                 tlsFingerprintSha256: Self.txtValue(txt, key: "gatewayTlsSha256"),
                                 cliPath: Self.txtValue(txt, key: "cliPath"))
@@ -98,13 +106,10 @@ final class GatewayDiscoveryModel {
                         }
                     }
                     .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-
                     self.recomputeGateways()
-                }
-            }
+                })
 
             self.browsers[domain] = browser
-            browser.start(queue: DispatchQueue(label: "bot.molt.ios.gateway-discovery.\(domain)"))
         }
     }
 
@@ -117,7 +122,7 @@ final class GatewayDiscoveryModel {
         self.gatewaysByDomain = [:]
         self.statesByDomain = [:]
         self.gateways = []
-        self.statusText = "Stopped"
+        self.statusText = GatewayDiscoveryStatusText.stopped
     }
 
     private func recomputeGateways() {
@@ -125,7 +130,7 @@ final class GatewayDiscoveryModel {
             .flatMap(\.self)
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
 
-        let nextIDs = Set(next.map(\.stableID))
+        let nextIDs = Set(next.map { GatewayStableIdentifier.Key($0.stableID) })
         let added = nextIDs.subtracting(self.lastStableIDs)
         let removed = self.lastStableIDs.subtracting(nextIDs)
         if !added.isEmpty || !removed.isEmpty {

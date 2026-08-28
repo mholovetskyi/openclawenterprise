@@ -1,219 +1,186 @@
 ---
-summary: "Agent session tools for listing sessions, fetching history, and sending cross-session messages"
+summary: "Agent tools for cross-session status, recall, messaging, and sub-agent orchestration"
 read_when:
-  - Adding or modifying session tools
-title: "Session Tools"
+  - You want to understand what session tools the agent has
+  - You want to configure cross-session access or sub-agent spawning
+  - You want to inspect spawned sub-agent status
+title: "Session tools"
 ---
 
-# Session Tools
+OpenClaw gives agents tools to work across sessions, inspect status, and orchestrate sub-agents.
 
-Goal: small, hard-to-misuse tool set so agents can list sessions, fetch history, and send to another session.
+## Available tools
 
-## Tool Names
+| Tool                 | What it does                                                                            |
+| -------------------- | --------------------------------------------------------------------------------------- |
+| `sessions`           | Patch, reset, delete, or assign ownership of visible sessions and manage session groups |
+| `sessions_list`      | List sessions with optional filters (kind, label, agent, archive, preview)              |
+| `sessions_search`    | Search visible session transcripts and return matching excerpts                         |
+| `sessions_history`   | Read the transcript of a specific session                                               |
+| `sessions_send`      | Run another session on the same Gateway and optionally wait                             |
+| `conversations_list` | List stable external conversation addresses                                             |
+| `conversations_send` | Send to one exact external conversation without running a local session                 |
+| `conversations_turn` | Send to one exact external conversation and wait for its correlated reply               |
+| `sessions_spawn`     | Spawn an isolated sub-agent session for background work                                 |
+| `sessions_yield`     | End the current turn and wait for follow-up sub-agent results                           |
+| `subagents`          | List or cancel background work in this session tree                                     |
+| `session_status`     | Show a `/status`-style card and optionally set a per-session model override             |
 
-- `sessions_list`
-- `sessions_history`
-- `sessions_send`
-- `sessions_spawn`
+These tools are still subject to the active tool profile and allow/deny policy. `tools.profile: "coding"` includes the full session orchestration set. `tools.profile: "messaging"` includes session self-service, discovery, recall, cross-session messaging, external-conversation tools, and the complete spawn lifecycle (`sessions_spawn`, `sessions_yield`, and `subagents`). The UI-only task-suggestion tools `suggest_task` and `dismiss_task` remain coding-profile tools.
 
-## Key Model
+Group, provider, sandbox, and per-agent policies can still remove those tools after the profile stage. Use `/tools` from the affected session to inspect the effective tool list.
 
-- Main direct chat bucket is always the literal key `"main"` (resolved to the current agent’s main key).
-- Group chats use `agent:<agentId>:<channel>:group:<id>` or `agent:<agentId>:<channel>:channel:<id>` (pass the full key).
-- Cron jobs use `cron:<job.id>`.
-- Hooks use `hook:<uuid>` unless explicitly set.
-- Node sessions use `node-<nodeId>` unless explicitly set.
+Session access denials are rendered from the same typed visibility decision
+used by the enforcement boundary. When execution audit collection is enabled
+for an admitted run, a private queued fact retains the evaluated policy inputs
+and an installation-local opaque target reference, not the raw target session
+key. Public inspection renders that generic fact as an unverified
+`decision.record`; it does not claim a trusted reason or target display. A
+successful session operation is not labeled `enforced` merely because its
+mechanics succeeded.
 
-`global` and `unknown` are reserved values and are never listed. If `session.scope = "global"`, we alias it to `main` for all tools so callers never see `global`.
+For the same admitted run, create, fork, send, patch, reset, archive, restore,
+and delete results can queue attribution-only generic facts. The private facts
+distinguish committed or scheduled work from typed lifecycle conflicts and
+definitive no-ops; their public display remains generic and unverified. Direct
+Gateway sharing operations are outside this run-audit boundary.
 
-## sessions_list
+## Listing and reading sessions
 
-List sessions as an array of rows.
+`sessions_list` returns focused discovery rows: session key, durable session ID, agent, kind, channel, label/title/preview fields, sidebar category, parent and child relationships, last update, archive/pin state, state version, model, context/total token counts, run status, and whether the last run aborted. Filter by `kinds` (array; accepted values: `main`, `group`, `cron`, `hook`, `node`, `other`), exact `label`, exact `agentId`, `search` text, or recency (`activeMinutes`). Active sessions are returned by default; pass `archived: true` to inspect archived sessions instead. Set `includeDerivedTitles`, `includeLastMessage`, or `messageLimit` (capped at 20) when you need mailbox-style triage: a visibility-scoped derived title, a last-message preview snippet, or bounded recent messages on each row. Use the returned `sessionId` as `expectedSessionId` when the `sessions` tool archives, restores, or deletes another session; this prevents a stale key from targeting a replacement. Delivery routing, other internal IDs, per-run timings/settings, cost estimates, and transcript paths remain omitted; use `session_status`, conversation tools, and `sessions_history` for those owner-specific details. Derived titles and previews are produced only for sessions the caller can already see under the configured session tool visibility policy, so unrelated sessions stay hidden. When visibility is restricted, `sessions_list` returns optional `visibility` metadata showing the effective mode and a warning that results may be scope-limited.
 
-Parameters:
+`sessions_history` fetches the conversation transcript for a specific session. By default, tool results are excluded; pass `includeTools: true` to see them. Use `limit` for the newest bounded tail. Pass `offset: 0` when you need pagination metadata, then pass returned `nextOffset` values to page backward through older OpenClaw transcript windows without reading raw transcript files. Explicit offset pages do not merge external CLI fallback imports; use the default newest-tail view (no `offset`) when you need that merged display history.
 
-- `kinds?: string[]` filter: any of `"main" | "group" | "cron" | "hook" | "node" | "other"`
-- `limit?: number` max rows (default: server default, clamp e.g. 200)
-- `activeMinutes?: number` only sessions updated within N minutes
-- `messageLimit?: number` 0 = no messages (default 0); >0 = include last N messages
+The returned view is intentionally bounded and safety-filtered:
 
-Behavior:
+- assistant text is normalized before recall:
+  - thinking tags are stripped
+  - `<relevant-memories>` / `<relevant_memories>` scaffolding blocks are stripped
+  - plain-text tool-call XML payload blocks such as `<tool_call>...</tool_call>`, `<function_call>...</function_call>`, `<tool_calls>...</tool_calls>`, and `<function_calls>...</function_calls>` are stripped, including truncated payloads that never close cleanly
+  - downgraded tool-call/result scaffolding such as `[Tool Call: ...]`, `[Tool Result ...]`, and `[Historical context ...]` is stripped
+  - leaked model control tokens such as `<|assistant|>`, other ASCII `<|...|>` tokens, and full-width `<｜...｜>` variants are stripped
+  - malformed MiniMax tool-call XML such as `<invoke ...>` / `</minimax:tool_call>` is stripped
+- credential/token-like text is redacted before it is returned
+- long text blocks are truncated
+- very large histories can drop older rows or replace an oversized row with `[sessions_history omitted: message too large]`
+- the tool reports summary flags such as `truncated`, `droppedMessages`, `contentTruncated`, `contentRedacted`, `bytes`, and pagination metadata
 
-- `messageLimit > 0` fetches `chat.history` per session and includes the last N messages.
-- Tool results are filtered out in list output; use `sessions_history` for tool messages.
-- When running in a **sandboxed** agent session, session tools default to **spawned-only visibility** (see below).
+Use the returned **session key** (like `"main"`) with `sessions_history`, `sessions_send`, and `session_status`. Use the durable `sessionId` only as the lifecycle identity described above.
 
-Row shape (JSON):
+If you need the exact raw transcript, inspect the scoped SQLite transcript rows instead of treating `sessions_history` as an unfiltered dump.
 
-- `key`: session key (string)
-- `kind`: `main | group | cron | hook | node | other`
-- `channel`: `whatsapp | telegram | discord | signal | imessage | webchat | internal | unknown`
-- `displayName` (group display label if available)
-- `updatedAt` (ms)
-- `sessionId`
-- `model`, `contextTokens`, `totalTokens`
-- `thinkingLevel`, `verboseLevel`, `systemSent`, `abortedLastRun`
-- `sendPolicy` (session override if set)
-- `lastChannel`, `lastTo`
-- `deliveryContext` (normalized `{ channel, to, accountId }` when available)
-- `transcriptPath` (best-effort path derived from store dir + sessionId)
-- `messages?` (only when `messageLimit > 0`)
+Use [`sessions_search`](/concepts/session-search) for exact full-text recall across visible user and assistant transcript text. Its results include a `sessionKey` for a follow-up `sessions_history` call; visibility filtering, snippet redaction, and output bounds match the history boundary.
 
-## sessions_history
+## Managing session settings and groups
 
-Fetch transcript for one session.
+The owner-gated `sessions` tool exposes bounded self-service surfaces:
 
-Parameters:
+- `action: "patch"` changes the current session by default, or another visible session selected by `sessionKey`. It can set the label, persistent sidebar `icon`, sidebar `category`, pin/archive state, model, and thinking level. Pass `null` or an empty string to clear `category`; assigning a category adds it to the catalog on first use. The icon must be one emoji grapheme or one of the named icons `braces`, `book`, `monitor`, `bot`, `kanban`, and `coins`; pass an empty string to clear it. The Control UI picker also accepts a custom emoji and shows the macOS (Control-Command-Space) or Windows (Windows-period) system emoji picker shortcut. Archiving or restoring another session requires its `sessions_list` `sessionId` as `expectedSessionId`.
+- `action: "reset"` resets another visible session selected by `sessionKey`.
+- `action: "delete"` first archives and then deletes the exact same generation of another visible session selected by `sessionKey`. By default its transcript is retained as a deleted archive; pass `deleteTranscript: false` to leave the transcript state untouched. Resetting or deleting the session currently running the tool is rejected.
+- `action: "assign_owner"` hands session responsibility to a person or agent. Pass `ownerType` (`"human"` or `"agent"`) and `ownerId`; the target is the current session by default, or another visible session via `sessionKey`. Agent owner ids must name a configured agent. The assignment records who reassigned it and when, and the Control UI reflects the new owner immediately. Ownership is display and responsibility, not access control; see [Multi-user mode](/concepts/multi-user).
+- `group_list`, `group_set`, `group_rename`, and `group_delete` manage the global ordered session-group catalog. `group_set` replaces the ordered name list rather than assigning a session; use `action: "patch"` with `category` for membership.
 
-- `sessionKey` (required; accepts session key or `sessionId` from `sessions_list`)
-- `limit?: number` max messages (server clamps)
-- `includeTools?: boolean` (default false)
+Use `sessions_spawn` with `visible: true` to create a persistent dashboard session. Pass `category` to place it in a sidebar group atomically; omit `category` or pass an empty string to leave it ungrouped. This keeps session creation on the controlled spawn path, which enforces the parent's tool policy, sandbox, concurrency limits, and run timeout.
 
-Behavior:
+An agent-selected model patch stays reversible until that selection completes a successful run. If the selected model is definitively unusable because of authentication, billing, or model-not-found failure, OpenClaw restores the previous model and writes a visible system note. Transient rate-limit, overload, timeout, network, and server failures do not undo the selection.
 
-- `includeTools=false` filters `role: "toolResult"` messages.
-- Returns messages array in the raw transcript format.
-- When given a `sessionId`, OpenClaw resolves it to the corresponding session key (missing ids error).
+## Sessions versus conversations
 
-## sessions_send
+A **session** is local model context. A **conversation** is an exact external address such as one peer, channel, or thread. The two are linked, but they are not interchangeable: direct messages can share one `main` session while retaining separate conversation addresses.
 
-Send a message into another session.
+`conversations_list` returns opaque `conversationRef` values for the active agent. With an explicit `channel`, the Gateway also refreshes addresses from that channel's local directory, such as approved Reef peers; use `query` to find a specific peer beyond the current result page. Discovery catalogs the address without creating a model-context session; the backing session is created only when delivery or inbound context needs it. Conversation discovery and delivery are owner-only because they use the Gateway's channel credentials. Use `conversations_send` for fire-and-forget delivery. Use `conversations_turn` when the remote reply belongs to the current model turn: the Gateway reserves one transport message ID, persists a delivery operation and queue intent before transport I/O, and returns the correlated reply from the tool instead of starting a second local agent turn. Delivery operations live outside model transcripts; a captured reply is retained only as a side artifact while the tool result owns model context. If the Gateway restarts after queueing, delivery can recover but a later reply follows ordinary inbound dispatch because the process-local waiter is gone. Unsolicited inbound messages always continue through the normal channel dispatch path.
 
-Parameters:
+Use the shared `message` tool when you already have an explicit raw channel target or need a channel-specific action. Conversation references are scoped to the active agent and should be obtained through `conversations_list`, not constructed from session keys.
 
-- `sessionKey` (required; accepts session key or `sessionId` from `sessions_list`)
-- `message` (required)
-- `timeoutSeconds?: number` (default >0; 0 = fire-and-forget)
+In Code Mode, the conversation tools reuse their exact Gateway output contracts. A single `exec` cell can list addresses, select a returned `conversationRef`, and call `conversations_send` or `conversations_turn`; normal tool policy and approvals still apply to the nested calls.
 
-Behavior:
+## Sending cross-session messages
 
-- `timeoutSeconds = 0`: enqueue and return `{ runId, status: "accepted" }`.
-- `timeoutSeconds > 0`: wait up to N seconds for completion, then return `{ runId, status: "ok", reply }`.
-- If wait times out: `{ runId, status: "timeout", error }`. Run continues; call `sessions_history` later.
-- If the run fails: `{ runId, status: "error", error }`.
-- Announce delivery runs after the primary run completes and is best-effort; `status: "ok"` does not guarantee the announce was delivered.
-- Waits via gateway `agent.wait` (server-side) so reconnects don't drop the wait.
-- Agent-to-agent message context is injected for the primary run.
-- Inter-session messages are persisted with `message.provenance.kind = "inter_session"` so transcript readers can distinguish routed agent instructions from external user input.
-- After the primary run completes, OpenClaw runs a **reply-back loop**:
-  - Round 2+ alternates between requester and target agents.
-  - Reply exactly `REPLY_SKIP` to stop the ping‑pong.
-  - Max turns is `session.agentToAgent.maxPingPongTurns` (0–5, default 5).
-- Once the loop ends, OpenClaw runs the **agent‑to‑agent announce step** (target agent only):
-  - Reply exactly `ANNOUNCE_SKIP` to stay silent.
-  - Any other reply is sent to the target channel.
-  - Announce step includes the original request + round‑1 reply + latest ping‑pong reply.
+`sessions_send` runs another session on the same Gateway and optionally waits for the response. Its `sessionKey`, `label`, or `agentId` selects local model context, not an external destination. The resulting reply can still be announced through the established requester or target delivery context; that existing behavior is unchanged. For exact external delivery, use a conversation tool or `message` with an explicit channel and target.
 
-## Channel Field
+- **Fire-and-forget:** set `timeoutSeconds: 0` to enqueue and return immediately.
+- **Wait for reply:** set a timeout and get the response inline.
 
-- For groups, `channel` is the channel recorded on the session entry.
-- For direct chats, `channel` maps from `lastChannel`.
-- For cron/hook/node, `channel` is `internal`.
-- If missing, `channel` is `unknown`.
+A waited send that finishes without visible assistant text returns `status: "no_reply"`. That is a terminal, intentional non-outcome: no announcement remains pending. Continue without waiting, or send a new message if a response is required.
 
-## Security / Send Policy
+Thread-scoped chat sessions, such as keys ending in `:thread:<id>`, are not valid `sessions_send` targets. Use the parent channel session key for inter-agent coordination so tool-routed messages do not appear inside an active human-facing thread.
 
-Policy-based blocking by channel/chat type (not per session id).
+Messages and A2A follow-up replies are marked as inter-session data in the receiving prompt (`[Inter-session message ... isUser=false]`) and in transcript provenance. The receiving agent should treat them as tool-routed data, not as a direct end-user-authored instruction.
 
-```json
-{
-  "session": {
-    "sendPolicy": {
-      "rules": [
-        {
-          "match": { "channel": "discord", "chatType": "group" },
-          "action": "deny"
-        }
-      ],
-      "default": "allow"
-    }
-  }
-}
-```
+After the target responds, OpenClaw can run a **reply-back loop** where the agents alternate messages up to the built-in limit. The target agent can reply `REPLY_SKIP` to stop early.
 
-Runtime override (per session entry):
+Pass `watch: true` to also register the sender as a state-change watcher of the target: when another actor later sends the target a direct human message or changes its goal, the sender receives a system notice pointing at `session_status` `changesSince`. Registration happens after successful dispatch, targets the session that actually received the message, and starts at its current state version, so only later changes produce notices. The result reports `watched: true` when registration succeeded. See [Session state awareness](/concepts/session-state).
 
-- `sendPolicy: "allow" | "deny"` (unset = inherit config)
-- Settable via `sessions.patch` or owner-only `/send on|off|inherit` (standalone message).
+## Status and orchestration helpers
 
-Enforcement points:
+`session_status` is the lightweight `/status`-equivalent tool for the current or another visible session. It reports usage, time, model/runtime state, and linked background-task context when present. Like `/status`, it can backfill sparse token/cache counters from the latest transcript usage entry, and `model=default` clears a per-session override. Use `sessionKey="current"` for the caller's current session; visible client labels such as `openclaw-tui` are not session keys.
 
-- `chat.send` / `agent` (gateway)
-- auto-reply delivery logic
+When route metadata is available, `session_status` also includes a visible `Route context` JSON block and matching structured `details` fields. These fields disambiguate the session key from the route that is currently handling the live run:
 
-## sessions_spawn
+- `origin` is where the session was created, or the provider inferred from a deliverable session-key prefix when older state lacks stored origin metadata.
+- `active` is the current live-run route. It is only reported for the live or current session being handled now.
+- `deliveryContext` is the persisted delivery route stored on the session, which OpenClaw can reuse for later delivery even when the active surface differs.
 
-Spawn a sub-agent run in an isolated session and announce the result back to the requester chat channel.
+## Session state changes
 
-Parameters:
+OpenClaw keeps a durable signal log of material session state changes (direct human messages to watched sessions, child-run outcomes, goal changes, compaction). `sessions_list` rows and `session_status` expose the session's `stateVersion`, and `session_status` accepts `changesSince: <version>` to return the typed events after that version, with exact `historyGap` signaling when the requested version predates retained history. Watchers — spawn parents automatically, `sessions_send watch: true` explicitly — receive one coalesced stale-state notice when another actor changes a watched session.
 
-- `task` (required)
-- `label?` (optional; used for logs/UI)
-- `agentId?` (optional; spawn under another agent id if allowed)
-- `model?` (optional; overrides the sub-agent model; invalid values error)
-- `thinking?` (optional; overrides thinking level for the sub-agent run)
-- `runTimeoutSeconds?` (default 0; when set, aborts the sub-agent run after N seconds)
-- `thread?` (default false; request thread-bound routing for this spawn when supported by the channel/plugin)
-- `mode?` (`run|session`; defaults to `run`, but defaults to `session` when `thread=true`; `mode="session"` requires `thread=true`)
-- `cleanup?` (`delete|keep`, default `keep`)
+State-change events omit repeated session/agent IDs and expose only model-useful payload fields (`outcome`, `channel`, or `turns`). The event summary and actor/run identifiers remain available for reconciliation.
 
-Allowlist:
+See [Session state awareness](/concepts/session-state) for the full model: event kinds, watcher registration, the anti-spam notice protocol, reconciliation flow, and current limits.
 
-- `agents.list[].subagents.allowAgents`: list of agent ids allowed via `agentId` (`["*"]` to allow any). Default: only the requester agent.
+`sessions_yield` intentionally ends the current turn so the next message can be the follow-up event you are waiting for. Use it after spawning sub-agents when you want completion results to arrive as the next message instead of building poll loops.
 
-Discovery:
+`subagents` is the session-tree view over native sub-agent runs and the shared background-task ledger. `action: "list"` reports active/recent sub-agents plus scoped ACP, CLI/media, and cron tasks. `action: "cancel"` accepts a returned `taskId` and can stop only work inside the caller's controlled session tree; leaf sub-agents cannot cancel another session's task.
 
-- Use `agents_list` to discover which agent ids are allowed for `sessions_spawn`.
+## Spawning sub-agents
 
-Behavior:
+`sessions_spawn` creates an isolated session for a background task by default. It is always non-blocking; it returns immediately with a `runId` and `childSessionKey`. Native sub-agent runs receive the delegated task in the child session's first visible `[Subagent Task]` message, while the system prompt carries only sub-agent runtime rules and routing context.
 
-- Starts a new `agent:<agentId>:subagent:<uuid>` session with `deliver: false`.
-- Sub-agents default to the full tool set **minus session tools** (configurable via `tools.subagents.tools`).
-- Sub-agents are not allowed to call `sessions_spawn` (no sub-agent → sub-agent spawning).
-- Always non-blocking: returns `{ status: "accepted", runId, childSessionKey }` immediately.
-- With `thread=true`, channel plugins can bind delivery/routing to a thread target (Discord support is controlled by `session.threadBindings.*` and `channels.discord.threadBindings.*`).
-- After completion, OpenClaw runs a sub-agent **announce step** and posts the result to the requester chat channel.
-  - If the assistant final reply is empty, the latest `toolResult` from sub-agent history is included as `Result`.
-- Reply exactly `ANNOUNCE_SKIP` during the announce step to stay silent.
-- Announce replies are normalized to `Status`/`Result`/`Notes`; `Status` comes from runtime outcome (not model text).
-- Sub-agent sessions are auto-archived after `agents.defaults.subagents.archiveAfterMinutes` (default: 60).
-- Announce replies include a stats line (runtime, tokens, sessionKey/sessionId, transcript path, and optional cost).
+Key options:
 
-## Sandbox Session Visibility
+- `runtime: "subagent"` (default) or `"acp"` for external harness agents.
+- `model` and `thinking` overrides for the child session.
+- `runTimeoutSeconds` to override the configured child-run timeout; `0` disables it.
+- `thread: true` to bind the spawn to a chat thread (Discord, Slack, etc.).
+- `sandbox: "require"` to enforce sandboxing on the child.
+- `context: "fork"` for native sub-agents when the child needs the current requester transcript; omit it or use `context: "isolated"` for a clean child. `context: "fork"` is only valid with `runtime: "subagent"`. Thread-bound native sub-agents default to `context: "fork"` unless `threadBindings.defaultSpawnContext` says otherwise.
+- `visible: true` to create a persistent dashboard session instead of a hidden sub-agent session. Visible spawns support an explicit sidebar `category`, model, working directory, same-agent transcript fork, and an optional [managed worktree](/concepts/managed-worktrees); see [Sub-agents](/tools/subagents#tool-parameters) for the exact compatibility limits. The accepted result is a receipt: it includes the child session key, run id, a Control UI `sessionUrl` (omitted when the Control UI is disabled), and an `owner` record naming the requesting agent. When acknowledging the spawn in a channel, put the session URL on the first line and `Owner: <label>` on the second. The spawned session is attributed to the requesting agent in the sidebar; see [Multi-user mode](/concepts/multi-user#agent-spawned-sessions).
 
-Session tools can be scoped to reduce cross-session access.
+Default leaf sub-agents do not get session tools. When `maxSpawnDepth >= 2`, depth-1 orchestrator sub-agents additionally receive `sessions_spawn`, `subagents`, `sessions_list`, and `sessions_history` so they can manage their own children. Leaf runs still do not get recursive orchestration tools.
 
-Default behavior:
+After completion, an announce step posts the result to the requester's channel. Completion delivery preserves bound thread/topic routing when available, and if the completion origin only identifies a channel, OpenClaw can still reuse the requester session's stored route (`lastChannel` / `lastTo`) for direct delivery.
 
-- `tools.sessions.visibility` defaults to `tree` (current session + spawned subagent sessions).
-- For sandboxed sessions, `agents.defaults.sandbox.sessionToolsVisibility` can hard-clamp visibility.
+For ACP-specific behavior, see [ACP Agents](/tools/acp-agents).
 
-Config:
+## Visibility
 
-```json5
-{
-  tools: {
-    sessions: {
-      // "self" | "tree" | "agent" | "all"
-      // default: "tree"
-      visibility: "tree",
-    },
-  },
-  agents: {
-    defaults: {
-      sandbox: {
-        // default: "spawned"
-        sessionToolsVisibility: "spawned", // or "all"
-      },
-    },
-  },
-}
-```
+Session tools are scoped to limit what the agent can see:
 
-Notes:
+| Level   | Scope                                                             |
+| ------- | ----------------------------------------------------------------- |
+| `self`  | Only the current session                                          |
+| `tree`  | Current + spawned; when called from main, all same-agent sessions |
+| `agent` | All sessions for this agent                                       |
+| `all`   | All sessions (cross-agent if configured)                          |
 
-- `self`: only the current session key.
-- `tree`: current session + sessions spawned by the current session.
-- `agent`: any session belonging to the current agent id.
-- `all`: any session (cross-agent access still requires `tools.agentToAgent`).
-- When a session is sandboxed and `sessionToolsVisibility="spawned"`, OpenClaw clamps visibility to `tree` even if you set `tools.sessions.visibility="all"`.
+Default is `tree`. The main-session widening applies to list, history, search,
+send, and status, but never crosses agents. `self` remains a strict lockdown,
+including for main. A sandboxed caller under the default spawned-only session
+tool clamp stays limited to its spawn subtree. Incognito sessions remain hidden
+from every cross-session tool. Ambient group watches still add activity notices
+and prompt hints; they do not grant access.
+
+## Further reading
+
+- [Session Management](/concepts/session): routing, lifecycle, maintenance
+- [Sub-agents](/tools/subagents): child-session lifecycle and delivery
+- [ACP Agents](/tools/acp-agents): external harness spawning
+- [Multi-agent](/concepts/multi-agent): multi-agent architecture
+- [Gateway Configuration](/gateway/configuration): session tool config knobs
+
+## Related
+
+- [Session management](/concepts/session)
+- [Session pruning](/concepts/session-pruning)

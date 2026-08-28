@@ -1,7 +1,11 @@
+// Shared subagent tool test harness for gateway/config dependency overrides.
 import { vi } from "vitest";
+import type { CallGatewayOptions } from "../gateway/call.js";
 import type { MockFn } from "../test-utils/vitest-mock-fn.js";
+import { testing as subagentAnnounceTesting } from "./subagents/announce/subagent-announce.js";
+import { testing as subagentControlTesting } from "./subagents/registry/subagent-control.test-support.js";
 
-export type LoadedConfig = ReturnType<(typeof import("../config/config.js"))["loadConfig"]>;
+type LoadedConfig = ReturnType<(typeof import("../config/config.js"))["getRuntimeConfig"]>;
 
 export const callGatewayMock: MockFn = vi.fn();
 
@@ -14,6 +18,13 @@ const defaultConfig: LoadedConfig = {
 
 let configOverride: LoadedConfig = defaultConfig;
 
+async function callGatewayForTest<T = Record<string, unknown>>(
+  opts: CallGatewayOptions,
+): Promise<T> {
+  // Preserve the gateway call shape while giving tests a single mock to assert.
+  return (await callGatewayMock(opts)) as T;
+}
+
 export function setSubagentsConfigOverride(next: LoadedConfig) {
   configOverride = next;
 }
@@ -22,15 +33,28 @@ export function resetSubagentsConfigOverride() {
   configOverride = defaultConfig;
 }
 
+function applySharedSubagentTestDeps() {
+  // Keep control and announce modules on the same mocked gateway.
+  subagentControlTesting.setDepsForTest({
+    callGateway: callGatewayForTest,
+  });
+  subagentAnnounceTesting.setDepsForTest({
+    callGateway: callGatewayForTest,
+    getRuntimeConfig: () => configOverride,
+  });
+}
+
+applySharedSubagentTestDeps();
+
 vi.mock("../gateway/call.js", () => ({
-  callGateway: (opts: unknown) => callGatewayMock(opts),
+  callGateway: callGatewayForTest,
 }));
 
-vi.mock("../config/config.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../config/config.js")>();
+vi.mock("../config/config.js", async () => {
+  const actual = await vi.importActual<typeof import("../config/config.js")>("../config/config.js");
   return {
     ...actual,
-    loadConfig: () => configOverride,
+    getRuntimeConfig: () => configOverride,
     resolveGatewayPort: () => 18789,
   };
 });

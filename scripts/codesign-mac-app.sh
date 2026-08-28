@@ -1,27 +1,73 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_BUNDLE="${1:-dist/OpenClaw.app}"
+APP_BUNDLE="dist/OpenClaw.app"
 IDENTITY="${SIGN_IDENTITY:-}"
+SIGNING_VARIANT="${OPENCLAW_MAC_SIGNING_VARIANT:-standard}"
+ELEVATION_IDENTITY="Developer ID Application: OpenClaw Foundation (FWJYW4S8P8)"
+ELEVATION_TEAM_ID="FWJYW4S8P8"
 TIMESTAMP_MODE="${CODESIGN_TIMESTAMP:-auto}"
+CODESIGN_TIMESTAMP_RETRY_ATTEMPTS="${CODESIGN_TIMESTAMP_RETRY_ATTEMPTS:-8}"
+CODESIGN_TIMESTAMP_RETRY_DELAY_SECONDS="${CODESIGN_TIMESTAMP_RETRY_DELAY_SECONDS:-5}"
 DISABLE_LIBRARY_VALIDATION="${DISABLE_LIBRARY_VALIDATION:-0}"
 SKIP_TEAM_ID_CHECK="${SKIP_TEAM_ID_CHECK:-0}"
-ENT_TMP_BASE=$(mktemp -t openclaw-entitlements-base.XXXXXX)
-ENT_TMP_APP_BASE=$(mktemp -t openclaw-entitlements-app-base.XXXXXX)
-ENT_TMP_RUNTIME=$(mktemp -t openclaw-entitlements-runtime.XXXXXX)
+ENT_TMP_DIR=""
 
-if [[ "${APP_BUNDLE}" == "--help" || "${APP_BUNDLE}" == "-h" ]]; then
+cleanup() {
+  if [[ -n "$ENT_TMP_DIR" ]]; then
+    rm -rf "$ENT_TMP_DIR"
+  fi
+}
+
+if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
   cat <<'HELP'
 Usage: scripts/codesign-mac-app.sh [app-bundle]
 
 Env:
   SIGN_IDENTITY="Apple Development: Your Name (TEAMID)"
+  OPENCLAW_MAC_SIGNING_VARIANT=standard|elevation-host
   ALLOW_ADHOC_SIGNING=1
   CODESIGN_TIMESTAMP=auto|on|off
+  CODESIGN_TIMESTAMP_RETRY_ATTEMPTS=8
+  CODESIGN_TIMESTAMP_RETRY_DELAY_SECONDS=5
   DISABLE_LIBRARY_VALIDATION=1      # dev-only Sparkle Team ID workaround
   SKIP_TEAM_ID_CHECK=1              # bypass Team ID audit
 HELP
   exit 0
+fi
+
+case "$SIGNING_VARIANT" in
+  standard|elevation-host) ;;
+  *)
+    echo "ERROR: Unknown OPENCLAW_MAC_SIGNING_VARIANT value: $SIGNING_VARIANT (use standard|elevation-host)" >&2
+    exit 1
+    ;;
+esac
+
+if [[ "$SIGNING_VARIANT" == "elevation-host" && -z "$IDENTITY" ]]; then
+  IDENTITY="$ELEVATION_IDENTITY"
+fi
+if [[ "$SIGNING_VARIANT" == "elevation-host" && "$DISABLE_LIBRARY_VALIDATION" == "1" ]]; then
+  echo "ERROR: Elevation host signing forbids DISABLE_LIBRARY_VALIDATION=1." >&2
+  exit 1
+fi
+if [[ "$SIGNING_VARIANT" == "elevation-host" && "$SKIP_TEAM_ID_CHECK" == "1" ]]; then
+  echo "ERROR: Elevation host signing forbids SKIP_TEAM_ID_CHECK=1." >&2
+  exit 1
+fi
+
+if [[ "${1:-}" == "--" ]]; then
+  shift
+fi
+if [[ "$#" -gt 0 ]]; then
+  case "$1" in
+    -*) echo "ERROR: Unknown codesign option: $1" >&2; exit 1 ;;
+    *) APP_BUNDLE="$1"; shift ;;
+  esac
+fi
+if [[ "$#" -gt 0 ]]; then
+  echo "ERROR: Unexpected codesign argument: $1" >&2
+  exit 1
 fi
 
 if [ ! -d "$APP_BUNDLE" ]; then
@@ -116,7 +162,13 @@ case "$TIMESTAMP_MODE" in
     timestamp_arg="--timestamp=none"
     ;;
   auto)
-    if [[ "$IDENTITY" == *"Developer ID Application"* ]]; then
+    identity_name="$IDENTITY"
+    if [[ "$IDENTITY" =~ ^[[:xdigit:]]{40}$ ]]; then
+      # A hash selector conceals the certificate class required for notarization timestamps.
+      identity_name="$(security find-identity -p codesigning -v 2>/dev/null \
+        | awk -v hash="$IDENTITY" 'toupper($2) == toupper(hash) { print }')"
+    fi
+    if [[ "$identity_name" == *"Developer ID Application"* ]]; then
       timestamp_arg="--timestamp"
     fi
     ;;
@@ -129,28 +181,36 @@ if [[ "$IDENTITY" == "-" ]]; then
   timestamp_arg="--timestamp=none"
 fi
 
+if [[ ! "$CODESIGN_TIMESTAMP_RETRY_ATTEMPTS" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ERROR: CODESIGN_TIMESTAMP_RETRY_ATTEMPTS must be a positive integer" >&2
+  exit 1
+fi
+if [[ ! "$CODESIGN_TIMESTAMP_RETRY_DELAY_SECONDS" =~ ^[0-9]+$ ]]; then
+  echo "ERROR: CODESIGN_TIMESTAMP_RETRY_DELAY_SECONDS must be a nonnegative integer" >&2
+  exit 1
+fi
+
+ENT_TMP_DIR=$(mktemp -d -t openclaw-entitlements.XXXXXX)
+trap cleanup EXIT
+ENT_TMP_APP="$ENT_TMP_DIR/app.plist"
+CODESIGN_OUTPUT="$ENT_TMP_DIR/codesign-output"
+
 options_args=()
 if [[ "$IDENTITY" != "-" ]]; then
   options_args=("--options" "runtime")
 fi
 timestamp_args=("$timestamp_arg")
 
-cat > "$ENT_TMP_BASE" <<'PLIST'
+if [[ "$SIGNING_VARIANT" == "elevation-host" ]]; then
+  cat > "$ENT_TMP_APP" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <key>com.apple.security.automation.apple-events</key>
-    <true/>
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
-    <key>com.apple.security.device.camera</key>
-    <true/>
-</dict>
+<dict/>
 </plist>
 PLIST
-
-cat > "$ENT_TMP_APP_BASE" <<'PLIST'
+else
+  cat > "$ENT_TMP_APP" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -166,44 +226,72 @@ cat > "$ENT_TMP_APP_BASE" <<'PLIST'
 </dict>
 </plist>
 PLIST
-
-cat > "$ENT_TMP_RUNTIME" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-</dict>
-</plist>
-PLIST
+fi
 
 if [[ "$DISABLE_LIBRARY_VALIDATION" == "1" ]]; then
-  /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$ENT_TMP_APP_BASE" >/dev/null 2>&1 || \
-    /usr/libexec/PlistBuddy -c "Set :com.apple.security.cs.disable-library-validation true" "$ENT_TMP_APP_BASE"
+  /usr/libexec/PlistBuddy -c "Add :com.apple.security.cs.disable-library-validation bool true" "$ENT_TMP_APP" >/dev/null 2>&1 || \
+    /usr/libexec/PlistBuddy -c "Set :com.apple.security.cs.disable-library-validation true" "$ENT_TMP_APP"
   echo "Note: disable-library-validation entitlement enabled (DISABLE_LIBRARY_VALIDATION=1)."
 fi
 
-APP_ENTITLEMENTS="$ENT_TMP_APP_BASE"
+APP_ENTITLEMENTS="$ENT_TMP_APP"
 
 # clear extended attributes to avoid stale signatures
 xattr -cr "$APP_BUNDLE" 2>/dev/null || true
 
+codesign_with_timestamp_retry() {
+  local attempt=1
+  local command_rc
+  local delay
+
+  while true; do
+    : >"$CODESIGN_OUTPUT"
+    command_rc=0
+    codesign "$@" >"$CODESIGN_OUTPUT" 2>&1 || command_rc=$?
+    cat "$CODESIGN_OUTPUT" >&2
+    if [[ "$command_rc" -eq 0 ]]; then
+      return 0
+    fi
+    if [[ "$timestamp_arg" != "--timestamp" ]] ||
+      ! grep -Eiq 'A timestamp was expected but was not found|timestamp service is not available' "$CODESIGN_OUTPUT"
+    then
+      return "$command_rc"
+    fi
+    if [[ "$attempt" -ge "$CODESIGN_TIMESTAMP_RETRY_ATTEMPTS" ]]; then
+      echo "codesign timestamp retry limit reached after $attempt attempts" >&2
+      return "$command_rc"
+    fi
+
+    delay=$((CODESIGN_TIMESTAMP_RETRY_DELAY_SECONDS * attempt))
+    ((delay <= 30)) || delay=30
+    echo "Transient Apple timestamp failure; retrying codesign in ${delay}s (attempt $((attempt + 1))/$CODESIGN_TIMESTAMP_RETRY_ATTEMPTS)" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
+
 sign_item() {
   local target="$1"
   local entitlements="$2"
-  codesign --force ${options_args+"${options_args[@]}"} "${timestamp_args[@]}" --entitlements "$entitlements" --sign "$IDENTITY" "$target"
+  codesign_with_timestamp_retry --force ${options_args+"${options_args[@]}"} "${timestamp_args[@]}" --entitlements "$entitlements" --sign "$IDENTITY" "$target"
 }
 
 sign_plain_item() {
   local target="$1"
-  codesign --force ${options_args+"${options_args[@]}"} "${timestamp_args[@]}" --sign "$IDENTITY" "$target"
+  codesign_with_timestamp_retry --force ${options_args+"${options_args[@]}"} "${timestamp_args[@]}" --sign "$IDENTITY" "$target"
+}
+
+codesign_metadata_value() {
+  local target="$1" key="$2" metadata
+  metadata="$(codesign -dv --verbose=4 "$target" 2>&1)" || {
+    local rc=$?
+    return "$rc"
+  }
+  awk -F= -v key="$key" '$1 == key && !found { print $2; found = 1 }' <<<"$metadata"
 }
 
 team_id_for() {
-  codesign -dv --verbose=4 "$1" 2>&1 | awk -F= '/^TeamIdentifier=/{print $2; exit}'
+  codesign_metadata_value "$1" TeamIdentifier
 }
 
 verify_team_ids() {
@@ -247,6 +335,66 @@ verify_team_ids() {
   fi
 }
 
+assert_no_elevation_cua_driver() {
+  [[ "$SIGNING_VARIANT" == "elevation-host" ]] || return 0
+  local cua_driver="$APP_BUNDLE/Contents/Resources/cua-driver"
+  if [[ -e "$cua_driver" || -L "$cua_driver" ]]; then
+    echo "ERROR: Elevation host must not contain bundled CUA driver: $cua_driver" >&2
+    exit 1
+  fi
+}
+
+# Sign-time twin of verify_elevation_app in mac-elevation-host.sh, which asserts the same identity
+# invariants but requires an already notarized and stapled bundle. Dropping this check defers every
+# elevation identity failure until after an Apple notarization submission has been spent.
+verify_elevation_signature() {
+  [[ "$SIGNING_VARIANT" == "elevation-host" ]] || return 0
+  assert_no_elevation_cua_driver
+
+  local actual_team
+  actual_team="$(team_id_for "$APP_BUNDLE" || true)"
+  if [[ "$actual_team" != "$ELEVATION_TEAM_ID" ]]; then
+    echo "ERROR: Elevation host requires TeamIdentifier=$ELEVATION_TEAM_ID, got '${actual_team:-not set}'." >&2
+    exit 1
+  fi
+
+  local authority
+  authority="$(codesign_metadata_value "$APP_BUNDLE" Authority)"
+  if [[ "$authority" != "$ELEVATION_IDENTITY" ]]; then
+    echo "ERROR: Elevation host requires '$ELEVATION_IDENTITY', got '${authority:-not set}'." >&2
+    exit 1
+  fi
+
+  assert_no_apple_events_entitlement() {
+    local signed_path="$1"
+    local entitlements
+    entitlements="$(codesign -d --entitlements :- "$signed_path" 2>/dev/null || true)"
+    if /usr/bin/grep -q "com.apple.security.automation.apple-events" <<<"$entitlements"; then
+      echo "ERROR: Elevation host code retains Apple Events entitlement: $signed_path" >&2
+      exit 1
+    fi
+  }
+
+  assert_no_apple_events_entitlement "$APP_BUNDLE"
+  while IFS= read -r -d '' signed_path; do
+    if /usr/bin/file "$signed_path" | /usr/bin/grep -q "Mach-O"; then
+      assert_no_apple_events_entitlement "$signed_path"
+    fi
+  done < <(find "$APP_BUNDLE" -type f -print0)
+}
+
+# Sign bundled helper binaries before signing the app bundle.
+assert_no_elevation_cua_driver
+MLX_TTS_HELPER="$APP_BUNDLE/Contents/MacOS/openclaw-mlx-tts"
+if [ -f "$MLX_TTS_HELPER" ]; then
+  echo "Signing MLX TTS helper"; sign_plain_item "$MLX_TTS_HELPER"
+fi
+
+CUA_DRIVER="$APP_BUNDLE/Contents/Resources/cua-driver"
+if [ -f "$CUA_DRIVER" ]; then
+  echo "Signing embedded CUA driver"; sign_plain_item "$CUA_DRIVER"
+fi
+
 # Sign main binary
 if [ -f "$APP_BUNDLE/Contents/MacOS/OpenClaw" ]; then
   echo "Signing main binary"; sign_item "$APP_BUNDLE/Contents/MacOS/OpenClaw" "$APP_ENTITLEMENTS"
@@ -284,6 +432,6 @@ fi
 sign_item "$APP_BUNDLE" "$APP_ENTITLEMENTS"
 
 verify_team_ids
+verify_elevation_signature
 
-rm -f "$ENT_TMP_BASE" "$ENT_TMP_APP_BASE" "$ENT_TMP_RUNTIME"
 echo "Codesign complete for $APP_BUNDLE"

@@ -1,20 +1,13 @@
-import type { AssistantMessage } from "@mariozechner/pi-ai";
+/**
+ * Assistant message fixtures for agent tests.
+ *
+ * Tests use this helper to construct complete assistant messages with stable
+ * defaults while overriding only the fields relevant to a scenario.
+ */
+import type { AssistantMessage } from "openclaw/plugin-sdk/llm";
+import { ZERO_USAGE_FIXTURE } from "./usage-fixtures.js";
 
-const ZERO_USAGE: AssistantMessage["usage"] = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  totalTokens: 0,
-  cost: {
-    input: 0,
-    output: 0,
-    cacheRead: 0,
-    cacheWrite: 0,
-    total: 0,
-  },
-};
-
+/** Builds an assistant message fixture with deterministic error-style defaults. */
 export function makeAssistantMessageFixture(
   overrides: Partial<AssistantMessage> = {},
 ): AssistantMessage {
@@ -24,7 +17,7 @@ export function makeAssistantMessageFixture(
     api: "openai-responses",
     provider: "openai",
     model: "test-model",
-    usage: ZERO_USAGE,
+    usage: ZERO_USAGE_FIXTURE,
     timestamp: 0,
     stopReason: "error",
     errorMessage: errorText,

@@ -1,15 +1,16 @@
+// Defines poll input and output contracts used by polling commands.
 export type PollInput = {
   question: string;
   options: string[];
   maxSelections?: number;
   /**
    * Poll duration in seconds.
-   * Channel-specific limits apply (e.g. Telegram open_period is 5-600s).
+   * Channel-specific limits apply in each owning plugin.
    */
   durationSeconds?: number;
   /**
    * Poll duration in hours.
-   * Used by channels that model duration in hours (e.g. Discord).
+   * Used by channels that model duration in hours.
    */
   durationHours?: number;
 };
@@ -25,6 +26,13 @@ export type NormalizedPollInput = {
 type NormalizePollOptions = {
   maxOptions?: number;
 };
+
+export function resolvePollMaxSelections(
+  optionCount: number,
+  allowMultiselect: boolean | undefined,
+): number {
+  return allowMultiselect ? Math.max(2, optionCount) : 1;
+}
 
 export function normalizePollInput(
   input: PollInput,

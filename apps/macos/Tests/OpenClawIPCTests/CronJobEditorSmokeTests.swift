@@ -5,24 +5,17 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct CronJobEditorSmokeTests {
-    @Test func statusPillBuildsBody() {
-        _ = StatusPill(text: "ok", tint: .green).body
-        _ = StatusPill(text: "disabled", tint: .secondary).body
-    }
-
-    @Test func cronJobEditorBuildsBodyForNewJob() {
-        let channelsStore = ChannelsStore(isPreview: true)
-        let view = CronJobEditor(
-            job: nil,
+    private func makeEditor(job: CronJob? = nil, channelsStore: ChannelsStore? = nil) -> CronJobEditor {
+        CronJobEditor(
+            job: job,
             isSaving: .constant(false),
             error: .constant(nil),
-            channelsStore: channelsStore,
+            channelsStore: channelsStore ?? ChannelsStore(isPreview: true),
             onCancel: {},
             onSave: { _ in })
-        _ = view.body
     }
 
-    @Test func cronJobEditorBuildsBodyForExistingJob() {
+    @Test func `cron job editor preserves advanced delivery routes`() {
         let channelsStore = ChannelsStore(isPreview: true)
         let job = CronJob(
             id: "job-1",
@@ -44,7 +37,22 @@ struct CronJobEditorSmokeTests {
                 channel: nil,
                 to: nil,
                 bestEffortDeliver: nil),
-            delivery: CronDelivery(mode: .announce, channel: "whatsapp", to: "+15551234567", bestEffort: true),
+            delivery: CronDelivery(
+                mode: .announce,
+                channel: "whatsapp",
+                to: "+15551234567",
+                bestEffort: true,
+                threadId: AnyCodable(42),
+                completionDestination: [
+                    "mode": AnyCodable("webhook"),
+                    "to": AnyCodable("https://example.test/complete"),
+                ],
+                failureDestination: [
+                    "mode": AnyCodable("announce"),
+                    "channel": AnyCodable("telegram"),
+                    "to": AnyCodable("ops"),
+                    "accountId": AnyCodable("alerts"),
+                ]),
             state: CronJobState(
                 nextRunAtMs: 1_700_000_100_000,
                 runningAtMs: nil,
@@ -53,37 +61,16 @@ struct CronJobEditorSmokeTests {
                 lastError: nil,
                 lastDurationMs: 1000))
 
-        let view = CronJobEditor(
-            job: job,
-            isSaving: .constant(false),
-            error: .constant(nil),
-            channelsStore: channelsStore,
-            onCancel: {},
-            onSave: { _ in })
-        _ = view.body
+        let view = self.makeEditor(job: job, channelsStore: channelsStore)
+        let delivery = view.buildDelivery()
+        #expect(delivery["threadId"] as? Int == 42)
+        #expect((delivery["completionDestination"] as? [String: Any])?["to"] as? String ==
+            "https://example.test/complete")
+        #expect((delivery["failureDestination"] as? [String: Any])?["accountId"] as? String == "alerts")
     }
 
-    @Test func cronJobEditorExercisesBuilders() {
-        let channelsStore = ChannelsStore(isPreview: true)
-        var view = CronJobEditor(
-            job: nil,
-            isSaving: .constant(false),
-            error: .constant(nil),
-            channelsStore: channelsStore,
-            onCancel: {},
-            onSave: { _ in })
-        view.exerciseForTesting()
-    }
-
-    @Test func cronJobEditorIncludesDeleteAfterRunForAtSchedule() throws {
-        let channelsStore = ChannelsStore(isPreview: true)
-        let view = CronJobEditor(
-            job: nil,
-            isSaving: .constant(false),
-            error: .constant(nil),
-            channelsStore: channelsStore,
-            onCancel: {},
-            onSave: { _ in })
+    @Test func `cron job editor includes delete after run for at schedule`() {
+        let view = self.makeEditor()
 
         var root: [String: Any] = [:]
         view.applyDeleteAfterRun(to: &root, scheduleKind: CronJobEditor.ScheduleKind.at, deleteAfterRun: true)
