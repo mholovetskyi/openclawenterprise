@@ -61,15 +61,15 @@ export async function createGCPSecretManagerBackend(cfg: OpenClawConfig): Promis
   const projectId = gcpCfg.projectId;
   const prefix = gcpCfg.prefix ?? "";
 
-  // Lazy import — not bundled unless this backend is explicitly enabled
-  const { SecretManagerServiceClient } =
-    await // SAFETY: the dynamic import resolves to @google-cloud/secret-manager (the fixed GCP_SM_MODULE specifier); GcpSecretManagerModule mirrors that package's stable SecretManagerServiceClient export, so the resolved-promise shape holds.
-    (import(GCP_SM_MODULE) as Promise<GcpSecretManagerModule>).catch(() => {
-      throw new Error(
-        "Package @google-cloud/secret-manager is not installed.\n" +
-          "Run: npm install @google-cloud/secret-manager",
-      );
-    });
+  // Lazy import — not bundled unless this backend is explicitly enabled.
+  // SAFETY: the dynamic import resolves to @google-cloud/secret-manager (the fixed GCP_SM_MODULE specifier); GcpSecretManagerModule mirrors that package's stable SecretManagerServiceClient export, so the resolved-promise shape holds.
+  const modulePromise = import(GCP_SM_MODULE) as Promise<GcpSecretManagerModule>;
+  const { SecretManagerServiceClient } = await modulePromise.catch(() => {
+    throw new Error(
+      "Package @google-cloud/secret-manager is not installed.\n" +
+        "Run: npm install @google-cloud/secret-manager",
+    );
+  });
 
   const client = new SecretManagerServiceClient();
   const parent = `projects/${projectId}`;
