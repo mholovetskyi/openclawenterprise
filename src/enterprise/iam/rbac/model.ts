@@ -58,6 +58,13 @@ export type User = {
   totpSecret?: string;
   /** Whether MFA is required for this user */
   mfaEnabled?: boolean;
+  /**
+   * Highest TOTP time-step already consumed for this user. Used for MFA replay
+   * protection: a verification must reject any code whose step is <= this value,
+   * so a code cannot be reused within its ±1 acceptance window. Set by the MFA
+   * verification path once wired at the auth gate (see mfa-not-enforced hook).
+   */
+  lastTotpStep?: number;
   /** CIDR allowlist for this user — empty means no IP restriction */
   allowedCidrs?: string[];
 };
@@ -149,13 +156,7 @@ export const BUILT_IN_ROLES: readonly Role[] = [
     id: "agent-service",
     name: "Agent Service Account",
     description: "For non-human agent identities",
-    permissions: [
-      "agent",
-      "send",
-      "tools.*",
-      "sessions.read",
-      "skills.status",
-    ],
+    permissions: ["agent", "send", "tools.*", "sessions.read", "skills.status"],
     system: true,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
@@ -169,10 +170,7 @@ export const BUILT_IN_ROLES: readonly Role[] = [
  * Supports wildcards: "agents.*" grants "agents.create", "agents.list", etc.
  * "*" grants everything.
  */
-export function permissionGranted(
-  requested: Permission,
-  granted: readonly Permission[],
-): boolean {
+export function permissionGranted(requested: Permission, granted: readonly Permission[]): boolean {
   for (const g of granted) {
     if (g === "*") return true;
     if (g === requested) return true;

@@ -4,7 +4,7 @@
  */
 
 import { createRequire } from "node:module";
-import type { AuditEvent } from "../schema.js";
+import { anonymizeEventActor, type AuditEvent } from "../schema.js";
 
 export type AuditQueryOptions = {
   limit?: number;
@@ -14,15 +14,24 @@ export type AuditQueryOptions = {
   action?: string;
   outcome?: string;
   tenantId?: string;
-  from?: string;  // ISO 8601
+  ip?: string;
+  from?: string; // ISO 8601
   until?: string; // ISO 8601
   search?: string;
 };
+
+/** The true tail of the chain — used to seed the in-memory head on startup. */
+export type AuditChainHead = { hash: string; seq: number };
 
 export interface AuditStorage {
   append(event: AuditEvent): Promise<void>;
   query(opts: AuditQueryOptions): Promise<{ events: AuditEvent[]; total: number }>;
   getLastHash(): Promise<string | undefined>;
+  /**
+   * Return the hash AND seq of the true tail (by insertion order), for seeding
+   * the chain head across restarts. Optional for backward compatibility.
+   */
+  getHead?(): Promise<AuditChainHead | undefined>;
   count(): Promise<number>;
   shutdown(): Promise<void>;
   /** GDPR: replace all occurrences of actorId with pseudonym. Returns rows affected. */
@@ -38,7 +47,7 @@ type BetterSQLiteDB = {
   pragma(key: string): unknown;
   exec(sql: string): void;
   prepare(sql: string): {
-    run(params?: Record<string, unknown>): void;
+    run(params?: Record<string, unknown>): { changes: number };
     get(params?: Record<string, unknown>): unknown;
     all(params?: Record<string, unknown>): unknown[];
   };
@@ -70,10 +79,12 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
   db.exec(`
     CREATE TABLE IF NOT EXISTS audit_events (
       id          TEXT PRIMARY KEY,
+      seq         INTEGER,
       timestamp   TEXT NOT NULL,
       actor_id    TEXT NOT NULL,
       actor_type  TEXT NOT NULL,
       actor_email TEXT,
+      actor_ip    TEXT,
       action      TEXT NOT NULL,
       category    TEXT NOT NULL,
       resource_id TEXT,
@@ -90,35 +101,43 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
 
     CREATE INDEX IF NOT EXISTS idx_audit_timestamp  ON audit_events(timestamp);
     CREATE INDEX IF NOT EXISTS idx_audit_actor_id   ON audit_events(actor_id);
+    CREATE INDEX IF NOT EXISTS idx_audit_actor_ip   ON audit_events(actor_ip);
     CREATE INDEX IF NOT EXISTS idx_audit_action     ON audit_events(action);
     CREATE INDEX IF NOT EXISTS idx_audit_category   ON audit_events(category);
     CREATE INDEX IF NOT EXISTS idx_audit_outcome    ON audit_events(outcome);
     CREATE INDEX IF NOT EXISTS idx_audit_tenant     ON audit_events(tenant_id);
   `);
 
+  // Plain INSERT (not INSERT OR IGNORE): an id collision or an ignored insert
+  // must surface as an error rather than silently dropping an audit record and
+  // poisoning the hash chain. append() checks changes and throws on 0 rows.
   const insertStmt = db.prepare(`
-    INSERT OR IGNORE INTO audit_events
-      (id, timestamp, actor_id, actor_type, actor_email, action, category,
+    INSERT INTO audit_events
+      (id, seq, timestamp, actor_id, actor_type, actor_email, actor_ip, action, category,
        resource_id, resource_type, outcome, duration_ms, tenant_id, error_msg,
        previous_hash, hash, metadata, raw)
     VALUES
-      (@id, @timestamp, @actor_id, @actor_type, @actor_email, @action, @category,
+      (@id, @seq, @timestamp, @actor_id, @actor_type, @actor_email, @actor_ip, @action, @category,
        @resource_id, @resource_type, @outcome, @duration_ms, @tenant_id, @error_msg,
        @previous_hash, @hash, @metadata, @raw)
   `);
 
-  const lastHashStmt = db.prepare(
-    "SELECT hash FROM audit_events ORDER BY timestamp DESC LIMIT 1",
-  );
+  // Order by rowid (implicit, insertion-monotonic — the table is not WITHOUT
+  // ROWID) rather than the coarse millisecond timestamp, so same-millisecond
+  // ties and backward clock steps still return the true tail.
+  const lastHashStmt = db.prepare("SELECT hash FROM audit_events ORDER BY rowid DESC LIMIT 1");
+  const headStmt = db.prepare("SELECT hash, seq FROM audit_events ORDER BY rowid DESC LIMIT 1");
 
   return {
     async append(event: AuditEvent): Promise<void> {
-      insertStmt.run({
+      const info = insertStmt.run({
         id: event.id,
+        seq: event.seq ?? null,
         timestamp: event.timestamp,
         actor_id: event.actor.id,
         actor_type: event.actor.type,
         actor_email: event.actor.email ?? null,
+        actor_ip: event.actor.ip ?? null,
         action: event.action,
         category: event.category,
         resource_id: event.resource?.id ?? null,
@@ -132,19 +151,48 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
         metadata: event.metadata ? JSON.stringify(event.metadata) : null,
         raw: JSON.stringify(event),
       });
+      if (info.changes === 0) {
+        // An ignored/failed insert must not be treated as a durable write.
+        throw new Error(`audit append failed: event ${event.id} was not persisted`);
+      }
     },
 
     async query(opts: AuditQueryOptions): Promise<{ events: AuditEvent[]; total: number }> {
       const conditions: string[] = [];
       const params: Record<string, unknown> = {};
 
-      if (opts.actorId) { conditions.push("actor_id = @actorId"); params.actorId = opts.actorId; }
-      if (opts.category) { conditions.push("category = @category"); params.category = opts.category; }
-      if (opts.action) { conditions.push("action LIKE @action"); params.action = `%${opts.action}%`; }
-      if (opts.outcome) { conditions.push("outcome = @outcome"); params.outcome = opts.outcome; }
-      if (opts.tenantId) { conditions.push("tenant_id = @tenantId"); params.tenantId = opts.tenantId; }
-      if (opts.from) { conditions.push("timestamp >= @from"); params.from = opts.from; }
-      if (opts.until) { conditions.push("timestamp <= @until"); params.until = opts.until; }
+      if (opts.actorId) {
+        conditions.push("actor_id = @actorId");
+        params.actorId = opts.actorId;
+      }
+      if (opts.category) {
+        conditions.push("category = @category");
+        params.category = opts.category;
+      }
+      if (opts.action) {
+        conditions.push("action LIKE @action");
+        params.action = `%${opts.action}%`;
+      }
+      if (opts.outcome) {
+        conditions.push("outcome = @outcome");
+        params.outcome = opts.outcome;
+      }
+      if (opts.tenantId) {
+        conditions.push("tenant_id = @tenantId");
+        params.tenantId = opts.tenantId;
+      }
+      if (opts.ip) {
+        conditions.push("actor_ip = @ip");
+        params.ip = opts.ip;
+      }
+      if (opts.from) {
+        conditions.push("timestamp >= @from");
+        params.from = opts.from;
+      }
+      if (opts.until) {
+        conditions.push("timestamp <= @until");
+        params.until = opts.until;
+      }
       if (opts.search) {
         conditions.push("(action LIKE @search OR actor_id LIKE @search OR raw LIKE @search)");
         params.search = `%${opts.search}%`;
@@ -154,10 +202,14 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
       const limit = opts.limit ?? 50;
       const offset = opts.offset ?? 0;
 
-      const countRow = db.prepare(`SELECT COUNT(*) as c FROM audit_events ${where}`).get(params) as { c: number };
-      const rows = db.prepare(
-        `SELECT raw FROM audit_events ${where} ORDER BY timestamp DESC LIMIT @limit OFFSET @offset`,
-      ).all({ ...params, limit, offset }) as Array<{ raw: string }>;
+      const countRow = db
+        .prepare(`SELECT COUNT(*) as c FROM audit_events ${where}`)
+        .get(params) as { c: number };
+      const rows = db
+        .prepare(
+          `SELECT raw FROM audit_events ${where} ORDER BY timestamp DESC LIMIT @limit OFFSET @offset`,
+        )
+        .all({ ...params, limit, offset }) as Array<{ raw: string }>;
 
       return {
         events: rows.map((r) => JSON.parse(r.raw) as AuditEvent),
@@ -170,6 +222,12 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
       return row?.hash;
     },
 
+    async getHead(): Promise<{ hash: string; seq: number } | undefined> {
+      const row = headStmt.get() as { hash: string; seq: number | null } | undefined;
+      if (!row) return undefined;
+      return { hash: row.hash, seq: row.seq ?? 0 };
+    },
+
     async count(): Promise<number> {
       const row = db.prepare("SELECT COUNT(*) as c FROM audit_events").get() as { c: number };
       return row.c;
@@ -180,12 +238,15 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
     },
 
     async anonymizeActor(actorId: string, pseudonym: string): Promise<number> {
-      // Update indexed columns
+      // Update indexed columns — also NULL out the queryable/erasable IP column.
       db.prepare(
-        "UPDATE audit_events SET actor_id = @pseudo, actor_email = NULL WHERE actor_id = @actorId",
+        "UPDATE audit_events SET actor_id = @pseudo, actor_email = NULL, actor_ip = NULL WHERE actor_id = @actorId",
       ).run({ pseudo: pseudonym, actorId });
 
-      // Rewrite raw JSON blobs — actor.id and actor.email replaced
+      // Rewrite raw JSON blobs — strip ALL erasable actor PII (id→pseudonym;
+      // name/email/ip/channel/channelUserId/sessionId removed). Because those
+      // fields are excluded from the hash pre-image, the rewritten event still
+      // passes verifyEventHash and the chain stays intact (verified by test).
       const rows = db
         .prepare("SELECT id, raw FROM audit_events WHERE actor_id = @pseudo")
         .all({ pseudo: pseudonym }) as Array<{ id: string; raw: string }>;
@@ -193,14 +254,12 @@ export async function createSQLiteAuditStorage(dbPath: string): Promise<AuditSto
       let count = 0;
       for (const row of rows) {
         try {
-          const event = JSON.parse(row.raw) as Record<string, unknown> & {
-            actor: Record<string, unknown>;
-          };
-          event.actor.id = pseudonym;
-          delete event.actor.email;
-          delete event.actor.name;
+          // SAFETY: the raw column is written only by append() from a full
+          // AuditEvent; a malformed row throws in JSON.parse and is skipped below.
+          const event = JSON.parse(row.raw) as AuditEvent;
+          const erased = anonymizeEventActor(event, pseudonym);
           db.prepare("UPDATE audit_events SET raw = @raw WHERE id = @id").run({
-            raw: JSON.stringify(event),
+            raw: JSON.stringify(erased),
             id: row.id,
           });
           count++;

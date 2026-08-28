@@ -19,6 +19,7 @@
 import { metrics } from "../../monitoring/metrics.js";
 import { getTenantContext } from "../../tenancy/index.js";
 import type { AuditEvent } from "../schema.js";
+import { createReconnectingSink } from "./reconnecting.js";
 import type { AuditSink } from "./syslog.js";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -194,118 +195,130 @@ export async function createPalantirSink(
     bufferSize: metrics.sandboxMemoryMb,
   };
 
-  // Connectivity check
+  const writeRecords = deps.writeRecords ?? defaultWriteRecords;
   const checkConnectivity = deps.connectivityCheck ?? defaultConnectivityCheck;
+
+  // Connectivity check. On failure we do NOT install a permanent silent no-op —
+  // that would black-hole every audit event for the life of the process,
+  // undetectable except via boot-time stderr. Instead we return a buffering sink
+  // that keeps retrying connectivity and exposes its degraded state via metrics.
   try {
     await checkConnectivity(client, stackUrl);
   } catch (err) {
     process.stderr.write(
-      `[palantir-sink] Failed to connect to Foundry at ${stackUrl}: ${String(err)}. Sink disabled.\n`,
+      `[palantir-sink] Failed to connect to Foundry at ${stackUrl}: ${String(err)}. ` +
+        `Buffering events and retrying.\n`,
     );
-    // Return a no-op sink
-    return {
-      async send() {},
-      async close() {},
-    };
+    return createReconnectingSink({
+      label: "palantir",
+      check: () => checkConnectivity(client, stackUrl),
+      makeLive: createLiveSink,
+      metrics: sinkMetrics,
+      maxBufferSize,
+      retryIntervalMs: retryBackoffMs,
+    });
   }
 
-  // State
-  let buffer: AuditEvent[] = [];
-  let flushTimer: NodeJS.Timeout | null = null;
-  let flushing = false;
-  const writeRecords = deps.writeRecords ?? defaultWriteRecords;
+  return createLiveSink();
 
-  async function flushWithRetry(): Promise<void> {
-    if (buffer.length === 0 || flushing) {
-      return;
-    }
-    flushing = true;
-    const toSend = buffer.splice(0, batchSize);
-    const records = toSend.map(eventToRecord);
+  function createLiveSink(): AuditSink {
+    // State
+    let buffer: AuditEvent[] = [];
+    let flushTimer: NodeJS.Timeout | null = null;
+    let flushing = false;
 
-    sinkMetrics.bufferSize.set({ sink: "palantir" }, buffer.length);
-
-    const startTime = Date.now();
-    let lastErr: Error | undefined;
-
-    for (let attempt = 0; attempt <= retryAttempts; attempt++) {
-      try {
-        await writeRecords(osdk, client, config.streamRid, records);
-        sinkMetrics.eventsTotal.inc({ outcome: "success" }, toSend.length);
-        const elapsed = (Date.now() - startTime) / 1000;
-        sinkMetrics.flushDuration.observe({ sink: "palantir" }, elapsed);
-        flushing = false;
+    async function flushWithRetry(): Promise<void> {
+      if (buffer.length === 0 || flushing) {
         return;
-      } catch (err) {
-        lastErr = err instanceof Error ? err : new Error(String(err));
-        if (attempt < retryAttempts) {
-          const delay = retryBackoffMs * Math.pow(2, attempt);
-          await new Promise<void>((r) => setTimeout(r, delay));
-        }
       }
-    }
+      flushing = true;
+      const toSend = buffer.splice(0, batchSize);
+      const records = toSend.map(eventToRecord);
 
-    // All retries exhausted
-    sinkMetrics.eventsTotal.inc({ outcome: "error" }, toSend.length);
-    process.stderr.write(
-      `[palantir-sink] Failed to flush ${toSend.length} events after ${retryAttempts + 1} attempts: ${lastErr}\n`,
-    );
-    flushing = false;
-  }
-
-  function scheduleFlush() {
-    if (!flushTimer) {
-      flushTimer = setTimeout(async () => {
-        flushTimer = null;
-        await flushWithRetry();
-      }, flushMs);
-      flushTimer.unref?.();
-    }
-  }
-
-  // Graceful shutdown
-  const shutdownHandler = async () => {
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    await flushWithRetry();
-  };
-
-  process.on("SIGTERM", shutdownHandler);
-  process.on("SIGINT", shutdownHandler);
-
-  return {
-    async send(event: AuditEvent): Promise<void> {
-      if (buffer.length >= maxBufferSize) {
-        // Drop oldest event
-        buffer.shift();
-        sinkMetrics.eventsTotal.inc({ outcome: "dropped" }, 1);
-        process.stderr.write(
-          `[palantir-sink] Buffer full (${maxBufferSize}), dropping oldest event\n`,
-        );
-      }
-      buffer.push(event);
       sinkMetrics.bufferSize.set({ sink: "palantir" }, buffer.length);
 
-      if (buffer.length >= batchSize) {
-        await flushWithRetry();
-      } else {
-        scheduleFlush();
-      }
-    },
+      const startTime = Date.now();
+      let lastErr: Error | undefined;
 
-    async close(): Promise<void> {
-      process.removeListener("SIGTERM", shutdownHandler);
-      process.removeListener("SIGINT", shutdownHandler);
+      for (let attempt = 0; attempt <= retryAttempts; attempt++) {
+        try {
+          await writeRecords(osdk, client, config.streamRid, records);
+          sinkMetrics.eventsTotal.inc({ outcome: "success" }, toSend.length);
+          const elapsed = (Date.now() - startTime) / 1000;
+          sinkMetrics.flushDuration.observe({ sink: "palantir" }, elapsed);
+          flushing = false;
+          return;
+        } catch (err) {
+          lastErr = err instanceof Error ? err : new Error(String(err));
+          if (attempt < retryAttempts) {
+            const delay = retryBackoffMs * Math.pow(2, attempt);
+            await new Promise<void>((r) => setTimeout(r, delay));
+          }
+        }
+      }
+
+      // All retries exhausted
+      sinkMetrics.eventsTotal.inc({ outcome: "error" }, toSend.length);
+      process.stderr.write(
+        `[palantir-sink] Failed to flush ${toSend.length} events after ${retryAttempts + 1} attempts: ${lastErr}\n`,
+      );
+      flushing = false;
+    }
+
+    function scheduleFlush() {
+      if (!flushTimer) {
+        flushTimer = setTimeout(async () => {
+          flushTimer = null;
+          await flushWithRetry();
+        }, flushMs);
+        flushTimer.unref?.();
+      }
+    }
+
+    // Graceful shutdown
+    const shutdownHandler = async () => {
       if (flushTimer) {
         clearTimeout(flushTimer);
         flushTimer = null;
       }
-      // Flush remaining
-      while (buffer.length > 0) {
-        await flushWithRetry();
-      }
-    },
-  };
+      await flushWithRetry();
+    };
+
+    process.on("SIGTERM", shutdownHandler);
+    process.on("SIGINT", shutdownHandler);
+
+    return {
+      async send(event: AuditEvent): Promise<void> {
+        if (buffer.length >= maxBufferSize) {
+          // Drop oldest event
+          buffer.shift();
+          sinkMetrics.eventsTotal.inc({ outcome: "dropped" }, 1);
+          process.stderr.write(
+            `[palantir-sink] Buffer full (${maxBufferSize}), dropping oldest event\n`,
+          );
+        }
+        buffer.push(event);
+        sinkMetrics.bufferSize.set({ sink: "palantir" }, buffer.length);
+
+        if (buffer.length >= batchSize) {
+          await flushWithRetry();
+        } else {
+          scheduleFlush();
+        }
+      },
+
+      async close(): Promise<void> {
+        process.removeListener("SIGTERM", shutdownHandler);
+        process.removeListener("SIGINT", shutdownHandler);
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        // Flush remaining
+        while (buffer.length > 0) {
+          await flushWithRetry();
+        }
+      },
+    };
+  }
 }

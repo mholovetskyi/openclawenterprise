@@ -21,6 +21,7 @@
 import { metrics } from "../../monitoring/metrics.js";
 import { getTenantContext } from "../../tenancy/index.js";
 import type { AuditEvent } from "../schema.js";
+import { createReconnectingSink } from "./reconnecting.js";
 import type { AuditSink } from "./syslog.js";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
@@ -161,118 +162,133 @@ export async function createOciStreamingSink(
     bufferSize: metrics.sandboxMemoryMb,
   };
 
-  // Startup validation
-  try {
+  // Startup validation. On failure we do NOT install a permanent silent no-op —
+  // instead we buffer and keep retrying so the sink can recover and its degraded
+  // state is observable via metrics rather than only a boot-time stderr line.
+  async function validateStream(): Promise<void> {
     const resp = await client.getStream({ streamId });
     if (resp.stream.lifecycleState !== "ACTIVE") {
-      process.stderr.write(
-        `[oci-streaming] Stream ${streamId} is ${resp.stream.lifecycleState}, not ACTIVE. Sink disabled.\n`,
-      );
-      return { async send() {}, async close() {} };
+      throw new Error(`Stream ${streamId} is ${resp.stream.lifecycleState}, not ACTIVE`);
     }
+  }
+
+  try {
+    await validateStream();
   } catch (err) {
     process.stderr.write(
-      `[oci-streaming] Failed to validate stream ${streamId}: ${String(err)}. Sink disabled.\n`,
+      `[oci-streaming] Failed to validate stream ${streamId}: ${String(err)}. ` +
+        `Buffering events and retrying.\n`,
     );
-    return { async send() {}, async close() {} };
+    return createReconnectingSink({
+      label: "oci-streaming",
+      check: validateStream,
+      makeLive: createLiveSink,
+      metrics: sinkMetrics,
+      maxBufferSize,
+      retryIntervalMs: retryBackoffMs,
+    });
   }
 
-  // State
-  let buffer: AuditEvent[] = [];
-  let flushTimer: NodeJS.Timeout | null = null;
-  let flushing = false;
+  return createLiveSink();
 
-  async function flushWithRetry(): Promise<void> {
-    if (buffer.length === 0 || flushing) {
-      return;
-    }
-    flushing = true;
-    const toSend = buffer.splice(0, batchSize);
-    const messages = toSend.map((e) => eventToMessage(e, partitionKey));
+  function createLiveSink(): AuditSink {
+    // State
+    let buffer: AuditEvent[] = [];
+    let flushTimer: NodeJS.Timeout | null = null;
+    let flushing = false;
 
-    sinkMetrics.bufferSize.set({ sink: "oci-streaming" }, buffer.length);
-    const startTime = Date.now();
-    let lastErr: Error | undefined;
-
-    for (let attempt = 0; attempt <= retryAttempts; attempt++) {
-      try {
-        // Chunk into groups of OCI_MAX_MESSAGES_PER_CALL
-        for (let i = 0; i < messages.length; i += OCI_MAX_MESSAGES_PER_CALL) {
-          const chunk = messages.slice(i, i + OCI_MAX_MESSAGES_PER_CALL);
-          await client.putMessages({
-            streamId,
-            putMessagesDetails: { messages: chunk },
-          });
-        }
-        sinkMetrics.eventsTotal.inc({ outcome: "success" }, toSend.length);
-        const elapsed = (Date.now() - startTime) / 1000;
-        sinkMetrics.flushDuration.observe({ sink: "oci-streaming" }, elapsed);
-        flushing = false;
+    async function flushWithRetry(): Promise<void> {
+      if (buffer.length === 0 || flushing) {
         return;
-      } catch (err) {
-        lastErr = err instanceof Error ? err : new Error(String(err));
-        if (attempt < retryAttempts) {
-          const delay = retryBackoffMs * Math.pow(2, attempt);
-          await new Promise<void>((r) => setTimeout(r, delay));
+      }
+      flushing = true;
+      const toSend = buffer.splice(0, batchSize);
+      const messages = toSend.map((e) => eventToMessage(e, partitionKey));
+
+      sinkMetrics.bufferSize.set({ sink: "oci-streaming" }, buffer.length);
+      const startTime = Date.now();
+      let lastErr: Error | undefined;
+
+      for (let attempt = 0; attempt <= retryAttempts; attempt++) {
+        try {
+          // Chunk into groups of OCI_MAX_MESSAGES_PER_CALL
+          for (let i = 0; i < messages.length; i += OCI_MAX_MESSAGES_PER_CALL) {
+            const chunk = messages.slice(i, i + OCI_MAX_MESSAGES_PER_CALL);
+            await client.putMessages({
+              streamId,
+              putMessagesDetails: { messages: chunk },
+            });
+          }
+          sinkMetrics.eventsTotal.inc({ outcome: "success" }, toSend.length);
+          const elapsed = (Date.now() - startTime) / 1000;
+          sinkMetrics.flushDuration.observe({ sink: "oci-streaming" }, elapsed);
+          flushing = false;
+          return;
+        } catch (err) {
+          lastErr = err instanceof Error ? err : new Error(String(err));
+          if (attempt < retryAttempts) {
+            const delay = retryBackoffMs * Math.pow(2, attempt);
+            await new Promise<void>((r) => setTimeout(r, delay));
+          }
         }
       }
+
+      sinkMetrics.eventsTotal.inc({ outcome: "error" }, toSend.length);
+      process.stderr.write(
+        `[oci-streaming] Failed to flush ${toSend.length} events after ${retryAttempts + 1} attempts: ${String(lastErr)}\n`,
+      );
+      flushing = false;
     }
 
-    sinkMetrics.eventsTotal.inc({ outcome: "error" }, toSend.length);
-    process.stderr.write(
-      `[oci-streaming] Failed to flush ${toSend.length} events after ${retryAttempts + 1} attempts: ${String(lastErr)}\n`,
-    );
-    flushing = false;
-  }
-
-  function scheduleFlush() {
-    if (!flushTimer) {
-      flushTimer = setTimeout(async () => {
-        flushTimer = null;
-        await flushWithRetry();
-      }, flushMs);
-      flushTimer.unref?.();
-    }
-  }
-
-  const shutdownHandler = async () => {
-    if (flushTimer) {
-      clearTimeout(flushTimer);
-      flushTimer = null;
-    }
-    await flushWithRetry();
-  };
-  process.on("SIGTERM", shutdownHandler);
-  process.on("SIGINT", shutdownHandler);
-
-  return {
-    async send(event: AuditEvent): Promise<void> {
-      if (buffer.length >= maxBufferSize) {
-        buffer.shift();
-        sinkMetrics.eventsTotal.inc({ outcome: "dropped" }, 1);
-        process.stderr.write(
-          `[oci-streaming] Buffer full (${maxBufferSize}), dropping oldest event\n`,
-        );
+    function scheduleFlush() {
+      if (!flushTimer) {
+        flushTimer = setTimeout(async () => {
+          flushTimer = null;
+          await flushWithRetry();
+        }, flushMs);
+        flushTimer.unref?.();
       }
-      buffer.push(event);
-      sinkMetrics.bufferSize.set({ sink: "oci-streaming" }, buffer.length);
-      if (buffer.length >= batchSize) {
-        await flushWithRetry();
-      } else {
-        scheduleFlush();
-      }
-    },
+    }
 
-    async close(): Promise<void> {
-      process.removeListener("SIGTERM", shutdownHandler);
-      process.removeListener("SIGINT", shutdownHandler);
+    const shutdownHandler = async () => {
       if (flushTimer) {
         clearTimeout(flushTimer);
         flushTimer = null;
       }
-      while (buffer.length > 0) {
-        await flushWithRetry();
-      }
-    },
-  };
+      await flushWithRetry();
+    };
+    process.on("SIGTERM", shutdownHandler);
+    process.on("SIGINT", shutdownHandler);
+
+    return {
+      async send(event: AuditEvent): Promise<void> {
+        if (buffer.length >= maxBufferSize) {
+          buffer.shift();
+          sinkMetrics.eventsTotal.inc({ outcome: "dropped" }, 1);
+          process.stderr.write(
+            `[oci-streaming] Buffer full (${maxBufferSize}), dropping oldest event\n`,
+          );
+        }
+        buffer.push(event);
+        sinkMetrics.bufferSize.set({ sink: "oci-streaming" }, buffer.length);
+        if (buffer.length >= batchSize) {
+          await flushWithRetry();
+        } else {
+          scheduleFlush();
+        }
+      },
+
+      async close(): Promise<void> {
+        process.removeListener("SIGTERM", shutdownHandler);
+        process.removeListener("SIGINT", shutdownHandler);
+        if (flushTimer) {
+          clearTimeout(flushTimer);
+          flushTimer = null;
+        }
+        while (buffer.length > 0) {
+          await flushWithRetry();
+        }
+      },
+    };
+  }
 }

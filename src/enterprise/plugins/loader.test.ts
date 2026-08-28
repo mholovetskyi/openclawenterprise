@@ -1,7 +1,37 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { PluginLoader } from "./loader.js";
+import {
+  generateSigningKeyPair,
+  hashDirectory,
+  type SkillSignature,
+} from "../skills/registry/code-signing.js";
+import { PluginLoader, PLUGIN_SIGNATURE_FILE } from "./loader.js";
+
+function signPluginDir(
+  dir: string,
+  keyPair: { privateKey: string; publicKey: string },
+): SkillSignature {
+  const contentHash = hashDirectory(dir, { ignore: [PLUGIN_SIGNATURE_FILE] });
+  const privateKeyObj = crypto.createPrivateKey({
+    key: Buffer.from(keyPair.privateKey, "base64url"),
+    format: "der",
+    type: "pkcs8",
+  });
+  const signature = crypto
+    .sign(null, Buffer.from(contentHash), privateKeyObj)
+    .toString("base64url");
+  const sig: SkillSignature = {
+    algorithm: "ed25519",
+    publicKey: keyPair.publicKey,
+    signature,
+    signedAt: new Date().toISOString(),
+    contentHash,
+  };
+  fs.writeFileSync(path.join(dir, PLUGIN_SIGNATURE_FILE), JSON.stringify(sig));
+  return sig;
+}
 
 // ── Test plugin factory ──────────────────────────────────────────────────────
 
@@ -184,6 +214,106 @@ describe("PluginLoader", () => {
       const health = await loader.healthCheck();
       expect(health.p1?.status).toBe("unhealthy");
       expect(health.p1?.message).toContain("connection failed");
+    });
+  });
+
+  describe("signature enforcement (requireSigning)", () => {
+    it("refuses to load (and does not import) an unsigned plugin when signing is required", async () => {
+      const pluginDir = path.join(tmpDir, "unsigned");
+      fs.mkdirSync(pluginDir);
+      const plugin = makeTestPlugin({ name: "unsigned" });
+      const modulePath = path.join(pluginDir, "index.js");
+      fs.writeFileSync(modulePath, "");
+      vi.doMock(modulePath, () => plugin);
+
+      const keyPair = generateSigningKeyPair();
+      loader = new PluginLoader({
+        requireSigning: true,
+        trustedPublicKeys: [keyPair.publicKey],
+      });
+      const result = await loader.loadFromPath(modulePath, pluginDir);
+      expect(result).toBeNull();
+      // The plugin's init must never run — code was not imported/executed.
+      expect(plugin.default.init).not.toHaveBeenCalled();
+      expect(loader.size).toBe(0);
+    });
+
+    it("fails closed when signing is required but no trusted keys are configured", async () => {
+      const pluginDir = path.join(tmpDir, "signed-no-anchor");
+      fs.mkdirSync(pluginDir);
+      const plugin = makeTestPlugin({ name: "signed-no-anchor" });
+      const modulePath = path.join(pluginDir, "index.js");
+      fs.writeFileSync(modulePath, "");
+      const keyPair = generateSigningKeyPair();
+      signPluginDir(pluginDir, keyPair);
+      vi.doMock(modulePath, () => plugin);
+
+      // requireSigning on, but trustedPublicKeys omitted → no trust anchor.
+      loader = new PluginLoader({ requireSigning: true });
+      const result = await loader.loadFromPath(modulePath, pluginDir);
+      expect(result).toBeNull();
+      expect(plugin.default.init).not.toHaveBeenCalled();
+    });
+
+    it("rejects a plugin signed by an untrusted key", async () => {
+      const pluginDir = path.join(tmpDir, "untrusted-signer");
+      fs.mkdirSync(pluginDir);
+      const plugin = makeTestPlugin({ name: "untrusted-signer" });
+      const modulePath = path.join(pluginDir, "index.js");
+      fs.writeFileSync(modulePath, "");
+      const attacker = generateSigningKeyPair();
+      const trusted = generateSigningKeyPair();
+      signPluginDir(pluginDir, attacker);
+      vi.doMock(modulePath, () => plugin);
+
+      loader = new PluginLoader({
+        requireSigning: true,
+        trustedPublicKeys: [trusted.publicKey],
+      });
+      const result = await loader.loadFromPath(modulePath, pluginDir);
+      expect(result).toBeNull();
+      expect(plugin.default.init).not.toHaveBeenCalled();
+    });
+
+    it("rejects a plugin whose contents were tampered after signing", async () => {
+      const pluginDir = path.join(tmpDir, "tampered");
+      fs.mkdirSync(pluginDir);
+      const plugin = makeTestPlugin({ name: "tampered" });
+      const modulePath = path.join(pluginDir, "index.js");
+      fs.writeFileSync(modulePath, "");
+      const keyPair = generateSigningKeyPair();
+      signPluginDir(pluginDir, keyPair);
+      // Tamper after signing.
+      fs.writeFileSync(path.join(pluginDir, "evil.js"), "// injected");
+      vi.doMock(modulePath, () => plugin);
+
+      loader = new PluginLoader({
+        requireSigning: true,
+        trustedPublicKeys: [keyPair.publicKey],
+      });
+      const result = await loader.loadFromPath(modulePath, pluginDir);
+      expect(result).toBeNull();
+      expect(plugin.default.init).not.toHaveBeenCalled();
+    });
+
+    it("loads a plugin signed by a trusted key", async () => {
+      const pluginDir = path.join(tmpDir, "trusted");
+      fs.mkdirSync(pluginDir);
+      const plugin = makeTestPlugin({ name: "trusted" });
+      const modulePath = path.join(pluginDir, "index.js");
+      fs.writeFileSync(modulePath, "");
+      const keyPair = generateSigningKeyPair();
+      signPluginDir(pluginDir, keyPair);
+      vi.doMock(modulePath, () => plugin);
+
+      loader = new PluginLoader({
+        requireSigning: true,
+        trustedPublicKeys: [keyPair.publicKey],
+      });
+      const result = await loader.loadFromPath(modulePath, pluginDir);
+      expect(result).not.toBeNull();
+      expect(result!.manifest.name).toBe("trusted");
+      expect(plugin.default.init).toHaveBeenCalled();
     });
   });
 

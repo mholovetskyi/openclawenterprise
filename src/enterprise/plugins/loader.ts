@@ -12,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { verifySkillSignature, type SkillSignature } from "../skills/registry/code-signing.js";
 
 // Use inline types to avoid cross-package import issues at runtime.
 // These match the @openclaw/integration-sdk interfaces exactly.
@@ -105,7 +106,22 @@ export type PluginLoaderConfig = {
   resolveSecret?: (ref: string) => Promise<string>;
   /** Disabled plugin names */
   disabled?: string[];
+  /**
+   * Require a valid Ed25519 signature over the plugin directory before the
+   * plugin's code is dynamically imported. When true, an unsigned plugin, a
+   * plugin with an invalid/tampered signature, or a plugin whose publisher key
+   * is not in `trustedPublicKeys` is rejected (fail closed) instead of executed.
+   */
+  requireSigning?: boolean;
+  /** Base64url-encoded Ed25519 publisher public keys trusted to sign plugins. */
+  trustedPublicKeys?: string[];
 };
+
+/**
+ * Filename of the detached plugin signature sidecar, placed at the root of the
+ * plugin directory. It is excluded from the signed content hash.
+ */
+export const PLUGIN_SIGNATURE_FILE = "plugin.sig.json";
 
 // ── Logger factory ───────────────────────────────────────────────────────────
 
@@ -186,6 +202,22 @@ function validateManifest(manifest: unknown): manifest is PluginManifest {
     typeof m.description === "string" &&
     Array.isArray(m.capabilities) &&
     m.capabilities.length > 0
+  );
+}
+
+// ── Signature shape validation ───────────────────────────────────────────────
+
+function isSkillSignature(value: unknown): value is SkillSignature {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const s = value as Record<string, unknown>;
+  return (
+    s.algorithm === "ed25519" &&
+    typeof s.publicKey === "string" &&
+    typeof s.signature === "string" &&
+    typeof s.contentHash === "string" &&
+    typeof s.signedAt === "string"
   );
 }
 
@@ -273,8 +305,52 @@ export class PluginLoader {
     return this.loadFromPath(entryPoint, dir);
   }
 
+  /**
+   * Verify the integrity of a plugin directory against a detached Ed25519
+   * signature before its code is imported. Fails closed: any missing/malformed
+   * signature, hash mismatch, or untrusted publisher key returns an error.
+   */
+  private verifyIntegrity(source: string): { valid: boolean; reason?: string } {
+    const sigPath = path.join(source, PLUGIN_SIGNATURE_FILE);
+    if (!fs.existsSync(sigPath)) {
+      return { valid: false, reason: `missing plugin signature (${PLUGIN_SIGNATURE_FILE})` };
+    }
+
+    let signature: SkillSignature;
+    try {
+      const parsed = JSON.parse(fs.readFileSync(sigPath, "utf8")) as unknown;
+      if (!isSkillSignature(parsed)) {
+        return { valid: false, reason: "malformed plugin signature" };
+      }
+      signature = parsed;
+    } catch (err) {
+      return { valid: false, reason: `unreadable plugin signature: ${String(err)}` };
+    }
+
+    // verifySkillSignature fails closed on an empty/absent trusted-key list, so
+    // requireSigning with no configured keys correctly rejects every plugin.
+    return verifySkillSignature({
+      skillDir: source,
+      signature,
+      trustedPublicKeys: this.config.trustedPublicKeys,
+      ignoreFiles: [PLUGIN_SIGNATURE_FILE],
+    });
+  }
+
   /** Load a plugin from a specific file path */
   async loadFromPath(entryPoint: string, source: string): Promise<LoadedPlugin | null> {
+    // Integrity gate: verify the plugin BEFORE importing (and thus executing)
+    // any of its code. Skipped only when signing enforcement is off.
+    if (this.config.requireSigning) {
+      const integrity = this.verifyIntegrity(source);
+      if (!integrity.valid) {
+        process.stderr.write(
+          `[plugin-loader] Refusing to load plugin at ${entryPoint}: ${integrity.reason}\n`,
+        );
+        return null;
+      }
+    }
+
     const mod = (await import(entryPoint)) as { default?: PluginLifecycle };
     const lifecycle = mod.default;
 

@@ -1,12 +1,14 @@
+import { createHmac } from "node:crypto";
 import { describe, it, expect } from "vitest";
+import type { User, AgentIdentity } from "../iam/rbac/model.js";
 import {
   JWTService,
   generateRS256KeyPair,
   generateApiKey,
   hashApiKey,
   type JWTConfig,
+  type TokenStoreSink,
 } from "./jwt.js";
-import type { User, AgentIdentity } from "../iam/rbac/model.js";
 
 const testUser: User = {
   id: "user-123",
@@ -120,6 +122,138 @@ describe("JWTService — HS256", () => {
     const payloadA = svc.decode(a.accessToken);
     const payloadB = svc.decode(b.accessToken);
     expect(payloadA!.jti).not.toBe(payloadB!.jti);
+  });
+});
+
+describe("JWTService — HS256 empty secret (fail closed)", () => {
+  it("throws at construction when HS256 secret is missing", () => {
+    expect(() => new JWTService({ algorithm: "HS256" })).toThrow(/non-empty secret/);
+  });
+
+  it("throws at construction when HS256 secret is empty string", () => {
+    expect(() => new JWTService({ algorithm: "HS256", secret: "" })).toThrow(/non-empty secret/);
+  });
+
+  it("does not throw for RS256 with no secret", () => {
+    const { privateKey, publicKey } = generateRS256KeyPair();
+    expect(() => new JWTService({ algorithm: "RS256", privateKey, publicKey })).not.toThrow();
+  });
+});
+
+describe("JWTService — decode claim enforcement", () => {
+  const svc = new JWTService({ algorithm: "HS256", secret: "test-secret-1234567890abcdef" });
+
+  it("rejects a refresh token when an access token is required", () => {
+    const { refreshToken } = svc.issueForUser(testUser);
+    expect(svc.decode(refreshToken, { expectedType: "access" })).toBeNull();
+    expect(svc.verifyAccessToken(refreshToken)).toBeNull();
+  });
+
+  it("accepts an access token via verifyAccessToken", () => {
+    const { accessToken } = svc.issueForUser(testUser);
+    expect(svc.verifyAccessToken(accessToken)).not.toBeNull();
+  });
+
+  it("rejects a token whose issuer does not match (same secret, different iss)", () => {
+    const issuerA = new JWTService({
+      algorithm: "HS256",
+      secret: "test-secret-1234567890abcdef",
+      issuer: "idp-a",
+    });
+    const verifierB = new JWTService({
+      algorithm: "HS256",
+      secret: "test-secret-1234567890abcdef",
+      issuer: "idp-b",
+    });
+    const { accessToken } = issuerA.issueForUser(testUser);
+    // Signature is valid (shared secret) but issuer mismatches.
+    expect(verifierB.decode(accessToken)).toBeNull();
+  });
+
+  it("rejects a token whose audience does not match", () => {
+    const audA = new JWTService({
+      algorithm: "HS256",
+      secret: "test-secret-1234567890abcdef",
+      audience: "app-a",
+    });
+    const verifierB = new JWTService({
+      algorithm: "HS256",
+      secret: "test-secret-1234567890abcdef",
+      audience: "app-b",
+    });
+    const { accessToken } = audA.issueForUser(testUser);
+    expect(verifierB.decode(accessToken)).toBeNull();
+  });
+
+  it("rejects a validly-signed token whose nbf is in the future beyond skew", () => {
+    const secret = "test-secret-1234567890abcdef";
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({
+        sub: "user-123",
+        iss: "openclaw",
+        aud: "openclaw",
+        iat: now,
+        nbf: now + 3600, // an hour in the future
+        exp: now + 7200,
+        jti: "abc",
+        type: "access",
+        identityType: "user",
+      }),
+    ).toString("base64url");
+    const sig = createHmac("sha256", secret)
+      .update(`${header}.${payload}`)
+      .digest()
+      .toString("base64url");
+    const token = `${header}.${payload}.${sig}`;
+    // Signature is valid; decode must still reject on nbf.
+    expect(svc.decode(token)).toBeNull();
+  });
+});
+
+describe("JWTService — token store wiring", () => {
+  class FakeTokenStore implements TokenStoreSink {
+    stored: Array<{ jti: string; subjectId: string; rawToken: string }> = [];
+    revoked = new Set<string>();
+    storeRefreshToken(jti: string, subjectId: string, rawToken: string): void {
+      this.stored.push({ jti, subjectId, rawToken });
+    }
+    isAccessTokenRevoked(jti: string): boolean {
+      return this.revoked.has(jti);
+    }
+  }
+
+  it("persists the refresh token on issue()", () => {
+    const store = new FakeTokenStore();
+    const svc = new JWTService(
+      { algorithm: "HS256", secret: "test-secret-1234567890abcdef" },
+      store,
+    );
+    const { refreshToken } = svc.issueForUser(testUser);
+    expect(store.stored).toHaveLength(1);
+    expect(store.stored[0]!.subjectId).toBe("user-123");
+    expect(store.stored[0]!.rawToken).toBe(refreshToken);
+  });
+
+  it("rejects a revoked access token on decode()", () => {
+    const store = new FakeTokenStore();
+    const svc = new JWTService(
+      { algorithm: "HS256", secret: "test-secret-1234567890abcdef" },
+      store,
+    );
+    const { accessToken } = svc.issueForUser(testUser);
+    const decoded = svc.decode(accessToken);
+    expect(decoded).not.toBeNull();
+    store.revoked.add(decoded!.jti);
+    expect(svc.decode(accessToken)).toBeNull();
+    expect(svc.verifyAccessToken(accessToken)).toBeNull();
+  });
+
+  it("still works with no token store wired", () => {
+    const svc = new JWTService({ algorithm: "HS256", secret: "test-secret-1234567890abcdef" });
+    const { accessToken } = svc.issueForUser(testUser);
+    expect(svc.decode(accessToken)).not.toBeNull();
   });
 });
 

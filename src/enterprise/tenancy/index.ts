@@ -29,11 +29,16 @@ export type TenantContext = {
   limits?: TenantLimits;
 };
 
+export type TenantRateLimits = {
+  requestsPerMinute?: number;
+};
+
 export type Tenant = {
   id: string;
   name: string;
   description?: string;
   limits?: TenantLimits;
+  rateLimits?: TenantRateLimits;
   config?: Partial<OpenClawConfig>;
   enabled: boolean;
   createdAt: string;
@@ -65,11 +70,42 @@ export function runWithTenant<T>(ctx: TenantContext, fn: () => T): T {
 /**
  * Run an async function within a specific tenant context.
  */
-export async function runWithTenantAsync<T>(
-  ctx: TenantContext,
-  fn: () => Promise<T>,
-): Promise<T> {
+export async function runWithTenantAsync<T>(ctx: TenantContext, fn: () => Promise<T>): Promise<T> {
   return tenantStorage.run(ctx, fn);
+}
+
+// ── Limit enforcement helpers ────────────────────────────────────────────────
+
+/**
+ * Enforce a tenant's `limits.allowedModels` allowlist.
+ *
+ * Returns true when the model may be used by the given tenant context:
+ *  - no context / no limits / empty (or absent) allowedModels => unrestricted.
+ *  - otherwise the model must appear in the allowlist.
+ *
+ * Callers (model-selection / resolution) should reject the request when this
+ * returns false. Kept as a pure, exported function so the enforcement site can
+ * live on the request path without importing selection internals here.
+ */
+export function isModelAllowedForTenant(
+  model: string,
+  ctx: TenantContext = getTenantContext(),
+): boolean {
+  const allowed = ctx.limits?.allowedModels;
+  if (!allowed || allowed.length === 0) return true;
+  return allowed.includes(model);
+}
+
+/**
+ * Look up a registered tenant's configured requests-per-minute rate limit, if
+ * any. Returns undefined when unset (no per-tenant admission limit configured).
+ * The enforcement site (request ingress) is responsible for keying a token
+ * bucket on the tenant id using this value.
+ */
+export function getTenantRequestsPerMinute(tenantId: string): number | undefined {
+  const tenant = registry.get(tenantId);
+  const rpm = tenant?.rateLimits?.requestsPerMinute;
+  return typeof rpm === "number" && rpm > 0 ? rpm : undefined;
 }
 
 // ── Tenant registry ────────────────────────────────────────────────────────────
@@ -115,6 +151,7 @@ export async function initTenancy(cfg: OpenClawConfig): Promise<TenancyHandle> {
       name: t.name ?? t.id,
       description: t.description,
       limits: t.limits,
+      rateLimits: t.rateLimits,
       enabled: t.enabled !== false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

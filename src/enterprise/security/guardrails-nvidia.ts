@@ -9,9 +9,9 @@
  */
 
 import type { NvidiaGuardrailsConfig } from "../../config/types.enterprise.js";
-import type { GuardrailAction, GuardrailContext, GuardrailResult } from "./guardrails.js";
 import { auditLogSync } from "../audit/logger.js";
 import { getTenantContext } from "../tenancy/index.js";
+import type { GuardrailAction, GuardrailContext, GuardrailResult } from "./guardrails.js";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -39,27 +39,38 @@ export const NVIDIA_GUARDRAIL_AUDIT_ACTIONS = {
 // ── Token usage tracking ─────────────────────────────────────────────────────
 
 type UsageEntry = {
-  tokens: number;
+  // Hourly and daily usage are tracked in independent accumulators so the
+  // hourly reset does not wipe the daily counter (which would let a daily cap
+  // never trigger — the tenant could spend the daily budget every hour).
+  hourlyTokens: number;
+  dailyTokens: number;
   hourlyReset: number;
   dailyReset: number;
 };
+
+const HOUR_MS = 3600000;
+const DAY_MS = 86400000;
 
 export function createTokenUsageTracker(): TokenUsageTracker {
   const store = new Map<string, UsageEntry>();
 
   function getEntry(key: string): UsageEntry {
-    let entry = store.get(key);
     const now = Date.now();
+    let entry = store.get(key);
     if (!entry) {
-      entry = { tokens: 0, hourlyReset: now, dailyReset: now };
+      entry = { hourlyTokens: 0, dailyTokens: 0, hourlyReset: now, dailyReset: now };
       store.set(key, entry);
       return entry;
     }
 
-    // Reset hourly counters
-    if (now - entry.hourlyReset > 3600000) {
-      entry.tokens = 0;
+    // Reset each accumulator only on its own period boundary.
+    if (now - entry.hourlyReset > HOUR_MS) {
+      entry.hourlyTokens = 0;
       entry.hourlyReset = now;
+    }
+    if (now - entry.dailyReset > DAY_MS) {
+      entry.dailyTokens = 0;
+      entry.dailyReset = now;
     }
 
     return entry;
@@ -68,19 +79,13 @@ export function createTokenUsageTracker(): TokenUsageTracker {
   return {
     getUsage(key: string, period: "hourly" | "daily"): number {
       const entry = getEntry(key);
-      const now = Date.now();
-
-      if (period === "daily" && now - entry.dailyReset > 86400000) {
-        entry.tokens = 0;
-        entry.dailyReset = now;
-      }
-
-      return entry.tokens;
+      return period === "daily" ? entry.dailyTokens : entry.hourlyTokens;
     },
 
     addUsage(key: string, tokens: number): void {
       const entry = getEntry(key);
-      entry.tokens += tokens;
+      entry.hourlyTokens += tokens;
+      entry.dailyTokens += tokens;
     },
 
     reset(): void {
@@ -105,9 +110,7 @@ export function setTokenUsageTracker(tracker: TokenUsageTracker): void {
 
 // ── Rule: thinking-budget-limit ──────────────────────────────────────────────
 
-const NEMOTRON_THINKING_MODELS = new Set([
-  "nvidia/nemotron-3-nano-30b-a3b",
-]);
+const NEMOTRON_THINKING_MODELS = new Set(["nvidia/nemotron-3-nano-30b-a3b"]);
 
 export function evaluateThinkingBudgetLimit(
   ctx: NvidiaGuardrailContext,
@@ -143,15 +146,17 @@ export function evaluateThinkingBudgetLimit(
 
     return {
       action,
-      triggered: [{
-        rule: {
-          id: "thinking-budget-limit",
-          description: "Thinking budget exceeds configured limit",
-          match: {},
-          action,
+      triggered: [
+        {
+          rule: {
+            id: "thinking-budget-limit",
+            description: "Thinking budget exceeds configured limit",
+            match: {},
+            action,
+          },
+          reason: `Thinking budget ${requestedTokens} exceeds limit ${maxTokens}`,
         },
-        reason: `Thinking budget ${requestedTokens} exceeds limit ${maxTokens}`,
-      }],
+      ],
     };
   }
 
@@ -159,6 +164,24 @@ export function evaluateThinkingBudgetLimit(
 }
 
 // ── Rule: nim-cost-guard ─────────────────────────────────────────────────────
+
+/**
+ * Canonical usage-tracker key for the cost guard. The enforcement site MUST use
+ * this same helper when calling getTokenUsageTracker().addUsage(...) after each
+ * NIM completion, so recorded usage lands on the exact key evaluateCostGuard
+ * reads. Emit one addUsage per (scope, period) pair present in
+ * config.costGuard.limits (e.g. both `user:<id>:hourly` and `tenant:<id>:daily`
+ * when both limits are configured).
+ */
+export function costGuardUsageKey(
+  scope: "per-user" | "per-tenant",
+  userId: string | undefined,
+  tenantId: string,
+  period: "hourly" | "daily",
+): string {
+  const base = scope === "per-user" ? `user:${userId ?? "anonymous"}` : `tenant:${tenantId}`;
+  return `${base}:${period}`;
+}
 
 export function evaluateCostGuard(
   ctx: NvidiaGuardrailContext,
@@ -182,13 +205,7 @@ export function evaluateCostGuard(
   };
 
   for (const limit of config.limits) {
-    let key: string;
-    if (limit.scope === "per-user") {
-      key = `user:${ctx.userId ?? "anonymous"}`;
-    } else {
-      key = `tenant:${tenantCtx.tenantId}`;
-    }
-    key = `${key}:${limit.period}`;
+    const key = costGuardUsageKey(limit.scope, ctx.userId, tenantCtx.tenantId, limit.period);
 
     const usage = tracker.getUsage(key, limit.period);
 
@@ -276,15 +293,17 @@ export function evaluateModelRoutingPolicy(
 
   return {
     action: "block",
-    triggered: [{
-      rule: {
-        id: "model-routing-policy",
-        description: "User role does not permit access to this model",
-        match: {},
-        action: "block",
+    triggered: [
+      {
+        rule: {
+          id: "model-routing-policy",
+          description: "User role does not permit access to this model",
+          match: {},
+          action: "block",
+        },
+        reason: `Roles [${roles.join(", ")}] do not have access to model ${ctx.model}`,
       },
-      reason: `Roles [${roles.join(", ")}] do not have access to model ${ctx.model}`,
-    }],
+    ],
   };
 }
 

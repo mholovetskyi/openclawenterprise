@@ -10,9 +10,10 @@
  */
 
 import { createHash } from "node:crypto";
-import type { RBACStore } from "./rbac/store.js";
-import type { TokenStore } from "../auth/token-store.js";
 import type { AuditStorage } from "../audit/storage/sqlite.js";
+import type { TokenStore } from "../auth/token-store.js";
+import type { User } from "./rbac/model.js";
+import type { RBACStore } from "./rbac/store.js";
 
 // ── Export ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +24,40 @@ export type GdprExportResult = {
   auditEvents: unknown[];
   activeSessions: unknown[];
 };
+
+/**
+ * Project a stored User onto a redacting ALLOWLIST for GDPR export.
+ *
+ * Allowlist (not denylist) on purpose: only the fields named here are ever
+ * exported, so any future secret-bearing field added to the User model is
+ * excluded by default rather than silently leaking. In particular `totpSecret`
+ * — the plaintext base32 TOTP/MFA seed — is deliberately omitted: an export is
+ * routinely handed to the data subject / support staff and stored in ticketing
+ * systems, and the seed would let anyone holding it mint valid MFA codes
+ * indefinitely, defeating that user's MFA.
+ */
+function redactUserForExport(u: User): Record<string, unknown> {
+  return {
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    roles: u.roles ?? [],
+    groups: u.groups ?? [],
+    tenantId: u.tenantId,
+    externalId: u.externalId,
+    channelIds: u.channelIds,
+    active: u.active,
+    enabled: u.enabled,
+    createdAt: u.createdAt,
+    updatedAt: u.updatedAt,
+    lastLoginAt: u.lastLoginAt,
+    lastSeenAt: u.lastSeenAt,
+    mfaEnabled: u.mfaEnabled ?? false,
+    allowedCidrs: u.allowedCidrs,
+    // NOTE: `totpSecret` (and any future secret/credential field) is intentionally
+    // NOT included — see the allowlist rationale above.
+  };
+}
 
 export async function gdprExportUser(
   userId: string,
@@ -43,7 +78,9 @@ export async function gdprExportUser(
   return {
     exportedAt: new Date().toISOString(),
     userId,
-    profile: user ?? null,
+    // Redact through an allowlist so the plaintext TOTP seed (and any future
+    // secret field) never reaches the export payload.
+    profile: user ? redactUserForExport(user) : null,
     auditEvents,
     activeSessions,
   };
@@ -55,6 +92,8 @@ export type GdprEraseResult = {
   ok: true;
   auditEventsAnonymized: number;
   sessionsRevoked: number;
+  /** Number of RBAC groups from which the user's membership was removed. */
+  groupsUpdated: number;
 };
 
 /**
@@ -74,6 +113,7 @@ export async function gdprEraseUser(
 ): Promise<GdprEraseResult> {
   let sessionsRevoked = 0;
   let auditEventsAnonymized = 0;
+  let groupsUpdated = 0;
 
   // 1. Revoke all active sessions
   if (tokens) {
@@ -82,6 +122,11 @@ export async function gdprEraseUser(
 
   // 2. Anonymize audit events — replace actor.id, actor.email, actor.name
   //    with the pseudonym. The hash chain remains intact.
+  //    NOTE: completeness of audit-side purge (actor.ip and events where the
+  //    erased user is the *resource*) depends on the audit backend's
+  //    anonymizeActor implementation, which lives in the audit module. See the
+  //    integrationHook returned for this finding. In-memory / no-capability
+  //    backends anonymize nothing.
   if (audit && "anonymizeActor" in audit && typeof audit.anonymizeActor === "function") {
     // If the audit storage supports direct anonymization (e.g. SQLite backend)
     auditEventsAnonymized = await (audit as AuditStorageWithAnonymize).anonymizeActor(
@@ -90,10 +135,26 @@ export async function gdprEraseUser(
     );
   }
 
-  // 3. Delete the user profile from the RBAC store
+  // 3. Purge the user's PII from every RBAC store this module owns.
+  //    Remove the user id from all Group.members so no dangling membership
+  //    reference survives the erasure (deleteUser only removes the user row +
+  //    channel index).
+  const groups = await store.listGroups();
+  for (const g of groups) {
+    if (g.members.includes(userId)) {
+      await store.upsertGroup({
+        ...g,
+        members: g.members.filter((m) => m !== userId),
+        updatedAt: new Date().toISOString(),
+      });
+      groupsUpdated++;
+    }
+  }
+
+  // 4. Delete the user profile from the RBAC store
   await store.deleteUser(userId);
 
-  return { ok: true, auditEventsAnonymized, sessionsRevoked };
+  return { ok: true, auditEventsAnonymized, sessionsRevoked, groupsUpdated };
 }
 
 // ── Extended audit interface for anonymization ────────────────────────────────

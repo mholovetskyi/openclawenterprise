@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createFileBackend } from "./backend-file.js";
 import { deriveKeyFromPassphrase } from "./encryption.js";
 
@@ -17,7 +17,7 @@ describe("createFileBackend", () => {
   beforeEach(() => {
     tmpDir = makeTmpDir();
     storePath = path.join(tmpDir, "secrets.enc");
-    key = deriveKeyFromPassphrase("test-passphrase");
+    key = deriveKeyFromPassphrase("test-passphrase", Buffer.alloc(16, 0x11));
   });
 
   afterEach(() => {
@@ -99,7 +99,7 @@ describe("createFileBackend", () => {
     const backend1 = createFileBackend({ storePath, key });
     await backend1.set("secret", "value");
 
-    const wrongKey = deriveKeyFromPassphrase("wrong-passphrase");
+    const wrongKey = deriveKeyFromPassphrase("wrong-passphrase", Buffer.alloc(16, 0x11));
     const backend2 = createFileBackend({ storePath, key: wrongKey });
     await expect(backend2.get("secret")).rejects.toThrow();
   });
@@ -112,6 +112,28 @@ describe("createFileBackend", () => {
   it("name is 'file'", () => {
     const backend = createFileBackend({ storePath, key });
     expect(backend.name).toBe("file");
+  });
+
+  it("throws (does not reset) on a corrupt store, preserving the file aside", async () => {
+    fs.writeFileSync(storePath, "{ this is not valid json");
+    const backend = createFileBackend({ storePath, key });
+    await expect(backend.get("anything")).rejects.toThrow("corrupt");
+    // Original corrupt bytes are preserved under a .corrupt.* sibling.
+    const aside = fs.readdirSync(tmpDir).find((f) => f.startsWith("secrets.enc.corrupt."));
+    expect(aside).toBeDefined();
+  });
+
+  it("throws on an unrecognized store version rather than silently emptying it", async () => {
+    fs.writeFileSync(storePath, JSON.stringify({ version: 99, secrets: {} }));
+    const backend = createFileBackend({ storePath, key });
+    await expect(backend.list()).rejects.toThrow("unrecognized shape or version");
+  });
+
+  it("does not clobber an intact-but-unreadable store on the next write", async () => {
+    fs.writeFileSync(storePath, "corrupt-not-json");
+    const backend = createFileBackend({ storePath, key });
+    // A set() must fail loudly instead of overwriting with an empty store.
+    await expect(backend.set("k", "v")).rejects.toThrow("corrupt");
   });
 
   it("metadata is stored with the secret", async () => {

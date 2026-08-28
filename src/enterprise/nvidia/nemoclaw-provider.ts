@@ -189,12 +189,34 @@ export async function initNemoClawProvider(
 
   let healthTimer: ReturnType<typeof setInterval> | null = null;
 
-  // Initialize sandbox status
+  // Sandbox status.
+  //
+  // IMPORTANT: this provider does NOT run a real NVIDIA OpenShell sandbox. There
+  // is no process isolation, egress filtering, seccomp, or filesystem
+  // confinement here — inference is a direct fetch() to the configured
+  // endpoint. So we must never attest a sandbox that does not exist.
+  //
+  // Fail closed: if the operator configured a declarative security policy
+  // (sandbox.policy) they are relying on enforcement we cannot provide. Refuse
+  // to start rather than emit a false compliance signal. An operator who wants
+  // to run without enforcement must not set a policy (or must disable the
+  // sandbox block entirely).
+  if (ncCfg.sandbox?.enabled !== false && ncCfg.sandbox?.policy) {
+    throw new Error(
+      "NemoClaw sandbox.policy is configured but no OpenShell enforcement backend is available; " +
+        "refusing to start to avoid falsely attesting egress/seccomp/filesystem confinement. " +
+        "Remove enterprise.nvidia.nemoClaw.sandbox.policy or set sandbox.enabled:false to run unsandboxed.",
+    );
+  }
+
   if (ncCfg.sandbox?.enabled !== false) {
+    // Sandbox requested but unenforced: record the honest state (no policy is
+    // ever loaded, nothing is running) and emit a non-success audit event so
+    // the compliance trail does not claim a control that is absent.
     sandboxStatus = {
-      running: true,
+      running: false,
       profile,
-      policyLoaded: Boolean(ncCfg.sandbox?.policy),
+      policyLoaded: false,
       egressBlocked: 0,
       egressAllowed: 0,
     };
@@ -203,11 +225,13 @@ export async function initNemoClawProvider(
       action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_SANDBOX_INIT,
       category: "system",
       actor: { type: "system", id: "nemoclaw-provider" },
-      outcome: "success",
+      outcome: "failure",
       metadata: {
         profile,
         sandboxEnabled: true,
-        policyLoaded: Boolean(ncCfg.sandbox?.policy),
+        policyLoaded: false,
+        enforced: false,
+        note: "OpenShell sandbox enforcement is not available; no egress/seccomp/filesystem confinement is applied",
       },
     });
   }
@@ -325,17 +349,11 @@ export async function initNemoClawProvider(
           const errBody = await res.text().catch(() => "");
           lastError = new Error(`NemoClaw API error: HTTP ${res.status} - ${errBody}`);
 
-          // Track blocked egress in sandbox
-          if (res.status === 403) {
-            sandboxStatus.egressBlocked++;
-            auditLogSync({
-              action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_EGRESS_BLOCKED,
-              category: "security",
-              actor: { type: "system", id: "nemoclaw-provider" },
-              outcome: "failure",
-              metadata: { model, status: res.status },
-            });
-          }
+          // NOTE: an upstream HTTP 403 from the inference endpoint is NOT a local
+          // egress control — it is the remote server's own authorization result.
+          // We deliberately do not emit NEMOCLAW_EGRESS_BLOCKED here, because
+          // this provider performs no egress filtering and attributing a 403 to
+          // a sandbox egress policy would be a false security attestation.
 
           if (res.status >= 400 && res.status < 500 && res.status !== 429) {
             break; // Don't retry client errors except rate limits
@@ -416,11 +434,14 @@ export async function initNemoClawProvider(
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function resolveEndpoint(cfg: EnterpriseNemoClawConfig, profile: NemoClawInferenceProfile): string {
-  if (cfg.sandbox?.enabled !== false) {
-    // In sandbox mode, all inference is routed through OpenShell gateway
-    return INFERENCE_ENDPOINTS[profile];
-  }
+function resolveEndpoint(
+  _cfg: EnterpriseNemoClawConfig,
+  profile: NemoClawInferenceProfile,
+): string {
+  // Inference always goes directly to the profile endpoint. There is no
+  // OpenShell gateway indirection in this provider, so the endpoint is the same
+  // whether or not a sandbox is requested (see the sandbox note in
+  // initNemoClawProvider). Do not claim routing that does not happen.
   return INFERENCE_ENDPOINTS[profile];
 }
 

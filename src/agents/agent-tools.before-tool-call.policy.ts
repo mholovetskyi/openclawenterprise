@@ -191,6 +191,34 @@ export async function runBeforeToolCallHook(args: {
           markPrivateDecision(outcome, "genericDecision");
           return outcome;
         }
+        if (guardrailResult.action === "require-approval") {
+          // Fail closed: a require-approval guardrail must gate the call, never
+          // fall through to normal hook processing. There is no gateway
+          // approval payload to route here, so block pending approval and
+          // record the decision for the audit ledger.
+          const reason = guardrailResult.triggered[0]?.reason ?? "guardrail requires approval";
+          void auditLog({
+            action: "guardrail.require_approval",
+            category: "security",
+            actor: { type: "agent", id: args.ctx?.agentId ?? "unknown" },
+            resource: { type: "tool", id: toolName },
+            outcome: "denied",
+            metadata: {
+              tool: toolName,
+              sessionKey: args.ctx?.sessionKey,
+              triggeredRules: guardrailResult.triggered.map((r) => r.rule.id),
+              reason,
+            },
+          });
+          const outcome: HookOutcome = {
+            blocked: true,
+            kind: "veto",
+            reason,
+            params,
+          };
+          markPrivateDecision(outcome, "genericDecision");
+          return outcome;
+        }
         if (guardrailResult.action === "warn") {
           void auditLog({
             action: "guardrail.warn",

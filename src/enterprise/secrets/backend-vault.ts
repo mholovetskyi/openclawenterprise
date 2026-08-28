@@ -16,10 +16,16 @@ export type VaultBackendOptions = {
   token?: string;
   mount?: string;
   prefix?: string;
+  /** Explicit auth selection; when omitted it is inferred from what is set. */
+  authMethod?: "token" | "approle" | "kubernetes";
   /** AppRole auth: role_id + secret_id instead of static token */
   appRole?: { roleId: string; secretId: string };
-  /** Kubernetes auth: role + service account JWT */
-  k8sAuth?: { role: string; jwtPath?: string };
+  /**
+   * Kubernetes auth: role + service account JWT.
+   * `jwtPath` is the projected SA token path; `mountPath` is the auth mount
+   * (default "kubernetes").
+   */
+  k8sAuth?: { role: string; jwtPath?: string; mountPath?: string };
   namespace?: string;
 };
 
@@ -38,10 +44,25 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
 
   async function ensureToken(): Promise<string> {
     if (token) return token;
-    if (opts.appRole) {
+    // Honor an explicit authMethod when given; otherwise infer from what is
+    // configured (approle before k8s, matching the historical precedence).
+    const method =
+      opts.authMethod ?? (opts.appRole ? "approle" : opts.k8sAuth ? "kubernetes" : "token");
+    if (method === "approle") {
+      if (!opts.appRole) {
+        throw new Error("Vault backend: authMethod 'approle' requires appRole credentials");
+      }
       token = await loginAppRole(opts.address, opts.appRole.roleId, opts.appRole.secretId);
-    } else if (opts.k8sAuth) {
-      token = await loginK8s(opts.address, opts.k8sAuth.role, opts.k8sAuth.jwtPath);
+    } else if (method === "kubernetes") {
+      if (!opts.k8sAuth) {
+        throw new Error("Vault backend: authMethod 'kubernetes' requires k8sAuth config");
+      }
+      token = await loginK8s(
+        opts.address,
+        opts.k8sAuth.role,
+        opts.k8sAuth.jwtPath,
+        opts.k8sAuth.mountPath,
+      );
     } else {
       throw new Error("Vault backend: no authentication method configured");
     }
@@ -63,7 +84,11 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
       },
     });
     let body: unknown;
-    try { body = await res.json(); } catch { body = null; }
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
     return { ok: res.ok, status: res.status, body };
   }
 
@@ -76,7 +101,18 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
       if (res.status === 404) return null;
       if (!res.ok) throw new Error(`Vault GET ${ref} failed: HTTP ${res.status}`);
       const data = (res.body as { data?: { data?: Record<string, string> } })?.data?.data;
-      return data?.value ?? null;
+      if (!data) return null;
+      const keys = Object.keys(data);
+      if (keys.length === 0) return null;
+      // Backward-compatible single-value convention: a secret stored as
+      // { value: "..." } resolves to that string directly. Any other shape
+      // (multiple fields, or a single non-"value" key) is returned as the full
+      // JSON map so resolveSecretValue's `#field` extraction can index it —
+      // this is what makes the documented vault://path#field syntax work.
+      if (keys.length === 1 && keys[0] === "value") {
+        return data.value ?? null;
+      }
+      return JSON.stringify(data);
     },
 
     async set(ref: string, value: string, _meta?: SecretMetadata): Promise<void> {
@@ -117,11 +153,7 @@ export function createVaultBackend(opts: VaultBackendOptions): SecretBackend {
   };
 }
 
-async function loginAppRole(
-  address: string,
-  roleId: string,
-  secretId: string,
-): Promise<string> {
+async function loginAppRole(address: string, roleId: string, secretId: string): Promise<string> {
   const res = await fetch(`${address.replace(/\/$/, "")}/v1/auth/approle/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -138,10 +170,12 @@ async function loginK8s(
   address: string,
   role: string,
   jwtPath = "/var/run/secrets/kubernetes.io/serviceaccount/token",
+  mountPath = "kubernetes",
 ): Promise<string> {
   const { readFileSync } = await import("node:fs");
   const jwt = readFileSync(jwtPath, "utf8").trim();
-  const res = await fetch(`${address.replace(/\/$/, "")}/v1/auth/kubernetes/login`, {
+  const mount = (mountPath || "kubernetes").replace(/^\/+|\/+$/g, "");
+  const res = await fetch(`${address.replace(/\/$/, "")}/v1/auth/${mount}/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ role, jwt }),

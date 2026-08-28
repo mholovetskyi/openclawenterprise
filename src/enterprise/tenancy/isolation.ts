@@ -20,16 +20,28 @@
  *   const allUsers = await rawStore.listUsers(); // returns all tenants
  */
 
-import type { RBACStore } from "../iam/rbac/store.js";
-import type { AuditStorage, AuditQueryOptions } from "../audit/storage/sqlite.js";
 import type { AuditEvent } from "../audit/schema.js";
-import { getTenantContext } from "./index.js";
+import type { AuditStorage, AuditQueryOptions } from "../audit/storage/sqlite.js";
+import type { RBACStore } from "../iam/rbac/store.js";
+import { getTenantContext, DEFAULT_TENANT_CONTEXT } from "./index.js";
 
 // ── Tenant-scoped RBAC store ───────────────────────────────────────────────────
 
 export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
   function currentTenantId(): string | undefined {
     return getTenantContext()?.tenantId;
+  }
+
+  /**
+   * The current tenant id only when a *real* (non-default) tenant is active.
+   * Returns undefined in single-tenant / no-tenancy mode so read guards do not
+   * hide legitimately untenanted records. When this returns a value, isolation
+   * is enforced fail-closed: any record whose tenantId is not strictly equal
+   * (including an empty/undefined tenantId) is invisible to this tenant.
+   */
+  function scopedTenantId(): string | undefined {
+    const current = currentTenantId();
+    return current && current !== DEFAULT_TENANT_CONTEXT.tenantId ? current : undefined;
   }
 
   function assertNotCrossTenant(tenantId: string | undefined, method: string): void {
@@ -60,8 +72,10 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
 
     async getUser(id) {
       const user = await store.getUser(id);
-      const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) {
+      const current = scopedTenantId();
+      // Fail closed: an untenanted (empty tenantId) record belongs to no tenant
+      // and must NOT be visible inside an active tenant context.
+      if (user && current && user.tenantId !== current) {
         return null; // Return null rather than throw — prevents user enumeration
       }
       return user;
@@ -69,22 +83,22 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
 
     async getUserByEmail(email) {
       const user = await store.getUserByEmail(email);
-      const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) return null;
+      const current = scopedTenantId();
+      if (user && current && user.tenantId !== current) return null;
       return user;
     },
 
     async getUserByExternalId(externalId) {
       const user = await store.getUserByExternalId(externalId);
-      const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) return null;
+      const current = scopedTenantId();
+      if (user && current && user.tenantId !== current) return null;
       return user;
     },
 
     async getUserByChannelId(channel, channelUserId) {
       const user = await store.getUserByChannelId(channel, channelUserId);
-      const current = currentTenantId();
-      if (user && current && user.tenantId && user.tenantId !== current) return null;
+      const current = scopedTenantId();
+      if (user && current && user.tenantId !== current) return null;
       return user;
     },
 
@@ -99,10 +113,10 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
     },
 
     async deleteUser(id) {
-      const current = currentTenantId();
+      const current = scopedTenantId();
       if (current) {
         const user = await store.getUser(id);
-        if (user && user.tenantId && user.tenantId !== current) {
+        if (user && user.tenantId !== current) {
           throw Object.assign(
             new Error(`Tenant isolation: cannot delete user from another tenant`),
             { code: "TENANT_ISOLATION_VIOLATION" },
@@ -120,8 +134,8 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
 
     async getGroup(id) {
       const group = await store.getGroup(id);
-      const current = currentTenantId();
-      if (group && current && group.tenantId && group.tenantId !== current) return null;
+      const current = scopedTenantId();
+      if (group && current && group.tenantId !== current) return null;
       return group;
     },
 
@@ -135,10 +149,10 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
     },
 
     async deleteGroup(id) {
-      const current = currentTenantId();
+      const current = scopedTenantId();
       if (current) {
         const group = await store.getGroup(id);
-        if (group && group.tenantId && group.tenantId !== current) {
+        if (group && group.tenantId !== current) {
           throw Object.assign(
             new Error(`Tenant isolation: cannot delete group from another tenant`),
             { code: "TENANT_ISOLATION_VIOLATION" },
@@ -156,15 +170,17 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
 
     async getAgentIdentity(id) {
       const agent = await store.getAgentIdentity(id);
-      const current = currentTenantId();
-      if (agent && current && agent.tenantId && agent.tenantId !== current) return null;
+      const current = scopedTenantId();
+      if (agent && current && agent.tenantId !== current) return null;
       return agent;
     },
 
     async getAgentIdentityByApiKeyHash(hash) {
       const agent = await store.getAgentIdentityByApiKeyHash(hash);
-      const current = currentTenantId();
-      if (agent && current && agent.tenantId && agent.tenantId !== current) return null;
+      const current = scopedTenantId();
+      // Fail closed: an untenanted credential must not authenticate inside any
+      // active tenant context (prevents cross-tenant access via unstamped keys).
+      if (agent && current && agent.tenantId !== current) return null;
       return agent;
     },
 
@@ -178,10 +194,10 @@ export function createTenantScopedRBACStore(store: RBACStore): RBACStore {
     },
 
     async deleteAgentIdentity(id) {
-      const current = currentTenantId();
+      const current = scopedTenantId();
       if (current) {
         const agent = await store.getAgentIdentity(id);
-        if (agent && agent.tenantId && agent.tenantId !== current) {
+        if (agent && agent.tenantId !== current) {
           throw Object.assign(
             new Error(`Tenant isolation: cannot delete agent identity from another tenant`),
             { code: "TENANT_ISOLATION_VIOLATION" },
@@ -217,9 +233,7 @@ export function createTenantScopedAuditStorage(storage: AuditStorage): AuditStor
     async query(opts: AuditQueryOptions) {
       // Enforce tenant filter — override any provided tenantId with the current one
       const current = currentTenantId();
-      const effectiveOpts: AuditQueryOptions = current
-        ? { ...opts, tenantId: current }
-        : opts;
+      const effectiveOpts: AuditQueryOptions = current ? { ...opts, tenantId: current } : opts;
       return storage.query(effectiveOpts);
     },
 

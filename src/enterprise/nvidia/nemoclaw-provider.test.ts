@@ -167,18 +167,49 @@ describe("NemoClaw Provider - sandbox", () => {
     }
   });
 
-  it("initializes sandbox status when enabled", async () => {
+  it("does not attest a running/enforced sandbox when enabled but unenforced", async () => {
+    // There is no real OpenShell backend, so an enabled sandbox with no policy
+    // must report honest state: not running, no policy loaded, and a non-success
+    // audit outcome rather than a false "sandbox_init success".
     mockAuditLogSync.mockClear();
     handle = await initNemoClawProvider(makeCfg({ sandbox: { enabled: true } }), deps);
     const status = handle.getSandboxStatus();
-    expect(status.running).toBe(true);
+    expect(status.running).toBe(false);
+    expect(status.policyLoaded).toBe(false);
     expect(status.profile).toBe("nvidia-cloud");
     expect(mockAuditLogSync).toHaveBeenCalledWith(
       expect.objectContaining({
         action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_SANDBOX_INIT,
-        outcome: "success",
+        outcome: "failure",
+        metadata: expect.objectContaining({ enforced: false, policyLoaded: false }),
       }),
     );
+  });
+
+  it("never emits sandbox_init with outcome success (no real enforcement exists)", async () => {
+    mockAuditLogSync.mockClear();
+    handle = await initNemoClawProvider(makeCfg({ sandbox: { enabled: true } }), deps);
+    const sandboxInitSuccess = mockAuditLogSync.mock.calls.some(
+      (call) =>
+        (call[0] as { action?: string; outcome?: string })?.action ===
+          NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_SANDBOX_INIT &&
+        (call[0] as { outcome?: string })?.outcome === "success",
+    );
+    expect(sandboxInitSuccess).toBe(false);
+  });
+
+  it("fails closed (throws) when a sandbox.policy is configured but unenforceable", async () => {
+    await expect(
+      initNemoClawProvider(
+        makeCfg({
+          sandbox: {
+            enabled: true,
+            policy: { network: { defaultAction: "block", allowedHosts: ["example.com"] } },
+          },
+        }),
+        deps,
+      ),
+    ).rejects.toThrow(/sandbox\.policy is configured but no OpenShell enforcement/);
   });
 
   it("sandbox is not running when disabled", async () => {
@@ -355,7 +386,10 @@ describe("NemoClaw Provider - chatCompletion", () => {
     ).rejects.toThrow("NemoClaw API error: HTTP 400");
   });
 
-  it("tracks egress blocked on 403", async () => {
+  it("does not attribute an upstream 403 to a local egress control", async () => {
+    // A 403 from the remote inference endpoint is the server's own authorization
+    // decision, not a sandbox egress block. Emitting NEMOCLAW_EGRESS_BLOCKED
+    // would be a false security attestation, so it must not be emitted.
     handle = await initNemoClawProvider(makeCfg(), deps);
 
     mockFetch.mockResolvedValueOnce(mockFetchResponse(403, { error: "forbidden" }));
@@ -366,12 +400,11 @@ describe("NemoClaw Provider - chatCompletion", () => {
       }),
     ).rejects.toThrow("NemoClaw API error: HTTP 403");
 
-    expect(mockAuditLogSync).toHaveBeenCalledWith(
-      expect.objectContaining({
-        action: NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_EGRESS_BLOCKED,
-        category: "security",
-      }),
+    const emittedEgressBlocked = mockAuditLogSync.mock.calls.some(
+      (call) =>
+        (call[0] as { action?: string })?.action === NEMOCLAW_AUDIT_ACTIONS.NEMOCLAW_EGRESS_BLOCKED,
     );
+    expect(emittedEgressBlocked).toBe(false);
   });
 
   it("emits error audit when all retries fail", async () => {

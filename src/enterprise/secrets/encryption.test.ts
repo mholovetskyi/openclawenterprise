@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { describe, it, expect } from "vitest";
 import { encrypt, decrypt, deriveKeyFromPassphrase } from "./encryption.js";
 
@@ -82,26 +83,47 @@ describe("decrypt", () => {
 });
 
 describe("deriveKeyFromPassphrase", () => {
+  const salt = Buffer.alloc(16, 0x5a);
+
   it("returns a 32-byte Buffer", () => {
-    const key = deriveKeyFromPassphrase("my-passphrase");
+    const key = deriveKeyFromPassphrase("my-passphrase", salt);
     expect(Buffer.isBuffer(key)).toBe(true);
     expect(key.length).toBe(32);
   });
 
-  it("is deterministic", () => {
-    const a = deriveKeyFromPassphrase("pass");
-    const b = deriveKeyFromPassphrase("pass");
+  it("is deterministic for the same passphrase and salt", () => {
+    const a = deriveKeyFromPassphrase("pass", salt);
+    const b = deriveKeyFromPassphrase("pass", salt);
     expect(a.toString("hex")).toBe(b.toString("hex"));
   });
 
   it("produces different keys for different passphrases", () => {
-    const a = deriveKeyFromPassphrase("foo");
-    const b = deriveKeyFromPassphrase("bar");
+    const a = deriveKeyFromPassphrase("foo", salt);
+    const b = deriveKeyFromPassphrase("bar", salt);
     expect(a.toString("hex")).not.toBe(b.toString("hex"));
   });
 
+  it("produces different keys for different salts (salted KDF)", () => {
+    const a = deriveKeyFromPassphrase("same", Buffer.alloc(16, 0x01));
+    const b = deriveKeyFromPassphrase("same", Buffer.alloc(16, 0x02));
+    expect(a.toString("hex")).not.toBe(b.toString("hex"));
+  });
+
+  it("is not a bare SHA-256 of the passphrase (uses a real KDF)", () => {
+    const sha = createHash("sha256").update("pass").digest();
+    const derived = deriveKeyFromPassphrase("pass", salt);
+    expect(derived.toString("hex")).not.toBe(sha.toString("hex"));
+  });
+
+  it("throws when the salt is missing or too short", () => {
+    expect(() => (deriveKeyFromPassphrase as unknown as (p: string) => Buffer)("pass")).toThrow(
+      "salt",
+    );
+    expect(() => deriveKeyFromPassphrase("pass", Buffer.alloc(4))).toThrow("salt");
+  });
+
   it("derived key works for encrypt/decrypt", () => {
-    const key = deriveKeyFromPassphrase("my-secure-passphrase");
+    const key = deriveKeyFromPassphrase("my-secure-passphrase", salt);
     const blob = encrypt("secret", key);
     expect(decrypt(blob, key)).toBe("secret");
   });

@@ -7,7 +7,7 @@
  * No external dependencies — pure Node.js crypto.
  */
 
-import { createHmac, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 // ── Base32 ────────────────────────────────────────────────────────────────────
 
@@ -78,6 +78,38 @@ function totpAt(secret: string, timestampSec: number): string {
   return hotp(secret, counter, TOTP_DIGITS);
 }
 
+/** Constant-time comparison of two ASCII OTP codes. */
+function codesEqual(a: string, b: string): boolean {
+  const ab = Buffer.from(a, "utf8");
+  const bb = Buffer.from(b, "utf8");
+  if (ab.length !== bb.length) return false;
+  return timingSafeEqual(ab, bb);
+}
+
+// ── Used-code (replay) store ────────────────────────────────────────────────────
+// RFC 6238 §5.2 requires rejecting a previously-accepted OTP within its validity
+// window. We record each (secret, step) that has been successfully consumed and
+// reject a second verification of the same step.
+//
+// Keyed by SHA-256(secret) so raw secrets never sit in this map, and scoped per
+// secret (each user has a unique secret) so one user's use cannot block another.
+//
+// NOTE: this store is in-process only. It gives correct one-time-use semantics
+// within a single gateway process but does NOT survive restarts or span multiple
+// nodes. A horizontally-scaled deployment must back replay state with a shared
+// store (see the persistence integrationHook in the audit notes).
+const consumedSteps = new Map<string, number>(); // key `${secretHash}:${step}` -> expiry (unix sec)
+
+function secretKeyHash(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex");
+}
+
+function pruneConsumed(nowSec: number): void {
+  for (const [key, expiresAt] of consumedSteps) {
+    if (expiresAt < nowSec) consumedSteps.delete(key);
+  }
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 export class MfaService {
@@ -94,19 +126,33 @@ export class MfaService {
     const secret = base32Encode(randomBytes(20));
     const account = encodeURIComponent(userEmail ?? userId);
     const iss = encodeURIComponent(issuer);
-    const otpauthUri =
-      `otpauth://totp/${iss}:${account}?secret=${secret}&issuer=${iss}&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SEC}`;
+    const otpauthUri = `otpauth://totp/${iss}:${account}?secret=${secret}&issuer=${iss}&digits=${TOTP_DIGITS}&period=${TOTP_STEP_SEC}`;
     return { secret, otpauthUri };
   }
 
   /**
    * Verify a 6-digit TOTP code.
-   * Accepts codes within ±TOTP_WINDOW steps (handles clock skew up to 30s).
+   *
+   * Accepts codes within ±TOTP_WINDOW steps (handles clock skew up to 30s),
+   * compares in constant time, and enforces one-time use: a code that has
+   * already been successfully verified for its time step is rejected on any
+   * subsequent attempt (replay protection, RFC 6238 §5.2).
    */
   static verify(secret: string, code: string, nowSec?: number): boolean {
     const now = nowSec ?? Math.floor(Date.now() / 1000);
+    pruneConsumed(now);
+    const secretHash = secretKeyHash(secret);
     for (let i = -TOTP_WINDOW; i <= TOTP_WINDOW; i++) {
-      if (totpAt(secret, now + i * TOTP_STEP_SEC) === code) return true;
+      const ts = now + i * TOTP_STEP_SEC;
+      if (!codesEqual(totpAt(secret, ts), code)) continue;
+      const step = Math.floor(ts / TOTP_STEP_SEC);
+      const key = `${secretHash}:${step}`;
+      if (consumedSteps.has(key)) return false; // replay of an already-used code
+      // Keep the record until this step's acceptance window has fully passed
+      // (step end + one window of skew) so it cannot be replayed meanwhile.
+      const expiresAt = (step + 1) * TOTP_STEP_SEC + TOTP_WINDOW * TOTP_STEP_SEC;
+      consumedSteps.set(key, expiresAt);
+      return true;
     }
     return false;
   }

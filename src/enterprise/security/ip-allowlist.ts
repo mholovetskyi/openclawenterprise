@@ -53,6 +53,10 @@ function expandIPv6(ip: string): bigint {
   const left = parts[0] ? parts[0].split(":") : [];
   const right = parts[1] ? parts[1].split(":") : [];
   const missing = 8 - left.length - right.length;
+  // Guard against malformed addresses with too many groups (e.g. 9 groups and
+  // no "::"): Array(negative).fill(...) throws RangeError. Report invalid via
+  // the -1n sentinel instead of crashing callers such as validate().
+  if (missing < 0) return -1n;
   const groups = [...left, ...Array(missing).fill("0"), ...right];
   if (groups.length !== 8) return -1n;
 
@@ -82,7 +86,20 @@ function matchIPv6Cidr(ip: string, cidr: string): boolean {
 
 // ── Unified matcher ───────────────────────────────────────────────────────────
 
+/**
+ * Collapse an IPv4-mapped IPv6 address (::ffff:a.b.c.d) to its embedded dotted
+ * IPv4 so it can match IPv4 CIDR allowlist entries. Non-mapped addresses are
+ * returned unchanged.
+ */
+function normalizeMappedIpv4(ip: string): string {
+  const mapped = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+  return mapped ? mapped[1]! : ip;
+}
+
 function matchesCidr(ip: string, cidr: string): boolean {
+  // Normalize IPv4-mapped IPv6 clients (::ffff:10.0.0.5) to plain IPv4 so a
+  // dual-stack proxy client can still match an IPv4 CIDR such as 10.0.0.0/8.
+  ip = normalizeMappedIpv4(ip);
   // Handle CIDR notation
   if (isIPv4(ip)) {
     // May be an IPv4-mapped IPv6 CIDR
@@ -126,10 +143,16 @@ export class IpAllowlist {
     const invalid: string[] = [];
     for (const cidr of cidrs) {
       const [addr, prefix] = cidr.split("/");
-      if (!addr) { invalid.push(cidr); continue; }
+      if (!addr) {
+        invalid.push(cidr);
+        continue;
+      }
       if (prefix !== undefined) {
         const n = parseInt(prefix, 10);
-        if (isNaN(n)) { invalid.push(cidr); continue; }
+        if (isNaN(n)) {
+          invalid.push(cidr);
+          continue;
+        }
       }
       // Quick format check
       if (!isIPv4(addr) && expandIPv6(addr) < 0n) {

@@ -45,11 +45,15 @@ export function generateSigningKeyPair(): { privateKey: string; publicKey: strin
 
 // ── Hashing ────────────────────────────────────────────────────────────────────
 
-export function hashDirectory(dirPath: string): string {
+export function hashDirectory(dirPath: string, options?: { ignore?: string[] }): string {
+  const ignore = new Set(options?.ignore ?? []);
   const hash = createHash("sha256");
   const files = walkSorted(dirPath);
   for (const file of files) {
     const rel = path.relative(dirPath, file);
+    // Skip detached-signature/metadata files so the signed content hash is
+    // stable whether or not the signature sidecar is present on disk.
+    if (ignore.has(rel)) continue;
     const content = fs.readFileSync(file);
     hash.update(`${rel}\n`);
     hash.update(content);
@@ -113,16 +117,26 @@ export function verifySkillSignature(params: {
   skillDir: string;
   signature: SkillSignature;
   trustedPublicKeys?: string[];
+  /**
+   * Relative paths (e.g. a detached-signature sidecar) to exclude from the
+   * recomputed content hash. Must match whatever was excluded at signing time.
+   */
+  ignoreFiles?: string[];
 }): { valid: boolean; reason?: string } {
-  // Check trusted keys list
-  if (params.trustedPublicKeys?.length) {
-    if (!params.trustedPublicKeys.includes(params.signature.publicKey)) {
-      return { valid: false, reason: "Publisher public key not in trusted list" };
-    }
+  // Fail closed: a signature is only trustworthy if it chains to an explicitly
+  // configured trusted publisher key. An empty or absent allowlist means the
+  // caller has provided no basis for trust, so a self-signed package that
+  // embeds its own public key (signature.publicKey) MUST NOT be accepted —
+  // otherwise "verification" degrades to a tautology any attacker can satisfy.
+  if (!params.trustedPublicKeys || params.trustedPublicKeys.length === 0) {
+    return { valid: false, reason: "no trusted keys configured" };
+  }
+  if (!params.trustedPublicKeys.includes(params.signature.publicKey)) {
+    return { valid: false, reason: "Publisher public key not in trusted list" };
   }
 
   // Recompute content hash
-  const contentHash = hashDirectory(params.skillDir);
+  const contentHash = hashDirectory(params.skillDir, { ignore: params.ignoreFiles });
   if (contentHash !== params.signature.contentHash) {
     return { valid: false, reason: "Content hash mismatch — skill may have been tampered with" };
   }

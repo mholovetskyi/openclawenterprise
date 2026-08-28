@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createVaultBackend } from "./backend-vault.js";
 
@@ -51,9 +54,25 @@ describe("createVaultBackend — token auth", () => {
     await expect(backend.get("key")).rejects.toThrow("HTTP 500");
   });
 
-  it("get — returns null when data.value is absent", async () => {
+  it("get — returns null when the KV map is empty", async () => {
     fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: {} } }));
     expect(await backend.get("key")).toBeNull();
+  });
+
+  it("get — returns the full KV map as JSON for multi-field secrets", async () => {
+    fetchMock.mockResolvedValueOnce(
+      fakeResponse(200, { data: { data: { api_key: "sk-123", org: "acme" } } }),
+    );
+    const raw = await backend.get("openai");
+    // Multi-field secrets are returned as JSON so resolveSecretValue's
+    // `#field` extraction can index them (the documented vault://path#field).
+    expect(JSON.parse(raw as string)).toEqual({ api_key: "sk-123", org: "acme" });
+  });
+
+  it("get — returns the full map as JSON for a single non-'value' field", async () => {
+    fetchMock.mockResolvedValueOnce(fakeResponse(200, { data: { data: { api_key: "sk-only" } } }));
+    const raw = await backend.get("openai");
+    expect(JSON.parse(raw as string)).toEqual({ api_key: "sk-only" });
   });
 
   it("set — posts JSON body to KV v2 data path", async () => {
@@ -211,6 +230,60 @@ describe("createVaultBackend — AppRole auth", () => {
       appRole: { roleId: "r", secretId: "s" },
     });
     await expect(backend.get("key")).rejects.toThrow("no client_token");
+  });
+});
+
+describe("createVaultBackend — Kubernetes auth", () => {
+  let fetchMock: ReturnType<typeof vi.fn>;
+  let tmpDir: string;
+  let tokenPath: string;
+
+  beforeEach(() => {
+    fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-k8s-"));
+    tokenPath = path.join(tmpDir, "sa-token");
+    fs.writeFileSync(tokenPath, "jwt-token\n");
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+  });
+
+  it("reads the custom SA token path and logs in at the custom mount path", async () => {
+    fetchMock
+      .mockResolvedValueOnce(fakeResponse(200, { auth: { client_token: "k8s-tok" } }))
+      .mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "v" } } }));
+
+    const backend = createVaultBackend({
+      address: "http://vault:8200",
+      k8sAuth: { role: "my-role", jwtPath: tokenPath, mountPath: "k8s-prod" },
+    });
+
+    expect(await backend.get("key")).toBe("v");
+    // Login hits the custom mount path, not the hardcoded "kubernetes",
+    // and carries the JWT read from the custom SA token path.
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://vault:8200/v1/auth/k8s-prod/login");
+    const loginInit = fetchMock.mock.calls[0]![1] as { body: string };
+    expect(JSON.parse(loginInit.body)).toEqual({ role: "my-role", jwt: "jwt-token" });
+    const getInit = fetchMock.mock.calls[1]![1] as { headers: Record<string, string> };
+    expect(getInit.headers["X-Vault-Token"]).toBe("k8s-tok");
+  });
+
+  it("defaults the mount path to 'kubernetes' when mountPath is unset", async () => {
+    fetchMock
+      .mockResolvedValueOnce(fakeResponse(200, { auth: { client_token: "k8s-tok" } }))
+      .mockResolvedValueOnce(fakeResponse(200, { data: { data: { value: "v" } } }));
+
+    const backend = createVaultBackend({
+      address: "http://vault:8200",
+      authMethod: "kubernetes",
+      k8sAuth: { role: "r", jwtPath: tokenPath },
+    });
+
+    await backend.get("key");
+    expect(fetchMock.mock.calls[0]![0]).toBe("http://vault:8200/v1/auth/kubernetes/login");
   });
 });
 

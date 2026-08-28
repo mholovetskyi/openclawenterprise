@@ -63,6 +63,27 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
   const jwtCfg = cfg.enterprise?.iam?.jwt ?? {};
   const jwtAlgorithm = jwtCfg.algorithm ?? "RS256";
 
+  // Fail closed on HS256 misconfiguration. HS256 tokens are forgeable by anyone
+  // who knows the shared secret, so an empty or weak secret is a critical hole:
+  // an attacker who guesses/knows it can mint tokens for any identity/role.
+  // Refuse to start rather than silently HMAC-ing under an empty or trivial key.
+  if (jwtAlgorithm === "HS256") {
+    const secret = jwtCfg.secret;
+    if (!secret || secret.length === 0) {
+      throw new Error(
+        "[enterprise/iam] HS256 JWT algorithm requires enterprise.iam.jwt.secret to be set " +
+          "(non-empty). Refusing to start under a forgeable empty secret.",
+      );
+    }
+    const MIN_HS256_SECRET_LEN = 32;
+    if (secret.length < MIN_HS256_SECRET_LEN) {
+      throw new Error(
+        `[enterprise/iam] HS256 JWT secret must be at least ${MIN_HS256_SECRET_LEN} characters ` +
+          `(got ${secret.length}). A short secret is brute-forceable and lets an attacker forge tokens.`,
+      );
+    }
+  }
+
   let privateKey: string | undefined;
   let publicKey: string | undefined;
 

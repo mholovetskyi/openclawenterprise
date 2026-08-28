@@ -120,6 +120,9 @@ type RedisClient = {
   on(event: string, handler: (...args: unknown[]) => void): void;
 };
 
+/** Exported alias of the internal Redis client shape for tests/wiring. */
+export type ClusterRedisClient = RedisClient;
+
 async function loadRedis(url: string): Promise<RedisClient> {
   const { createRequire } = await import("node:module");
   const req = createRequire(import.meta.url);
@@ -134,7 +137,7 @@ async function loadRedis(url: string): Promise<RedisClient> {
   return new Redis(url);
 }
 
-class RedisCoordinator implements ClusterCoordinator {
+export class RedisCoordinator implements ClusterCoordinator {
   private _isLeader = false;
   private lockRenewalTimer: NodeJS.Timeout | null = null;
 
@@ -191,10 +194,26 @@ class RedisCoordinator implements ClusterCoordinator {
       try {
         // Extend the lock only if we still hold it
         const raw = await this.redis.get(this.leaderKey);
-        if (raw) {
-          const current = JSON.parse(raw) as { nodeId: string };
+        if (raw === null) {
+          // The lock key expired (missed renewals / event-loop starvation). A
+          // follower may already have won it, so relinquish leadership NOW
+          // rather than continuing to report isLeader()===true until the next
+          // tick — that window is the split-brain the audit flagged.
+          this._isLeader = false;
+          if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
+          this.lockRenewalTimer = null;
+        } else {
+          const current = JSON.parse(raw) as ClusterNodeInfo & { nodeId: string };
           if (current.nodeId === this.nodeId) {
-            await this.redis.set(this.leaderKey, raw, "EX", ttlSec, "XX");
+            // Refresh the leader record's heartbeat/role on each renewal rather
+            // than re-writing the stale blob, so the leader record does not go
+            // permanently stale.
+            const refreshed: ClusterNodeInfo & { nodeId: string } = {
+              ...current,
+              role: "leader",
+              lastHeartbeatAt: new Date().toISOString(),
+            };
+            await this.redis.set(this.leaderKey, JSON.stringify(refreshed), "EX", ttlSec, "XX");
             this._isLeader = true;
           } else {
             this._isLeader = false;

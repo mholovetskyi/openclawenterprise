@@ -13,7 +13,7 @@
  *   vault://secret/openclaw/openai#api_key
  *   aws-sm://openclaw/openai-key
  *   gcp-sm://projects/123/secrets/openai-key
- *   encrypted://base64blob
+ *   encrypted://<store-key>   (lookup key into the active file backend, not an inline blob)
  *   env://OPENAI_API_KEY
  */
 
@@ -97,7 +97,14 @@ export async function resolveSecretValue(value: string): Promise<string> {
     if (!activeBackend || activeBackend.name !== "file") {
       throw new Error("encrypted:// references require the file backend to be active");
     }
-    return (await activeBackend.get(ref.path)) ?? "";
+    // Fail closed: a missing encrypted secret must surface as a configuration
+    // error, not resolve to an empty credential (which would silently disable
+    // auth / fail open downstream).
+    const raw = await activeBackend.get(ref.path);
+    if (raw === null) {
+      throw new Error(`Secret not found: ${value}`);
+    }
+    return raw;
   }
 
   if (!activeBackend) {
@@ -151,8 +158,18 @@ export async function initSecretsBackend(cfg: OpenClawConfig): Promise<SecretsHa
         token: vaultCfg.token ?? process.env.VAULT_TOKEN,
         mount: vaultCfg.mount,
         prefix: vaultCfg.prefix,
+        authMethod: vaultCfg.authMethod,
         appRole: vaultCfg.appRole,
-        k8sAuth: vaultCfg.k8sAuth,
+        // Map the config shape (serviceAccountTokenPath/mountPath) onto the
+        // backend's k8s auth options; passing the raw config object left
+        // jwtPath undefined so a custom SA token path was silently ignored.
+        k8sAuth: vaultCfg.k8sAuth
+          ? {
+              role: vaultCfg.k8sAuth.role,
+              jwtPath: vaultCfg.k8sAuth.serviceAccountTokenPath,
+              mountPath: vaultCfg.k8sAuth.mountPath,
+            }
+          : undefined,
         namespace: vaultCfg.namespace,
       });
       break;
@@ -202,6 +219,25 @@ export async function initSecretsBackend(cfg: OpenClawConfig): Promise<SecretsHa
       break;
     }
 
+    case "env": {
+      // Read-only container mode: resolve from process.env, never mint or
+      // persist a master key / on-disk store.
+      const { createEnvBackend } = await import("./backend-env.js");
+      backend = createEnvBackend();
+      break;
+    }
+
+    case "none": {
+      // The caller (initEnterprise) already skips secret init when backend is
+      // "none"; this defensive case ensures a direct initSecretsBackend call
+      // never silently falls through to the file backend and writes key
+      // material the operator did not request.
+      throw new Error(
+        'enterprise.secrets.backend is "none": no secret backend configured. ' +
+          "Remove the secrets config or choose a real backend to enable secret storage.",
+      );
+    }
+
     case "file":
     default: {
       const { createFileBackend } = await import("./backend-file.js");
@@ -241,12 +277,20 @@ async function resolveFileBackendKey(_cfg: OpenClawConfig): Promise<Buffer> {
   const envKey = process.env.OPENCLAW_MASTER_KEY;
   if (envKey) {
     const buf = Buffer.from(envKey, "base64");
-    if (buf.length === 32) {
-      return buf;
+    if (buf.length !== 32) {
+      // Fail closed: a present-but-malformed key must not be silently ignored
+      // in favor of a freshly minted one — that would render an existing
+      // secrets.enc undecryptable and protect new secrets with a key the
+      // operator never intended and cannot back up.
+      throw new Error(
+        `OPENCLAW_MASTER_KEY must be a base64-encoded 32-byte key ` +
+          `(decoded to ${buf.length} bytes)`,
+      );
     }
+    return buf;
   }
 
-  // 3. Generate a new key and store in keychain (first run)
+  // 3. Generate a new key and store in keychain (first run, only when unset)
   const newKey = randomBytes(32);
   await writeToKeychain(newKey);
   return newKey;

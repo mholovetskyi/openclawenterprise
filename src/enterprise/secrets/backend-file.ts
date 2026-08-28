@@ -4,9 +4,9 @@
  * Master key is stored in the OS keychain when available.
  */
 
+import { randomBytes } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { randomBytes } from "node:crypto";
 import { encrypt, decrypt, type EncryptedBlob } from "./encryption.js";
 import type { SecretBackend, SecretMetadata } from "./index.js";
 
@@ -27,11 +27,47 @@ export function createFileBackend(opts: FileBackendOptions): SecretBackend {
     if (!fs.existsSync(storePath)) {
       return { version: 1, secrets: {} };
     }
+    const raw = fs.readFileSync(storePath, "utf8");
+    let parsed: unknown;
     try {
-      return JSON.parse(fs.readFileSync(storePath, "utf8")) as SecretsStore;
-    } catch {
-      return { version: 1, secrets: {} };
+      parsed = JSON.parse(raw);
+    } catch (err) {
+      // A corrupt/truncated store must NOT be silently replaced with an empty
+      // store — the next write would then clobber every intact secret. Preserve
+      // the unreadable file for recovery and fail loudly instead.
+      const aside = `${storePath}.corrupt.${Date.now()}`;
+      try {
+        fs.renameSync(storePath, aside);
+      } catch {
+        /* best-effort: if we cannot move it aside, still refuse to proceed */
+      }
+      throw new Error(
+        `Secret store at ${storePath} is corrupt and could not be parsed as JSON; ` +
+          `moved aside to ${aside}. Refusing to overwrite to avoid data loss.`,
+        { cause: err },
+      );
     }
+    if (
+      typeof parsed !== "object" ||
+      parsed === null ||
+      (parsed as { version?: unknown }).version !== 1 ||
+      typeof (parsed as { secrets?: unknown }).secrets !== "object" ||
+      (parsed as { secrets?: unknown }).secrets === null
+    ) {
+      const aside = `${storePath}.corrupt.${Date.now()}`;
+      try {
+        fs.renameSync(storePath, aside);
+      } catch {
+        /* best-effort */
+      }
+      throw new Error(
+        `Secret store at ${storePath} has an unrecognized shape or version; ` +
+          `moved aside to ${aside}. Refusing to overwrite to avoid data loss.`,
+      );
+    }
+    // SAFETY: validated above that parsed is an object with version === 1 and a
+    // non-null secrets object, matching the SecretsStore shape.
+    return parsed as SecretsStore;
   }
 
   function save(store: SecretsStore): void {
@@ -40,7 +76,11 @@ export function createFileBackend(opts: FileBackendOptions): SecretBackend {
     const tmp = `${storePath}.tmp.${randomBytes(4).toString("hex")}`;
     fs.writeFileSync(tmp, JSON.stringify(store, null, 2), { mode: 0o600 });
     fs.renameSync(tmp, storePath);
-    try { fs.chmodSync(storePath, 0o600); } catch { /* non-fatal */ }
+    try {
+      fs.chmodSync(storePath, 0o600);
+    } catch {
+      /* non-fatal */
+    }
   }
 
   return {

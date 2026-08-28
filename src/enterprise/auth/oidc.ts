@@ -71,11 +71,14 @@ function generateState(): string {
 // ── OIDC client (wraps openid-client) ─────────────────────────────────────────
 
 type OidcDiscovery = {
+  issuer?: string;
   authorization_endpoint: string;
   token_endpoint: string;
   userinfo_endpoint?: string;
   end_session_endpoint?: string;
   jwks_uri: string;
+  /** Algorithms the IdP advertises for id_token signing (RFC 8414). */
+  id_token_signing_alg_values_supported?: string[];
 };
 
 type TokenResponse = {
@@ -86,7 +89,8 @@ type TokenResponse = {
   token_type: string;
 };
 
-import { createVerify } from "node:crypto";
+import { createPublicKey, verify as cryptoVerify, constants as cryptoConstants } from "node:crypto";
+import type { KeyObject } from "node:crypto";
 
 async function fetchJson<T>(url: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(url, opts);
@@ -113,40 +117,66 @@ type JwkKey = {
 
 type JwkSet = { keys: JwkKey[] };
 
-let jwksCache: { keys: JwkKey[]; fetchedAt: number } | null = null;
+// Cache keyed by jwksUri so each IdP's JWKS is stored independently — a module
+// -global single-slot cache would serve one issuer's keys for another (cross
+// -issuer/tenant key confusion).
+const jwksCache = new Map<string, { keys: JwkKey[]; fetchedAt: number }>();
 const JWKS_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
-async function fetchJwks(jwksUri: string): Promise<JwkKey[]> {
+async function fetchJwks(jwksUri: string, forceRefresh = false): Promise<JwkKey[]> {
   const now = Date.now();
-  if (jwksCache && now - jwksCache.fetchedAt < JWKS_CACHE_TTL_MS) {
-    return jwksCache.keys;
+  const cached = jwksCache.get(jwksUri);
+  if (!forceRefresh && cached && now - cached.fetchedAt < JWKS_CACHE_TTL_MS) {
+    return cached.keys;
   }
   const set = await fetchJson<JwkSet>(jwksUri);
-  jwksCache = { keys: set.keys, fetchedAt: now };
+  jwksCache.set(jwksUri, { keys: set.keys, fetchedAt: now });
   return set.keys;
 }
 
-function jwkToPem(key: JwkKey): string {
-  // Use x5c (X.509 cert) if available — simplest path
+/**
+ * Build a public KeyObject from a JWK. Prefers an embedded X.509 cert (x5c);
+ * otherwise imports the bare key material natively (RSA n/e, EC crv/x/y) via
+ * Node's JWK support so IdPs that publish bare JWKS (Keycloak, Auth0, Azure)
+ * verify instead of failing closed.
+ */
+function jwkToKeyObject(key: JwkKey): KeyObject {
   if (key.x5c && key.x5c[0]) {
-    return (
+    const pem =
       "-----BEGIN CERTIFICATE-----\n" +
       (key.x5c[0].match(/.{1,64}/g) ?? []).join("\n") +
-      "\n-----END CERTIFICATE-----"
-    );
+      "\n-----END CERTIFICATE-----";
+    return createPublicKey(pem);
   }
-  throw new Error(`JWK key type ${key.kty} requires x5c or external conversion library`);
+  if (key.kty === "RSA" && key.n && key.e) {
+    return createPublicKey({ key: { kty: "RSA", n: key.n, e: key.e }, format: "jwk" });
+  }
+  if (key.kty === "EC" && key.crv && key.x && key.y) {
+    return createPublicKey({
+      key: { kty: "EC", crv: key.crv, x: key.x, y: key.y },
+      format: "jwk",
+    });
+  }
+  throw new Error(`Unsupported JWK: cannot build key material for kty=${key.kty}`);
 }
+
+// Allowlist of asymmetric signature algorithms we will verify. Symmetric algs
+// (HS*) and "none" are intentionally absent: there is no shared-secret path for
+// an id_token here, so accepting them would be a signature-bypass.
+const RSA_ALGS: Record<string, string> = { RS256: "sha256", RS384: "sha384", RS512: "sha512" };
+const PS_ALGS: Record<string, string> = { PS256: "sha256", PS384: "sha384", PS512: "sha512" };
+const EC_ALGS: Record<string, string> = { ES256: "sha256", ES384: "sha384", ES512: "sha512" };
 
 /**
  * Verify an ID token signature against the IdP's JWKS.
  * Returns the decoded payload if valid, throws if invalid.
  */
-async function verifyIdToken(
+export async function verifyIdToken(
   idToken: string,
   jwksUri: string,
   expectedIssuer?: string,
   expectedAudience?: string,
+  allowedAlgs?: string[],
 ): Promise<Record<string, unknown>> {
   const parts = idToken.split(".");
   const [headerB64, payloadB64, signatureB64] = parts;
@@ -186,39 +216,71 @@ async function verifyIdToken(
   }
 
   const kid = typeof header["kid"] === "string" ? header["kid"] : undefined;
-  const alg = typeof header["alg"] === "string" ? header["alg"] : "RS256";
+  const alg = typeof header["alg"] === "string" ? header["alg"] : undefined;
 
-  const keys = await fetchJwks(jwksUri);
-  const matchingKey = kid
-    ? keys.find((k) => k.kid === kid)
-    : keys.find((k) => !k.use || k.use === "sig");
+  if (!alg) {
+    throw new Error("ID token header missing alg");
+  }
+
+  // Enforce an algorithm allowlist. This rejects alg:"none" and HS* confusion
+  // outright. When the IdP advertises id_token_signing_alg_values_supported we
+  // additionally require the token's alg to be one the IdP claims to use.
+  const isSupported = alg in RSA_ALGS || alg in PS_ALGS || alg in EC_ALGS;
+  if (!isSupported) {
+    throw new Error(`Unsupported or insecure ID token alg: ${alg}`);
+  }
+  if (allowedAlgs && allowedAlgs.length > 0 && !allowedAlgs.includes(alg)) {
+    throw new Error(`ID token alg ${alg} not advertised by IdP`);
+  }
+
+  const findKey = (keys: JwkKey[]): JwkKey | undefined =>
+    kid ? keys.find((k) => k.kid === kid) : keys.find((k) => !k.use || k.use === "sig");
+
+  let keys = await fetchJwks(jwksUri);
+  let matchingKey = findKey(keys);
+  // On a kid miss, force a single refresh (bypassing the TTL) to survive key
+  // rotation before giving up.
+  if (!matchingKey && kid) {
+    keys = await fetchJwks(jwksUri, true);
+    matchingKey = findKey(keys);
+  }
 
   if (!matchingKey) {
     throw new Error(`No matching JWK found for kid=${kid ?? "any"}`);
   }
 
-  // Verify signature using Node.js built-in crypto
-  const signingInput = `${headerB64}.${payloadB64}`;
+  // Verify signature using Node.js built-in crypto. Any alg that reaches here
+  // is in the allowlist; we never return an unverified payload.
+  const signingInput = Buffer.from(`${headerB64}.${payloadB64}`, "utf8");
   const signature = Buffer.from(signatureB64, "base64url");
+  const keyObject = jwkToKeyObject(matchingKey);
 
-  if (alg.startsWith("RS") || alg.startsWith("PS")) {
-    const pem = jwkToPem(matchingKey);
-    const verify = createVerify(
-      alg === "RS256" ? "RSA-SHA256" : alg === "RS384" ? "RSA-SHA384" : "RSA-SHA512",
+  let valid = false;
+  if (alg in RSA_ALGS) {
+    valid = cryptoVerify(RSA_ALGS[alg], signingInput, keyObject, signature);
+  } else if (alg in PS_ALGS) {
+    valid = cryptoVerify(
+      PS_ALGS[alg],
+      signingInput,
+      {
+        key: keyObject,
+        padding: cryptoConstants.RSA_PKCS1_PSS_PADDING,
+        saltLength: cryptoConstants.RSA_PSS_SALTLEN_DIGEST,
+      },
+      signature,
     );
-    verify.update(signingInput);
-    const valid = verify.verify(pem, signature);
-    if (!valid) {
-      throw new Error("ID token signature verification failed");
-    }
   } else {
-    // For EC keys and other algorithms, signature verification requires
-    // the SubtleCrypto API or a JWK parsing library. Log a warning and
-    // fall through to userinfo endpoint as the source of truth.
-    process.stderr.write(
-      `[oidc] WARNING: Cannot verify ${alg} signature without JWKS key material conversion. ` +
-        "Falling back to userinfo endpoint for claim validation.\n",
+    // EC (ES256/384/512): JWS carries the raw r||s signature (IEEE P1363).
+    valid = cryptoVerify(
+      EC_ALGS[alg],
+      signingInput,
+      { key: keyObject, dsaEncoding: "ieee-p1363" },
+      signature,
     );
+  }
+
+  if (!valid) {
+    throw new Error("ID token signature verification failed");
   }
 
   return payload;
@@ -349,8 +411,9 @@ export class OidcService {
       ? await verifyIdToken(
           tokenResp.id_token,
           this.discovery.jwks_uri,
-          (this.discovery as Record<string, unknown>)["issuer"] as string | undefined,
+          this.discovery.issuer,
           this.config.clientId,
+          this.discovery.id_token_signing_alg_values_supported,
         )
       : await fetchJson<Record<string, unknown>>(this.discovery.userinfo_endpoint!, {
           headers: { Authorization: `Bearer ${tokenResp.access_token}` },

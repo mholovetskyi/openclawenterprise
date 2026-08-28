@@ -168,6 +168,66 @@ export class GuardrailEngine {
   }
 }
 
+// ── Config → engine rule compilation ────────────────────────────────────────
+
+/** Shape of a guardrail rule declared in enterprise.guardrails.rules. */
+export type GuardrailConfigRule = {
+  id: string;
+  description?: string;
+  pattern?: string;
+  action: GuardrailAction;
+  scope?: "tool-input" | "tool-output" | "message";
+};
+
+/**
+ * Compile config-declared guardrail rules into engine {@link GuardrailRule}s.
+ *
+ * Fails closed: a rule whose `pattern` does not compile, or that declares no
+ * pattern at all, is dropped AND reported in `errors` — it is never installed
+ * as a matchless rule (which the engine would treat as an always-fire rule,
+ * silently blocking or allowing every tool call). Callers must surface/act on
+ * `errors` rather than ignore them.
+ *
+ * Scope mapping: "tool-input" -> match.commandPattern; "tool-output" and
+ * "message" -> match.outputPattern (the engine has no distinct message scope).
+ */
+export function buildGuardrailRulesFromConfig(
+  configRules: readonly GuardrailConfigRule[] | undefined,
+): { rules: GuardrailRule[]; errors: Array<{ id: string; error: string }> } {
+  const rules: GuardrailRule[] = [];
+  const errors: Array<{ id: string; error: string }> = [];
+
+  for (const cfg of configRules ?? []) {
+    if (cfg.pattern === undefined || cfg.pattern === "") {
+      errors.push({
+        id: cfg.id,
+        error: "guardrail rule has no pattern; refusing to install a matchless rule",
+      });
+      continue;
+    }
+    let compiled: RegExp;
+    try {
+      compiled = new RegExp(cfg.pattern, "gi");
+    } catch (err) {
+      errors.push({ id: cfg.id, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+
+    const scope = cfg.scope ?? "tool-input";
+    const match: GuardrailRule["match"] =
+      scope === "tool-input" ? { commandPattern: compiled } : { outputPattern: compiled };
+
+    rules.push({
+      id: cfg.id,
+      description: cfg.description ?? cfg.id,
+      match,
+      action: cfg.action,
+    });
+  }
+
+  return { rules, errors };
+}
+
 // Singleton for convenience
 let globalEngine: GuardrailEngine | null = null;
 

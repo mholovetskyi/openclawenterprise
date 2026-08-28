@@ -13,8 +13,27 @@ import {
   generateKeyPairSync,
   randomBytes,
   createHash,
+  timingSafeEqual,
 } from "node:crypto";
 import type { User, AgentIdentity } from "../iam/rbac/model.js";
+
+/**
+ * Minimal surface of the refresh-token / access-token store that JWTService
+ * consults so that issued refresh tokens are persisted and revoked access
+ * tokens are rejected. Kept as an interface so jwt.ts does not depend on the
+ * concrete TokenStore (SQLite) implementation.
+ */
+export interface TokenStoreSink {
+  storeRefreshToken(
+    jti: string,
+    subjectId: string,
+    rawToken: string,
+    issuedAt: number,
+    expiresAt: number,
+    meta?: { userAgent?: string; ipAddress?: string },
+  ): void;
+  isAccessTokenRevoked(jti: string): boolean;
+}
 
 export type JWTAlgorithm = "RS256" | "HS256";
 
@@ -34,6 +53,7 @@ export type JWTPayload = {
   iss?: string; // issuer
   aud?: string; // audience
   iat: number; // issued at (seconds)
+  nbf?: number; // not-before (seconds)
   exp: number; // expiry (seconds)
   jti: string; // JWT ID (unique per token)
   type: "access" | "refresh";
@@ -84,8 +104,10 @@ function encodePayload(payload: JWTPayload): string {
 
 function sign(data: string, config: JWTConfig): string {
   if (config.algorithm === "HS256") {
-    const secret = config.secret ?? "";
-    return b64url(createHmac("sha256", secret).update(data).digest());
+    // Fail closed: an empty HS256 secret means anyone can forge tokens by
+    // HMAC-ing under the empty key. Never sign under "".
+    if (!config.secret) throw new Error("HS256 requires a non-empty secret");
+    return b64url(createHmac("sha256", config.secret).update(data).digest());
   }
   // RS256
   if (!config.privateKey) throw new Error("RS256 requires privateKey in JWTConfig");
@@ -97,18 +119,15 @@ function sign(data: string, config: JWTConfig): string {
 function verify(header: string, payload: string, signature: string, config: JWTConfig): boolean {
   const data = `${header}.${payload}`;
   if (config.algorithm === "HS256") {
-    const expected = b64url(
-      createHmac("sha256", config.secret ?? "")
-        .update(data)
-        .digest(),
-    );
-    // Timing-safe comparison
-    if (signature.length !== expected.length) return false;
-    let diff = 0;
-    for (let i = 0; i < signature.length; i++) {
-      diff |= signature.charCodeAt(i) ^ expected.charCodeAt(i);
-    }
-    return diff === 0;
+    // Fail closed: refuse to verify under an empty secret (would accept
+    // attacker-minted tokens HMAC-signed with "").
+    if (!config.secret) throw new Error("HS256 requires a non-empty secret");
+    const expected = b64url(createHmac("sha256", config.secret).update(data).digest());
+    // Constant-time comparison over equal-length buffers.
+    const sigBuf = Buffer.from(signature, "utf8");
+    const expBuf = Buffer.from(expected, "utf8");
+    if (sigBuf.length !== expBuf.length) return false;
+    return timingSafeEqual(sigBuf, expBuf);
   }
   // RS256
   if (!config.publicKey) throw new Error("RS256 requires publicKey in JWTConfig");
@@ -125,8 +144,9 @@ function verify(header: string, payload: string, signature: string, config: JWTC
 
 export class JWTService {
   private config: Required<JWTConfig> & JWTConfig;
+  private readonly tokenStore: TokenStoreSink | null;
 
-  constructor(config: JWTConfig) {
+  constructor(config: JWTConfig, tokenStore?: TokenStoreSink | null) {
     this.config = {
       accessTokenTtlMs: 900_000,
       refreshTokenTtlMs: 604_800_000,
@@ -137,6 +157,13 @@ export class JWTService {
       publicKey: "",
       ...config,
     };
+    // Fail closed at construction: HS256 with an empty secret would mint and
+    // accept forgeable tokens. Surface the misconfiguration immediately rather
+    // than silently HMAC-ing under "".
+    if (this.config.algorithm === "HS256" && !this.config.secret) {
+      throw new Error("HS256 requires a non-empty secret");
+    }
+    this.tokenStore = tokenStore ?? null;
   }
 
   issueForUser(user: User): IssueTokenResult {
@@ -188,18 +215,37 @@ export class JWTService {
       roles: [], // refresh tokens carry no roles — they just issue new access tokens
     };
 
+    const accessToken = this.encode(accessPayload);
+    const refreshToken = this.encode(refreshPayload);
+
+    // Persist the refresh token so session listing/revocation is not inert.
+    // No-op when no store is wired (backward compatible for callers that only
+    // mint short-lived tokens).
+    this.tokenStore?.storeRefreshToken(
+      refreshPayload.jti,
+      refreshPayload.sub,
+      refreshToken,
+      refreshPayload.iat,
+      refreshPayload.exp,
+    );
+
     return {
-      accessToken: this.encode(accessPayload),
-      refreshToken: this.encode(refreshPayload),
+      accessToken,
+      refreshToken,
       expiresIn: accessTtlSec,
       tokenType: "Bearer",
     };
   }
 
   /**
-   * Decode and verify a JWT. Returns null if invalid or expired.
+   * Decode and verify a JWT. Returns null if invalid, expired, revoked, or if
+   * its issuer/audience/type do not match what this service enforces.
+   *
+   * @param opts.expectedType when set, the token's `type` must match exactly —
+   *   e.g. pass "access" so a long-lived refresh token cannot be presented in
+   *   place of an access token.
    */
-  decode(token: string): JWTPayload | null {
+  decode(token: string, opts?: { expectedType?: "access" | "refresh" }): JWTPayload | null {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, payload, signature] = parts;
@@ -215,9 +261,32 @@ export class JWTService {
     }
 
     const now = Math.floor(Date.now() / 1000);
+    const SKEW_SEC = 60; // small leniency for not-before only; expiry stays strict
     if (decoded.exp < now) return null; // expired
+    if (typeof decoded.nbf === "number" && decoded.nbf > now + SKEW_SEC) return null; // not yet valid
+
+    // Enforce issuer/audience so tokens minted for a different issuer/audience
+    // are rejected. issue() always populates iss/aud from config, so this is
+    // backward compatible with tokens this service mints.
+    if (decoded.iss !== this.config.issuer) return null;
+    if (decoded.aud !== this.config.audience) return null;
+
+    // Prevent a refresh token from being accepted where an access token is
+    // required (and vice versa) when the caller declares its expectation.
+    if (opts?.expectedType && decoded.type !== opts.expectedType) return null;
+
+    // Reject explicitly revoked access tokens (force-logout / admin kill).
+    if (decoded.jti && this.tokenStore?.isAccessTokenRevoked(decoded.jti)) return null;
 
     return decoded;
+  }
+
+  /**
+   * Verify a token and require it to be an access token. Preferred entry point
+   * for request authentication so refresh tokens are never accepted as access.
+   */
+  verifyAccessToken(token: string): JWTPayload | null {
+    return this.decode(token, { expectedType: "access" });
   }
 
   private encode(payload: JWTPayload): string {

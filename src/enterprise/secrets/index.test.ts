@@ -1,5 +1,20 @@
-import { describe, it, expect, vi } from "vitest";
-import { parseSecretRef, resolveSecretValue } from "./index.js";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { describe, it, expect, vi, afterEach } from "vitest";
+import type { OpenClawConfig } from "../../config/config.js";
+import {
+  parseSecretRef,
+  resolveSecretValue,
+  initSecretsBackend,
+  type SecretsHandle,
+} from "./index.js";
+
+function cfgWith(secrets: Record<string, unknown>): OpenClawConfig {
+  // SAFETY: initSecretsBackend only reads cfg.enterprise.secrets; a minimal
+  // object covering that path is sufficient for these tests.
+  return { enterprise: { secrets } } as unknown as OpenClawConfig;
+}
 
 describe("parseSecretRef", () => {
   it("parses plain values with no scheme", () => {
@@ -97,6 +112,57 @@ describe("resolveSecretValue — backend required schemes", () => {
     // activeBackend is module-level; without initialization it's null
     await expect(resolveSecretValue("vault://secret/path")).rejects.toThrow(
       "Secret backend not initialized",
+    );
+  });
+});
+
+describe("initSecretsBackend — backend selection", () => {
+  let handle: SecretsHandle | null = null;
+  let tmpDir: string;
+
+  afterEach(async () => {
+    if (handle) {
+      await handle.shutdown();
+      handle = null;
+    }
+    if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
+  });
+
+  it('backend "env" installs a read-only env backend (no disk writes)', async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-env-"));
+    handle = await initSecretsBackend(cfgWith({ backend: "env" }));
+    expect(handle.backend.name).toBe("env");
+    vi.stubEnv("SECRETS_ENV_BACKEND_VAR", "container-secret");
+    expect(await resolveSecretValue("env://SECRETS_ENV_BACKEND_VAR")).toBe("container-secret");
+    // No master-key file is minted for the env backend.
+    expect(fs.existsSync(path.join(tmpDir, ".master-key"))).toBe(false);
+    await expect(handle.backend.set("k", "v")).rejects.toThrow("read-only");
+  });
+
+  it('backend "none" throws instead of falling through to the file backend', async () => {
+    await expect(initSecretsBackend(cfgWith({ backend: "none" }))).rejects.toThrow(
+      "no secret backend configured",
+    );
+  });
+
+  it("throws on a malformed OPENCLAW_MASTER_KEY instead of minting a replacement", async () => {
+    if (process.platform === "darwin") return; // keychain may pre-empt the env var
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-mk-"));
+    vi.stubEnv("OPENCLAW_MASTER_KEY", "too-short-not-32-bytes");
+    await expect(
+      initSecretsBackend(cfgWith({ backend: "file", filePath: path.join(tmpDir, "secrets.enc") })),
+    ).rejects.toThrow("must be a base64-encoded 32-byte key");
+  });
+
+  it("encrypted:// to a missing secret fails closed (throws, not empty string)", async () => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openclaw-enc-"));
+    vi.stubEnv("OPENCLAW_MASTER_KEY", Buffer.alloc(32, 7).toString("base64"));
+    handle = await initSecretsBackend(
+      cfgWith({ backend: "file", filePath: path.join(tmpDir, "secrets.enc") }),
+    );
+    await expect(resolveSecretValue("encrypted://never-stored")).rejects.toThrow(
+      "Secret not found",
     );
   });
 });

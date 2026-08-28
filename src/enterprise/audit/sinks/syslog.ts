@@ -83,7 +83,21 @@ export type AuditSink = {
   close(): Promise<void>;
 };
 
-function eventToSyslog(event: AuditEvent, opts: SyslogSinkConfig): string {
+/** Strip CR, LF, and other C0/DEL control characters so an attacker-influenced
+ * field cannot inject a forged syslog line or record. */
+function stripControl(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  return value.replace(/[\x00-\x1F\x7F]/g, "");
+}
+
+/** RFC 5424 PARAM-VALUE escaping: backslash, double-quote, AND closing bracket
+ * (a stray `]` would otherwise close the structured-data element early). Control
+ * characters are stripped as defense in depth. */
+function escapeSdValue(value: string): string {
+  return stripControl(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/]/g, "\\]");
+}
+
+export function eventToSyslog(event: AuditEvent, opts: SyslogSinkConfig): string {
   const severity: Severity =
     event.outcome === "failure" ? "error" : event.outcome === "denied" ? "warning" : "info";
 
@@ -101,7 +115,7 @@ function eventToSyslog(event: AuditEvent, opts: SyslogSinkConfig): string {
   if (event.durationMs !== undefined) fields["durationMs"] = String(event.durationMs);
 
   const sdParts = Object.entries(fields)
-    .map(([k, v]) => `${k}="${v.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`)
+    .map(([k, v]) => `${k}="${escapeSdValue(v)}"`)
     .join(" ");
 
   return rfc5424({
@@ -112,7 +126,9 @@ function eventToSyslog(event: AuditEvent, opts: SyslogSinkConfig): string {
     timestamp: event.timestamp,
     msgId: event.id,
     structuredData: `[${sdId} ${sdParts}]`,
-    message: `${event.action} outcome=${event.outcome} actor=${event.actor.id}`,
+    // Strip control chars from interpolated fields so an embedded newline cannot
+    // inject a whole forged record over the stream.
+    message: `${stripControl(event.action)} outcome=${event.outcome} actor=${stripControl(event.actor.id)}`,
   });
 }
 
@@ -178,8 +194,11 @@ export function createSyslogSink(config: SyslogSinkConfig): AuditSink {
 
   return {
     async send(event: AuditEvent): Promise<void> {
-      const msg = eventToSyslog(event, config) + "\n"; // framed with newline for TCP
-      const buf = Buffer.from(msg, "utf8");
+      // RFC 6587 octet-counting framing ("<len> <msg>") instead of newline
+      // framing, so an embedded newline cannot split one event into two records.
+      const payload = eventToSyslog(event, config);
+      const payloadBytes = Buffer.byteLength(payload, "utf8");
+      const buf = Buffer.from(`${payloadBytes} ${payload}`, "utf8");
 
       if (socket?.writable) {
         await new Promise<void>((resolve, reject) => {

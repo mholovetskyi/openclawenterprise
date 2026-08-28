@@ -2,11 +2,11 @@
  * Code-signing tests.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import crypto from "node:crypto";
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import {
   generateSigningKeyPair,
   hashDirectory,
@@ -30,7 +30,11 @@ function populateSkillDir(dir: string): void {
  */
 function edSign(contentHash: string, privateKeyBase64: string): string {
   const privateKeyDer = Buffer.from(privateKeyBase64, "base64url");
-  const privateKeyObj = crypto.createPrivateKey({ key: privateKeyDer, format: "der", type: "pkcs8" });
+  const privateKeyObj = crypto.createPrivateKey({
+    key: privateKeyDer,
+    format: "der",
+    type: "pkcs8",
+  });
   return crypto.sign(null, Buffer.from(contentHash), privateKeyObj).toString("base64url");
 }
 
@@ -95,8 +99,12 @@ describe("generateSigningKeyPair", () => {
 describe("hashDirectory", () => {
   let tmpDir: string;
 
-  beforeEach(() => { tmpDir = makeTmpDir(); });
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("returns a 64-char hex SHA-256 hash", () => {
     populateSkillDir(tmpDir);
@@ -130,8 +138,12 @@ describe("hashDirectory", () => {
 describe("hashFile", () => {
   let tmpDir: string;
 
-  beforeEach(() => { tmpDir = makeTmpDir(); });
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+  });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
   it("returns a 64-char hex hash", () => {
     const file = path.join(tmpDir, "test.txt");
@@ -156,11 +168,17 @@ describe("verifySkillSignature", () => {
     keyPair = generateSigningKeyPair();
   });
 
-  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
 
-  it("returns valid for a correctly signed directory", () => {
+  it("returns valid for a correctly signed directory signed by a trusted key", () => {
     const sig = makeSignature(tmpDir, keyPair);
-    const result = verifySkillSignature({ skillDir: tmpDir, signature: sig });
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: sig,
+      trustedPublicKeys: [keyPair.publicKey],
+    });
     expect(result.valid).toBe(true);
   });
 
@@ -174,12 +192,56 @@ describe("verifySkillSignature", () => {
     expect(result.valid).toBe(true);
   });
 
-  it("accepts when trustedPublicKeys is empty", () => {
+  it("fails closed when trustedPublicKeys is missing (self-signed is not trust)", () => {
+    const sig = makeSignature(tmpDir, keyPair);
+    const result = verifySkillSignature({ skillDir: tmpDir, signature: sig });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("no trusted keys configured");
+  });
+
+  it("fails closed when trustedPublicKeys is empty (self-signed is not trust)", () => {
     const sig = makeSignature(tmpDir, keyPair);
     const result = verifySkillSignature({
       skillDir: tmpDir,
       signature: sig,
       trustedPublicKeys: [],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("no trusted keys configured");
+  });
+
+  it("rejects an attacker's self-signed key even though the content hash is self-consistent", () => {
+    // Attacker signs tampered content with their own freshly generated key and
+    // embeds their public key in the signature. With a real trust anchor that
+    // does not include the attacker key, verification must fail.
+    const attacker = generateSigningKeyPair();
+    const sig = makeSignature(tmpDir, attacker);
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: sig,
+      trustedPublicKeys: [keyPair.publicKey],
+    });
+    expect(result.valid).toBe(false);
+    expect(result.reason).toContain("not in trusted list");
+  });
+
+  it("honors ignoreFiles so a detached signature sidecar does not break the hash", () => {
+    const contentHash = hashDirectory(tmpDir, { ignore: ["skill.sig.json"] });
+    const signature = edSign(contentHash, keyPair.privateKey);
+    const sig: SkillSignature = {
+      algorithm: "ed25519",
+      publicKey: keyPair.publicKey,
+      signature,
+      signedAt: new Date().toISOString(),
+      contentHash,
+    };
+    // Write the sidecar AFTER computing the hash; ignoreFiles must exclude it.
+    fs.writeFileSync(path.join(tmpDir, "skill.sig.json"), JSON.stringify(sig));
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: sig,
+      trustedPublicKeys: [keyPair.publicKey],
+      ignoreFiles: ["skill.sig.json"],
     });
     expect(result.valid).toBe(true);
   });
@@ -189,7 +251,11 @@ describe("verifySkillSignature", () => {
   it("rejects when content hash mismatches (early return before crypto)", () => {
     const sig = makeSignature(tmpDir, keyPair);
     fs.writeFileSync(path.join(tmpDir, "index.js"), "// tampered");
-    const result = verifySkillSignature({ skillDir: tmpDir, signature: sig });
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: sig,
+      trustedPublicKeys: [keyPair.publicKey],
+    });
     expect(result.valid).toBe(false);
     expect(result.reason).toContain("Content hash mismatch");
   });
@@ -209,7 +275,11 @@ describe("verifySkillSignature", () => {
   it("returns invalid for a completely invalid signature string", () => {
     const sig = makeSignature(tmpDir, keyPair);
     const tampered: SkillSignature = { ...sig, signature: "not-a-valid-signature" };
-    const result = verifySkillSignature({ skillDir: tmpDir, signature: tampered });
+    const result = verifySkillSignature({
+      skillDir: tmpDir,
+      signature: tampered,
+      trustedPublicKeys: [keyPair.publicKey],
+    });
     expect(result.valid).toBe(false);
   });
 });
