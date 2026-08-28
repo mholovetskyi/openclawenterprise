@@ -22,7 +22,7 @@
  * Health monitoring pings the MCP endpoint at configurable intervals.
  */
 
-import type { Counter, Gauge, Histogram } from "../../monitoring/metrics.js";
+import type { Counter, Gauge, Histogram } from "../monitoring/metrics.js";
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 

@@ -27,7 +27,8 @@ export async function initEnterprise(cfg: OpenClawConfig): Promise<EnterpriseHan
   const shutdowns: Array<() => Promise<void>> = [];
 
   // ── Secrets ────────────────────────────────────────────────────────────────
-  if (cfg.enterprise?.secrets?.enabled !== false) {
+  // No `enabled` flag on EnterpriseSecretsConfig — `backend: "none"` opts out.
+  if (cfg.enterprise?.secrets?.backend !== "none") {
     const { initSecretsBackend } = await import("./secrets/index.js");
     const s = await initSecretsBackend(cfg);
     shutdowns.push(s.shutdown);

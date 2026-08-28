@@ -16,7 +16,7 @@ export type MonitoringHandle = {
 export async function initMonitoring(cfg: OpenClawConfig): Promise<MonitoringHandle> {
   const monCfg = cfg.enterprise?.monitoring;
 
-  if (monCfg?.prometheus !== false) {
+  if (monCfg?.enabled !== false) {
     await initMetricsRegistry();
     rebuildMetrics();
   }
@@ -47,7 +47,13 @@ export async function initMonitoring(cfg: OpenClawConfig): Promise<MonitoringHan
         const checks: Record<string, string> = { process: "ok" };
         const allOk = Object.values(checks).every((v) => v === "ok");
         res.writeHead(allOk ? 200 : 503, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ status: allOk ? "ok" : "degraded", checks, timestamp: new Date().toISOString() }));
+        res.end(
+          JSON.stringify({
+            status: allOk ? "ok" : "degraded",
+            checks,
+            timestamp: new Date().toISOString(),
+          }),
+        );
         return true;
       }
 

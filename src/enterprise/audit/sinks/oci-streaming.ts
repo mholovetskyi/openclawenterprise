@@ -53,6 +53,17 @@ type OciStreamClient = {
   }>;
 };
 
+type OciStreamClientCtor = new (params: Record<string, unknown>) => OciStreamClient;
+
+/**
+ * Structural shape of the optional `oci-sdk` package (zero-dep policy: it is
+ * never a compile-time dependency; operators install it to enable this sink).
+ */
+type OciSdkModule = {
+  StreamClient?: OciStreamClientCtor;
+  streaming?: { StreamClient?: OciStreamClientCtor };
+};
+
 // ── Metrics ────────────────────────────────────────────────────────────────────
 
 export type OciStreamingSinkMetrics = {
@@ -108,8 +119,14 @@ export async function createOciStreamingSink(
     const loader = deps.sdkLoader;
     if (!loader) {
       try {
-        const mod = await import("oci-sdk");
+        // Non-literal specifier keeps TypeScript from statically resolving
+        // this optional package; loading stays lazy at runtime.
+        const specifier: string = "oci-sdk";
+        const mod = (await import(specifier)) as OciSdkModule;
         const ClientClass = mod.StreamClient ?? mod.streaming?.StreamClient;
+        if (!ClientClass) {
+          throw new Error("oci-sdk does not export StreamClient");
+        }
         const authConfig: Record<string, unknown> = { endpoint: streamEndpoint };
         if (config.tenancyId) {
           authConfig.tenancyId = config.tenancyId;
@@ -132,6 +149,9 @@ export async function createOciStreamingSink(
     }
   }
 
+  if (!streamClient) {
+    throw new Error("OCI Streaming audit sink: failed to initialize StreamClient");
+  }
   const client = streamClient;
 
   // Metrics

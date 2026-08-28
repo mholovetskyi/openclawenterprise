@@ -139,7 +139,7 @@ export function normalizeChatSendRequest(params: {
   const enterpriseSanitized = sanitizeInput(sanitizedMessageResult.message, {
     detectInjection: true,
     stripInvisible: true,
-    normalize: true,
+    normalizeUnicode: true,
     maxLength: 32_768,
   });
   if (enterpriseSanitized.injectionDetected) {

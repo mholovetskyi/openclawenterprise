@@ -2,14 +2,16 @@
  * Enterprise IAM subsystem initialization.
  */
 
-import path from "node:path";
 import fs from "node:fs";
+import path from "node:path";
+import { parseDurationMs } from "../../cli/parse-duration.js";
 import type { OpenClawConfig } from "../../config/config.js";
-import { InMemoryRBACStore } from "./rbac/store.js";
-import { createSQLiteRBACStore } from "./rbac/store-sqlite.js";
-import { RBACEngine } from "./rbac/engine.js";
+import { resolveStateDir } from "../../config/paths.js";
 import { JWTService, generateRS256KeyPair } from "../auth/jwt.js";
 import { TokenStore } from "../auth/token-store.js";
+import { RBACEngine } from "./rbac/engine.js";
+import { createSQLiteRBACStore } from "./rbac/store-sqlite.js";
+import { InMemoryRBACStore } from "./rbac/store.js";
 import type { RBACStore } from "./rbac/store.js";
 
 export type IAMHandle = {
@@ -28,7 +30,7 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
   let store: RBACStore;
   let tokens: TokenStore | null = null;
 
-  const stateDir = cfg.stateDir ?? path.join(process.env["HOME"] ?? "~", ".openclaw");
+  const stateDir = resolveStateDir();
   const enterpriseDir = path.join(stateDir, "enterprise");
 
   try {
@@ -58,36 +60,48 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
     store = new InMemoryRBACStore();
   }
 
-  const jwtAlgorithm = cfg.enterprise?.auth?.jwt?.algorithm ?? "RS256";
-  let jwtConfig = cfg.enterprise?.auth?.jwt ?? {};
+  const jwtCfg = cfg.enterprise?.iam?.jwt ?? {};
+  const jwtAlgorithm = jwtCfg.algorithm ?? "RS256";
 
-  if (jwtAlgorithm === "RS256" && !jwtConfig.privateKey) {
-    // Persist the key pair so tokens survive restarts.
+  let privateKey: string | undefined;
+  let publicKey: string | undefined;
+
+  if (jwtAlgorithm === "RS256") {
+    // Key material lives in PEM files (documented default: <state>/enterprise/iam/*.pem),
+    // overridable via iam.jwt.privateKeyPath / publicKeyPath. Auto-generated and
+    // persisted on first start so issued tokens survive restarts.
+    const iamDir = path.join(enterpriseDir, "iam");
+    const privateKeyPath = jwtCfg.privateKeyPath ?? path.join(iamDir, "private.pem");
+    const publicKeyPath = jwtCfg.publicKeyPath ?? path.join(iamDir, "public.pem");
+
     // Use readFileSync directly (no existsSync pre-check) to avoid a TOCTOU
     // race condition where a symlink could be swapped between the check and use.
-    const keyFile = path.join(enterpriseDir, "jwt-rsa.json");
     try {
-      const saved = JSON.parse(fs.readFileSync(keyFile, "utf8")) as {
-        privateKey: string;
-        publicKey: string;
-      };
-      jwtConfig = { ...jwtConfig, ...saved, algorithm: "RS256" };
+      privateKey = fs.readFileSync(privateKeyPath, "utf8");
+      publicKey = fs.readFileSync(publicKeyPath, "utf8");
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code;
       if (code !== "ENOENT") {
-        // File exists but is unreadable or corrupt — warn and regenerate.
+        // Files exist but are unreadable — warn and regenerate.
         process.stderr.write(
-          "[enterprise/iam] WARNING: jwt-rsa.json unreadable, regenerating key pair. " +
+          "[enterprise/iam] WARNING: JWT key files unreadable, regenerating key pair. " +
             "Existing issued tokens will not verify after restart.\n",
         );
       }
       // ENOENT = first start; any other error = corrupt. Either way, generate fresh pair.
+      privateKey = undefined;
+      publicKey = undefined;
     }
-    if (!jwtConfig.privateKey) {
+
+    if (!privateKey || !publicKey) {
       const kp = generateRS256KeyPair();
-      jwtConfig = { ...jwtConfig, ...kp, algorithm: "RS256" };
+      privateKey = kp.privateKey;
+      publicKey = kp.publicKey;
       try {
-        fs.writeFileSync(keyFile, JSON.stringify(kp, null, 2), { mode: 0o600 });
+        fs.mkdirSync(path.dirname(privateKeyPath), { recursive: true });
+        fs.mkdirSync(path.dirname(publicKeyPath), { recursive: true });
+        fs.writeFileSync(privateKeyPath, kp.privateKey, { mode: 0o600 });
+        fs.writeFileSync(publicKeyPath, kp.publicKey, { mode: 0o644 });
       } catch {
         // Non-fatal — next restart will regenerate but existing tokens won't verify
       }
@@ -95,12 +109,16 @@ export async function initIAM(cfg: OpenClawConfig): Promise<IAMHandle> {
   }
 
   const jwt = new JWTService({
-    algorithm: jwtAlgorithm as "RS256" | "HS256",
-    ...jwtConfig,
-    accessTokenTtlMs: cfg.enterprise?.auth?.jwt?.accessTokenTtlMs ?? 900_000,
-    refreshTokenTtlMs: cfg.enterprise?.auth?.jwt?.refreshTokenTtlMs ?? 604_800_000,
-    issuer: cfg.enterprise?.auth?.jwt?.issuer ?? "openclaw",
-    audience: cfg.enterprise?.auth?.jwt?.audience ?? "openclaw",
+    algorithm: jwtAlgorithm,
+    ...(jwtCfg.secret ? { secret: jwtCfg.secret } : {}),
+    ...(privateKey ? { privateKey } : {}),
+    ...(publicKey ? { publicKey } : {}),
+    accessTokenTtlMs: jwtCfg.expiresIn ? parseDurationMs(jwtCfg.expiresIn) : 900_000,
+    refreshTokenTtlMs: jwtCfg.refreshExpiresIn
+      ? parseDurationMs(jwtCfg.refreshExpiresIn)
+      : 604_800_000,
+    issuer: jwtCfg.issuer ?? "openclaw",
+    audience: "openclaw",
   });
 
   const rbac = new RBACEngine(store);

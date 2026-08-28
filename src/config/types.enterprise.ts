@@ -311,6 +311,18 @@ export type EnterpriseTenancyConfig = {
   tenants?: Array<{
     id: string;
     name?: string;
+    description?: string;
+    /** Disable a tenant without removing it from config. Default: true. */
+    enabled?: boolean;
+    /** Per-tenant resource limits. */
+    limits?: {
+      maxAgents?: number;
+      maxSessionsPerAgent?: number;
+      maxTokensPerDay?: number;
+      maxSkills?: number;
+      maxSandboxContainers?: number;
+      allowedModels?: string[];
+    };
     rateLimits?: {
       requestsPerMinute?: number;
     };
@@ -321,6 +333,9 @@ export type EnterpriseTenancyConfig = {
 
 export type EnterpriseClusterConfig = {
   enabled?: boolean;
+
+  /** Stable node identifier. Auto-generated (hostname + random suffix) when omitted. */
+  nodeId?: string;
 
   redis?: {
     url?: string; // use env:// reference

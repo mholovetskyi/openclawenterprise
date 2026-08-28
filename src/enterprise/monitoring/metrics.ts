@@ -28,15 +28,58 @@ const noopHistogram: Histogram = {
   startTimer: () => () => {},
 };
 
+// ── Minimal structural types for prom-client ───────────────────────────────────
+// prom-client is an optional dependency (zero-dep policy for enterprise
+// backends): it is lazy-loaded at runtime, and these local interfaces cover
+// only the pieces this module uses so the file typechecks without it.
+
+type PromMetricOptions = {
+  name: string;
+  help: string;
+  labelNames?: string[];
+  buckets?: number[];
+};
+
+type PromCounterInstance = {
+  inc(value?: number): void;
+  labels(labels: Record<string, string>): { inc(value?: number): void };
+};
+
+type PromGaugeInstance = {
+  inc(value?: number): void;
+  dec(value?: number): void;
+  labels(labels: Record<string, string>): {
+    set(value: number): void;
+    inc(value?: number): void;
+    dec(value?: number): void;
+  };
+};
+
+type PromHistogramInstance = {
+  startTimer(labels?: Record<string, string>): () => number;
+  labels(labels: Record<string, string>): { observe(value: number): void };
+};
+
+type PromClientModule = {
+  collectDefaultMetrics(opts?: { prefix?: string }): void;
+  register: { metrics(): Promise<string> };
+  Counter: new (opts: PromMetricOptions) => PromCounterInstance;
+  Gauge: new (opts: PromMetricOptions) => PromGaugeInstance;
+  Histogram: new (opts: PromMetricOptions) => PromHistogramInstance;
+};
+
+// Widened to `string` so the compiler does not try to resolve the optional
+// package's type declarations at the dynamic import site below.
+const PROM_CLIENT_MODULE: string = "prom-client";
+
 // ── Registry singleton ─────────────────────────────────────────────────────────
 
-// eslint-disable-next-line typescript-eslint/no-redundant-type-constituents -- prom-client may not be installed
-let promClient: typeof import("prom-client") | null = null;
+let promClient: PromClientModule | null = null;
 let registryEnabled = false;
 
 export async function initMetricsRegistry(): Promise<void> {
   try {
-    const mod = await import("prom-client");
+    const mod = (await import(PROM_CLIENT_MODULE)) as PromClientModule;
     promClient = mod;
     mod.collectDefaultMetrics({ prefix: "openclaw_node_" });
     registryEnabled = true;

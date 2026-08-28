@@ -59,8 +59,7 @@ export type GpuMetricsHandle = {
 const NVIDIA_SMI_QUERY =
   "index,name,utilization.gpu,utilization.memory,memory.total,memory.used,memory.free,temperature.gpu,power.draw,power.limit,fan.speed,pstate";
 
-const NVIDIA_SMI_CMD =
-  `nvidia-smi --query-gpu=${NVIDIA_SMI_QUERY} --format=csv,noheader,nounits`;
+const NVIDIA_SMI_CMD = `nvidia-smi --query-gpu=${NVIDIA_SMI_QUERY} --format=csv,noheader,nounits`;
 
 const MB_TO_BYTES = 1024 * 1024;
 
@@ -157,26 +156,59 @@ export async function initGpuMetrics(
 // ── Parsing ──────────────────────────────────────────────────────────────────
 
 export function parseNvidiaSmiOutput(stdout: string): GpuState[] {
-  const lines = stdout.trim().split("\n").filter((line) => line.trim().length > 0);
+  const lines = stdout
+    .trim()
+    .split("\n")
+    .filter((line) => line.trim().length > 0);
   const states: GpuState[] = [];
 
   for (const line of lines) {
     const parts = line.split(",").map((s) => s.trim());
-    if (parts.length < 12) continue;
+    const [
+      index,
+      name,
+      gpuUtilization,
+      memoryUtilization,
+      memoryTotal,
+      memoryUsed,
+      memoryFree,
+      temperature,
+      powerDraw,
+      powerLimit,
+      fanSpeed,
+      pstate,
+    ] = parts;
+    // Skip malformed rows that do not carry all 12 queried fields.
+    if (
+      index === undefined ||
+      name === undefined ||
+      gpuUtilization === undefined ||
+      memoryUtilization === undefined ||
+      memoryTotal === undefined ||
+      memoryUsed === undefined ||
+      memoryFree === undefined ||
+      temperature === undefined ||
+      powerDraw === undefined ||
+      powerLimit === undefined ||
+      fanSpeed === undefined ||
+      pstate === undefined
+    ) {
+      continue;
+    }
 
     const state: GpuState = {
-      index: parseFloat(parts[0]) || 0,
-      name: parts[1] || "Unknown",
-      gpuUtilization: parseFloat(parts[2]) || 0,
-      memoryUtilization: parseFloat(parts[3]) || 0,
-      memoryTotal: parseFloat(parts[4]) || 0,
-      memoryUsed: parseFloat(parts[5]) || 0,
-      memoryFree: parseFloat(parts[6]) || 0,
-      temperature: parseFloat(parts[7]) || 0,
-      powerDraw: parseFloat(parts[8]) || 0,
-      powerLimit: parseFloat(parts[9]) || 0,
-      fanSpeed: parseFloat(parts[10]) || 0,
-      pstate: parts[11] || "P0",
+      index: parseFloat(index) || 0,
+      name: name || "Unknown",
+      gpuUtilization: parseFloat(gpuUtilization) || 0,
+      memoryUtilization: parseFloat(memoryUtilization) || 0,
+      memoryTotal: parseFloat(memoryTotal) || 0,
+      memoryUsed: parseFloat(memoryUsed) || 0,
+      memoryFree: parseFloat(memoryFree) || 0,
+      temperature: parseFloat(temperature) || 0,
+      powerDraw: parseFloat(powerDraw) || 0,
+      powerLimit: parseFloat(powerLimit) || 0,
+      fanSpeed: parseFloat(fanSpeed) || 0,
+      pstate: pstate || "P0",
     };
 
     states.push(state);
@@ -211,10 +243,23 @@ function checkThresholds(states: GpuState[], gpuCfg: NvidiaGpuMetricsConfig | un
 
   for (const gpu of states) {
     if (thresholds.gpuUtilization !== undefined && gpu.gpuUtilization > thresholds.gpuUtilization) {
-      emitThresholdEvent(gpu.index, "gpuUtilization", gpu.gpuUtilization, thresholds.gpuUtilization);
+      emitThresholdEvent(
+        gpu.index,
+        "gpuUtilization",
+        gpu.gpuUtilization,
+        thresholds.gpuUtilization,
+      );
     }
-    if (thresholds.memoryUtilization !== undefined && gpu.memoryUtilization > thresholds.memoryUtilization) {
-      emitThresholdEvent(gpu.index, "memoryUtilization", gpu.memoryUtilization, thresholds.memoryUtilization);
+    if (
+      thresholds.memoryUtilization !== undefined &&
+      gpu.memoryUtilization > thresholds.memoryUtilization
+    ) {
+      emitThresholdEvent(
+        gpu.index,
+        "memoryUtilization",
+        gpu.memoryUtilization,
+        thresholds.memoryUtilization,
+      );
     }
     if (thresholds.temperature !== undefined && gpu.temperature > thresholds.temperature) {
       emitThresholdEvent(gpu.index, "temperature", gpu.temperature, thresholds.temperature);

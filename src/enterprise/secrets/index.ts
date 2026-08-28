@@ -64,7 +64,9 @@ export function parseSecretRef(value: string): ParsedSecretRef {
     return { scheme: "plain", path: value };
   }
   const scheme = match[1] as ParsedSecretRef["scheme"];
-  const rest = match[2];
+  // The scheme regex requires a non-empty remainder, so group 2 is always
+  // present on a match; the fallback satisfies noUncheckedIndexedAccess.
+  const rest = match[2] ?? "";
   const hashIdx = rest.lastIndexOf("#");
   if (hashIdx !== -1) {
     return { scheme, path: rest.slice(0, hashIdx), field: rest.slice(hashIdx + 1) };

@@ -60,13 +60,15 @@ export function createTestContext(
     config: opts.config ?? {},
     logger,
     resolveSecret: async (ref: string) => {
-      if (ref in secrets) {
-        return secrets[ref];
+      const direct = secrets[ref];
+      if (direct !== undefined) {
+        return direct;
       }
       // Strip env:// prefix for test convenience
       const stripped = ref.replace(/^env:\/\//, "");
-      if (stripped in secrets) {
-        return secrets[stripped];
+      const viaStripped = secrets[stripped];
+      if (viaStripped !== undefined) {
+        return viaStripped;
       }
       throw new Error(`Test secret not found: ${ref}`);
     },

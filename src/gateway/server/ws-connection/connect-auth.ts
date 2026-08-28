@@ -193,10 +193,9 @@ async function authenticateGatewayConnectCore(
     void auditLog({
       action: "auth.failed",
       category: "auth",
-      actor: { type: "user", id: device?.id ?? "unknown" },
+      actor: { type: "user", id: device?.id ?? "unknown", ip: remoteAddr ?? undefined },
       resource: { type: "gateway", id: "ws" },
       outcome: "failure",
-      ip: remoteAddr ?? undefined,
       metadata: {
         reason: failedAuth.reason,
         authMode: resolvedAuth.mode,

@@ -149,18 +149,19 @@ async function verifyIdToken(
   expectedAudience?: string,
 ): Promise<Record<string, unknown>> {
   const parts = idToken.split(".");
-  if (parts.length !== 3) {
+  const [headerB64, payloadB64, signatureB64] = parts;
+  if (parts.length !== 3 || !headerB64 || !payloadB64 || !signatureB64) {
     throw new Error("Malformed JWT: expected 3 parts");
   }
 
   let header: Record<string, unknown>;
   let payload: Record<string, unknown>;
   try {
-    header = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8")) as Record<
+    header = JSON.parse(Buffer.from(headerB64, "base64url").toString("utf8")) as Record<
       string,
       unknown
     >;
-    payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<
+    payload = JSON.parse(Buffer.from(payloadB64, "base64url").toString("utf8")) as Record<
       string,
       unknown
     >;
@@ -197,8 +198,8 @@ async function verifyIdToken(
   }
 
   // Verify signature using Node.js built-in crypto
-  const signingInput = `${parts[0]}.${parts[1]}`;
-  const signature = Buffer.from(parts[2], "base64url");
+  const signingInput = `${headerB64}.${payloadB64}`;
+  const signature = Buffer.from(signatureB64, "base64url");
 
   if (alg.startsWith("RS") || alg.startsWith("PS")) {
     const pem = jwkToPem(matchingKey);
@@ -221,21 +222,6 @@ async function verifyIdToken(
   }
 
   return payload;
-}
-
-function _decodeJwtPayload(token: string): Record<string, unknown> {
-  const parts = token.split(".");
-  if (parts.length < 2) {
-    throw new Error("Invalid JWT");
-  }
-  try {
-    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as Record<
-      string,
-      unknown
-    >;
-  } catch {
-    throw new Error("Malformed JWT payload");
-  }
 }
 
 // ── In-flight state store (pending logins) ────────────────────────────────────

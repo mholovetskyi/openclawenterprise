@@ -99,13 +99,22 @@ type OsdkModules = {
   };
 };
 
+// Structural shapes of the optional @osdk/* packages (zero-dep policy: never
+// compile-time dependencies; operators install them to enable this sink).
+type OsdkClientModule = { createClient: OsdkModules["createClient"] };
+type OsdkOauthModule = {
+  createConfidentialOauthClient: OsdkModules["createConfidentialOauthClient"];
+};
+type OsdkStreamsModule = OsdkModules["Streams"] & { Streams?: OsdkModules["Streams"] };
+
 async function loadOsdkModules(): Promise<OsdkModules> {
   try {
-    const [clientMod, oauthMod, streamsMod] = await Promise.all([
-      import("@osdk/client"),
-      import("@osdk/oauth"),
-      import("@osdk/foundry.streams"),
-    ]);
+    // Non-literal specifiers keep TypeScript from statically resolving these
+    // optional packages; loading stays lazy at runtime.
+    const specifiers: string[] = ["@osdk/client", "@osdk/oauth", "@osdk/foundry.streams"];
+    const [clientMod, oauthMod, streamsMod] = (await Promise.all(
+      specifiers.map((specifier) => import(specifier)),
+    )) as [OsdkClientModule, OsdkOauthModule, OsdkStreamsModule];
     return {
       createClient: clientMod.createClient,
       createConfidentialOauthClient: oauthMod.createConfidentialOauthClient,
@@ -145,7 +154,7 @@ async function defaultWriteRecords(
   }
 }
 
-async function defaultConnectivityCheck(client: unknown, stackUrl: string): Promise<void> {
+async function defaultConnectivityCheck(_client: unknown, stackUrl: string): Promise<void> {
   const res = await fetch(`${stackUrl}/api/v1/health`, { signal: AbortSignal.timeout(10_000) });
   if (!res.ok) {
     throw new Error(`Foundry health check returned HTTP ${res.status}`);

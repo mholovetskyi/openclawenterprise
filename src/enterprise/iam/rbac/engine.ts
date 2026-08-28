@@ -5,7 +5,6 @@
 
 import {
   type Permission,
-  type Role,
   type User,
   type Group,
   type AgentIdentity,
@@ -91,7 +90,7 @@ export class RBACEngine {
   // ── Private helpers ────────────────────────────────────────────────────────
 
   private async resolveGroups(ctx: AuthzContext): Promise<Group[]> {
-    const groupIds = ctx.identity.roles ? [] : []; // agents don't have group membership
+    // Only users have group membership; agents resolve roles directly.
     if (ctx.identityType === "user") {
       const user = ctx.identity as User;
       if (user.groups?.length) {
@@ -116,8 +115,14 @@ const LEGACY_SCOPE_TO_PERMISSIONS: Record<string, Permission[]> = {
   "operator.admin": ["*"],
   "operator.write": ["agents.run", "send", "chat.*", "sessions.*", "node.invoke", "tts.*"],
   "operator.read": [
-    "agents.list", "sessions.list", "sessions.preview", "health.read",
-    "status.read", "models.list", "config.get", "node.list",
+    "agents.list",
+    "sessions.list",
+    "sessions.preview",
+    "health.read",
+    "status.read",
+    "models.list",
+    "config.get",
+    "node.list",
   ],
   "operator.approvals": ["exec.approval.*"],
   "operator.pairing": ["device.pair.*", "node.pair.*", "device.token.*"],

@@ -75,17 +75,36 @@ function isOcid(value: string): boolean {
   return value.startsWith("ocid1.");
 }
 
+// Structural shape of the oci-sdk module itself: the client constructors have
+// moved between the top level and the vaults/secrets sub-namespaces across
+// oci-sdk versions, so all locations are optional and probed below. The
+// package is an optional dependency (zero-dep policy for enterprise backends)
+// and is lazy-loaded through a widened `string` specifier so the compiler does
+// not try to resolve its type declarations.
+type OciSdkModuleShape = {
+  VaultsClient?: OciSdkModules["VaultsClient"];
+  SecretsClient?: OciSdkModules["SecretsClient"];
+  vaults?: { VaultsClient?: OciSdkModules["VaultsClient"] };
+  secrets?: { SecretsClient?: OciSdkModules["SecretsClient"] };
+} & Record<string, unknown>;
+
+const OCI_SDK_MODULE: string = "oci-sdk";
+
 async function loadOciSdk(): Promise<OciSdkModules> {
+  let mod: OciSdkModuleShape;
   try {
-    const mod = await import("oci-sdk");
-    return {
-      VaultsClient: mod.VaultsClient ?? mod.vaults?.VaultsClient,
-      SecretsClient: mod.SecretsClient ?? mod.secrets?.SecretsClient,
-      authProvider: mod,
-    };
+    mod = (await import(OCI_SDK_MODULE)) as OciSdkModuleShape;
   } catch {
     throw new Error("OCI Vault secret backend requires oci-sdk. Install with: npm install oci-sdk");
   }
+  const VaultsClient = mod.VaultsClient ?? mod.vaults?.VaultsClient;
+  const SecretsClient = mod.SecretsClient ?? mod.secrets?.SecretsClient;
+  if (!VaultsClient || !SecretsClient) {
+    throw new Error(
+      "Installed oci-sdk does not expose VaultsClient/SecretsClient — unsupported oci-sdk version",
+    );
+  }
+  return { VaultsClient, SecretsClient, authProvider: mod };
 }
 
 export function createOciVaultBackend(

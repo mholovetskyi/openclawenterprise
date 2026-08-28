@@ -11,20 +11,40 @@
  *     prefix: openclaw-                             # optional name prefix
  */
 
-import type { SecretBackend } from "./index.js";
 import type { OpenClawConfig } from "../../config/config.js";
+import type { SecretBackend } from "./index.js";
 
-export async function createAzureKeyVaultBackend(
-  cfg: OpenClawConfig,
-): Promise<SecretBackend> {
+// ── Minimal structural types for @azure/keyvault-secrets ─────────────────────
+// The package is an optional dependency (zero-dep policy for enterprise
+// backends): it is lazy-loaded at runtime, and these local interfaces cover
+// only the pieces this backend uses so the file typechecks without it.
+
+type AzureSecretClient = {
+  getSecret(name: string): Promise<{ value?: string }>;
+  setSecret(
+    name: string,
+    value: string,
+    options?: { tags?: Record<string, string> },
+  ): Promise<unknown>;
+  beginDeleteSecret(name: string): Promise<{ pollUntilDone(): Promise<unknown> }>;
+  listPropertiesOfSecrets(): AsyncIterable<{ name?: string; enabled?: boolean }>;
+};
+
+type AzureKeyVaultModule = {
+  SecretClient: new (vaultUrl: string, credential: unknown) => AzureSecretClient;
+};
+
+// Widened to `string` so the compiler does not try to resolve the optional
+// package's type declarations at the dynamic import site below.
+const AZURE_KV_MODULE: string = "@azure/keyvault-secrets";
+
+export async function createAzureKeyVaultBackend(cfg: OpenClawConfig): Promise<SecretBackend> {
   const azCfg = cfg.enterprise?.secrets?.azureKv as
     | { vaultUrl: string; prefix?: string }
     | undefined;
 
   if (!azCfg?.vaultUrl) {
-    throw new Error(
-      "enterprise.secrets.azureKv.vaultUrl is required for azure-kv backend",
-    );
+    throw new Error("enterprise.secrets.azureKv.vaultUrl is required for azure-kv backend");
   }
 
   const vaultUrl = azCfg.vaultUrl;
@@ -32,7 +52,7 @@ export async function createAzureKeyVaultBackend(
 
   // Lazy imports
   const [{ SecretClient }, { DefaultAzureCredential }] = await Promise.all([
-    import("@azure/keyvault-secrets").catch(() => {
+    (import(AZURE_KV_MODULE) as Promise<AzureKeyVaultModule>).catch(() => {
       throw new Error(
         "Package @azure/keyvault-secrets is not installed.\n" +
           "Run: npm install @azure/keyvault-secrets @azure/identity",
@@ -121,9 +141,7 @@ function encodeAzureName(key: string): string {
 }
 
 function decodeAzureName(name: string): string {
-  return name.replace(/--([0-9a-f]+)-/g, (_, hex) =>
-    String.fromCodePoint(parseInt(hex, 16)),
-  );
+  return name.replace(/--([0-9a-f]+)-/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
 }
 
 function isNotFoundError(err: unknown): boolean {

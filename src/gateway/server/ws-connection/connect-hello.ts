@@ -296,10 +296,13 @@ export async function sendGatewayHello(
   void auditLog({
     action: "auth.login",
     category: "auth",
-    actor: { type: "user", id: device?.id ?? connectParams.client.id ?? "unknown" },
+    actor: {
+      type: "user",
+      id: device?.id ?? connectParams.client.id ?? "unknown",
+      ip: context.isLocalClient ? undefined : (context.handler.remoteAddr ?? undefined),
+    },
     resource: { type: "gateway", id: "ws" },
     outcome: "success",
-    ip: context.isLocalClient ? undefined : (context.handler.remoteAddr ?? undefined),
     metadata: {
       role,
       clientMode: connectParams.client.mode,

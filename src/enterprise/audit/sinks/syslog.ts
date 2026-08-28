@@ -39,7 +39,7 @@ const SEVERITY = {
 type Severity = keyof typeof SEVERITY;
 
 function facilityPriority(facility: number, severity: Severity): number {
-  return (facility * 8) + SEVERITY[severity];
+  return facility * 8 + SEVERITY[severity];
 }
 
 const NILVALUE = "-";
@@ -85,7 +85,7 @@ export type AuditSink = {
 
 function eventToSyslog(event: AuditEvent, opts: SyslogSinkConfig): string {
   const severity: Severity =
-    event.outcome === "failure" || event.outcome === "error" ? "error" : "info";
+    event.outcome === "failure" ? "error" : event.outcome === "denied" ? "warning" : "info";
 
   // RFC 5424 structured data element
   const sdId = "openclaw@0"; // enterprise private structured data ID

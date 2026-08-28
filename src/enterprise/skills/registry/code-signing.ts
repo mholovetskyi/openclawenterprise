@@ -5,18 +5,18 @@
  * Follows the same pattern as OpenClaw's existing device identity signatures.
  */
 
-import { generateKeyPairSync, randomBytes, sign, verify, createPrivateKey, createPublicKey } from "node:crypto";
+import { generateKeyPairSync, sign, verify, createPrivateKey, createPublicKey } from "node:crypto";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { createHash } from "node:crypto";
 
 export type SkillSignature = {
   algorithm: "ed25519";
-  publicKey: string;    // base64url-encoded Ed25519 public key
-  signature: string;    // base64url-encoded signature
-  signedAt: string;     // ISO 8601
-  signerName?: string;  // Human-readable publisher name
-  contentHash: string;  // SHA-256 of the signed content
+  publicKey: string; // base64url-encoded Ed25519 public key
+  signature: string; // base64url-encoded signature
+  signedAt: string; // ISO 8601
+  signerName?: string; // Human-readable publisher name
+  contentHash: string; // SHA-256 of the signed content
 };
 
 export type SkillManifest = {
@@ -63,9 +63,9 @@ export function hashFile(filePath: string): string {
 
 function walkSorted(dir: string): string[] {
   const result: string[] = [];
-  const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const entries = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {

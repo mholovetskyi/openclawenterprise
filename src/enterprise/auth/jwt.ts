@@ -6,29 +6,36 @@
  * Revocation via SQLite token blacklist.
  */
 
-import { createHmac, createSign, createVerify, generateKeyPairSync, randomBytes, createHash } from "node:crypto";
+import {
+  createHmac,
+  createSign,
+  createVerify,
+  generateKeyPairSync,
+  randomBytes,
+  createHash,
+} from "node:crypto";
 import type { User, AgentIdentity } from "../iam/rbac/model.js";
 
 export type JWTAlgorithm = "RS256" | "HS256";
 
 export type JWTConfig = {
   algorithm: JWTAlgorithm;
-  secret?: string;        // HS256: shared secret
-  privateKey?: string;    // RS256: PEM private key
-  publicKey?: string;     // RS256: PEM public key
-  accessTokenTtlMs?: number;   // default 900_000 (15 min)
-  refreshTokenTtlMs?: number;  // default 604_800_000 (7 days)
+  secret?: string; // HS256: shared secret
+  privateKey?: string; // RS256: PEM private key
+  publicKey?: string; // RS256: PEM public key
+  accessTokenTtlMs?: number; // default 900_000 (15 min)
+  refreshTokenTtlMs?: number; // default 604_800_000 (7 days)
   issuer?: string;
   audience?: string;
 };
 
 export type JWTPayload = {
-  sub: string;           // subject: user or agent ID
-  iss?: string;          // issuer
-  aud?: string;          // audience
-  iat: number;           // issued at (seconds)
-  exp: number;           // expiry (seconds)
-  jti: string;           // JWT ID (unique per token)
+  sub: string; // subject: user or agent ID
+  iss?: string; // issuer
+  aud?: string; // audience
+  iat: number; // issued at (seconds)
+  exp: number; // expiry (seconds)
+  jti: string; // JWT ID (unique per token)
   type: "access" | "refresh";
   identityType: "user" | "agent";
   roles?: string[];
@@ -45,7 +52,7 @@ export type JWTKeyPair = {
 export type IssueTokenResult = {
   accessToken: string;
   refreshToken: string;
-  expiresIn: number;   // seconds until access token expires
+  expiresIn: number; // seconds until access token expires
   tokenType: "Bearer";
 };
 
@@ -90,7 +97,11 @@ function sign(data: string, config: JWTConfig): string {
 function verify(header: string, payload: string, signature: string, config: JWTConfig): boolean {
   const data = `${header}.${payload}`;
   if (config.algorithm === "HS256") {
-    const expected = b64url(createHmac("sha256", config.secret ?? "").update(data).digest());
+    const expected = b64url(
+      createHmac("sha256", config.secret ?? "")
+        .update(data)
+        .digest(),
+    );
     // Timing-safe comparison
     if (signature.length !== expected.length) return false;
     let diff = 0;
@@ -149,7 +160,9 @@ export class JWTService {
     });
   }
 
-  issue(claims: Omit<JWTPayload, "iat" | "exp" | "jti" | "iss" | "aud" | "type">): IssueTokenResult {
+  issue(
+    claims: Omit<JWTPayload, "iat" | "exp" | "jti" | "iss" | "aud" | "type">,
+  ): IssueTokenResult {
     const now = Math.floor(Date.now() / 1000);
     const accessTtlSec = Math.floor((this.config.accessTokenTtlMs ?? 900_000) / 1000);
     const refreshTtlSec = Math.floor((this.config.refreshTokenTtlMs ?? 604_800_000) / 1000);
@@ -190,6 +203,7 @@ export class JWTService {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [header, payload, signature] = parts;
+    if (!header || !payload || !signature) return null;
 
     if (!verify(header, payload, signature, this.config)) return null;
 

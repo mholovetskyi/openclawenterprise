@@ -290,37 +290,48 @@ export async function startGatewayCoreRuntime(input: {
     extraHandlers,
     coreGatewayHandlers,
   } = await startupTrace.measure("gateway.handlers", async () => {
-    const [{ createGatewayAuxHandlers }, { coreGatewayHandlers: coreGatewayHandlersLocal }] =
-      await Promise.all([import("./server-aux-handlers.js"), import("./server-methods.js")]);
+    const [
+      { createGatewayAuxHandlers },
+      { coreGatewayHandlers: coreGatewayHandlersLocal },
+      { enterpriseHandlers },
+    ] = await Promise.all([
+      import("./server-aux-handlers.js"),
+      import("./server-methods.js"),
+      import("./enterprise-methods.js"),
+    ]);
+    const gatewayAuxHandlers = createGatewayAuxHandlers({
+      log,
+      chatAbortControllers,
+      hasRunAbortMarker: (runId) => chatRunState.hasAbortMarker(runId),
+      activateRuntimeSecrets,
+      sharedGatewaySessionGenerationState,
+      resolveSharedGatewaySessionGenerationForConfig,
+      clients,
+      channelManager,
+      getChannelAutostartSuppression: channelManager.getAutostartSuppression,
+      logChannels,
+      registerWorkerTurnClaimClosedHandler: workerEnvironmentStartup?.placementStore
+        ? (handler) =>
+            workerEnvironmentStartup.placementStore.registerTurnClaimClosedHandler(handler)
+        : undefined,
+      validateAgentRuntimeDelegatedAuthority: (authority) =>
+        validateAgentRuntimeApprovalAuthority({
+          kind: "agentRuntime",
+          agentId: "approval-manager",
+          sessionKey: "approval-manager",
+          operationalRunInstance: authority.operationalRunInstance,
+          delegatedAuthority: authority,
+        }),
+      onApprovalLifecycle: approvalSessionEvents.publish,
+      onAgentRunAuthorityClosed: (authority) => {
+        secretEgressProxy?.revokeRun(authority.operationalRunInstance);
+      },
+    });
     return {
-      ...createGatewayAuxHandlers({
-        log,
-        chatAbortControllers,
-        hasRunAbortMarker: (runId) => chatRunState.hasAbortMarker(runId),
-        activateRuntimeSecrets,
-        sharedGatewaySessionGenerationState,
-        resolveSharedGatewaySessionGenerationForConfig,
-        clients,
-        channelManager,
-        getChannelAutostartSuppression: channelManager.getAutostartSuppression,
-        logChannels,
-        registerWorkerTurnClaimClosedHandler: workerEnvironmentStartup?.placementStore
-          ? (handler) =>
-              workerEnvironmentStartup.placementStore.registerTurnClaimClosedHandler(handler)
-          : undefined,
-        validateAgentRuntimeDelegatedAuthority: (authority) =>
-          validateAgentRuntimeApprovalAuthority({
-            kind: "agentRuntime",
-            agentId: "approval-manager",
-            sessionKey: "approval-manager",
-            operationalRunInstance: authority.operationalRunInstance,
-            delegatedAuthority: authority,
-          }),
-        onApprovalLifecycle: approvalSessionEvents.publish,
-        onAgentRunAuthorityClosed: (authority) => {
-          secretEgressProxy?.revokeRun(authority.operationalRunInstance);
-        },
-      }),
+      ...gatewayAuxHandlers,
+      // Enterprise IAM/audit methods are unclassified aux methods, so the
+      // attached registry assigns them the admin operator scope by default.
+      extraHandlers: { ...gatewayAuxHandlers.extraHandlers, ...enterpriseHandlers },
       coreGatewayHandlers: coreGatewayHandlersLocal,
     };
   });

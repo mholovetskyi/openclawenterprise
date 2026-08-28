@@ -15,9 +15,9 @@
  * Activation: enterprise.cluster.enabled: true
  */
 
-import type { OpenClawConfig } from "../../config/config.js";
-import os from "node:os";
 import { randomBytes } from "node:crypto";
+import os from "node:os";
+import type { OpenClawConfig } from "../../config/config.js";
 
 export type ClusterNodeInfo = {
   nodeId: string;
@@ -62,7 +62,9 @@ class InMemoryCoordinator implements ClusterCoordinator {
     return this.nodes.get(this.nodeId) ?? null;
   }
 
-  isLeader(): boolean { return true; }
+  isLeader(): boolean {
+    return true;
+  }
 
   async listNodes(): Promise<ClusterNodeInfo[]> {
     return [...this.nodes.values()];
@@ -84,7 +86,11 @@ class InMemoryBus implements ClusterBus {
     const subs = this.handlers.get(channel);
     if (subs) {
       for (const handler of subs) {
-        try { handler(message); } catch { /* ignore */ }
+        try {
+          handler(message);
+        } catch {
+          /* ignore */
+        }
       }
     }
   }
@@ -105,7 +111,10 @@ type RedisClient = {
   keys(pattern: string): Promise<string[]>;
   publish(channel: string, message: string): Promise<number>;
   subscribe(channel: string, callback: (channel: string, message: string) => void): Promise<void>;
-  psubscribe(pattern: string, callback: (pattern: string, channel: string, message: string) => void): Promise<void>;
+  psubscribe(
+    pattern: string,
+    callback: (pattern: string, channel: string, message: string) => void,
+  ): Promise<void>;
   duplicate(): RedisClient;
   quit(): Promise<void>;
   on(event: string, handler: (...args: unknown[]) => void): void;
@@ -120,9 +129,7 @@ async function loadRedis(url: string): Promise<RedisClient> {
     const mod = req("ioredis") as any;
     Redis = mod.default ?? mod;
   } catch {
-    throw new Error(
-      "Redis cluster backend requires ioredis. Run: npm install ioredis",
-    );
+    throw new Error("Redis cluster backend requires ioredis. Run: npm install ioredis");
   }
   return new Redis(url);
 }
@@ -136,7 +143,6 @@ class RedisCoordinator implements ClusterCoordinator {
     private nodeId: string,
     private keyPrefix: string,
     private heartbeatMs: number,
-    private nodeInfo: ClusterNodeInfo,
   ) {}
 
   private nodeKey(id = this.nodeId): string {
@@ -158,8 +164,10 @@ class RedisCoordinator implements ClusterCoordinator {
     // NX = only set if key does not exist
     const result = await this.redis.set(
       this.leaderKey,
-      JSON.stringify({ nodeId: this.nodeId, ...info }),
-      "EX", ttlSec, "NX",
+      JSON.stringify({ ...info, nodeId: this.nodeId }),
+      "EX",
+      ttlSec,
+      "NX",
     );
     if (result === "OK") {
       this._isLeader = true;
@@ -181,19 +189,19 @@ class RedisCoordinator implements ClusterCoordinator {
     if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
     this.lockRenewalTimer = setInterval(async () => {
       try {
-      // Extend the lock only if we still hold it
-      const raw = await this.redis.get(this.leaderKey);
-      if (raw) {
-        const current = JSON.parse(raw) as { nodeId: string };
-        if (current.nodeId === this.nodeId) {
-          await this.redis.set(this.leaderKey, raw, "EX", ttlSec, "XX");
-          this._isLeader = true;
-        } else {
-          this._isLeader = false;
-          if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
-          this.lockRenewalTimer = null;
+        // Extend the lock only if we still hold it
+        const raw = await this.redis.get(this.leaderKey);
+        if (raw) {
+          const current = JSON.parse(raw) as { nodeId: string };
+          if (current.nodeId === this.nodeId) {
+            await this.redis.set(this.leaderKey, raw, "EX", ttlSec, "XX");
+            this._isLeader = true;
+          } else {
+            this._isLeader = false;
+            if (this.lockRenewalTimer) clearInterval(this.lockRenewalTimer);
+            this.lockRenewalTimer = null;
+          }
         }
-      }
       } catch {
         // Redis error during renewal — yield leadership to prevent split-brain.
         // Keep interval running; will reattempt on next tick.
@@ -208,7 +216,9 @@ class RedisCoordinator implements ClusterCoordinator {
     return raw ? (JSON.parse(raw) as ClusterNodeInfo) : null;
   }
 
-  isLeader(): boolean { return this._isLeader; }
+  isLeader(): boolean {
+    return this._isLeader;
+  }
 
   async listNodes(): Promise<ClusterNodeInfo[]> {
     const keys = await this.redis.keys(`${this.keyPrefix}node:*`);
@@ -216,7 +226,11 @@ class RedisCoordinator implements ClusterCoordinator {
     for (const key of keys) {
       const raw = await this.redis.get(key);
       if (raw) {
-        try { nodes.push(JSON.parse(raw) as ClusterNodeInfo); } catch { /* skip */ }
+        try {
+          nodes.push(JSON.parse(raw) as ClusterNodeInfo);
+        } catch {
+          /* skip */
+        }
       }
     }
     return nodes;
@@ -246,7 +260,10 @@ class RedisBus implements ClusterBus {
   private subClient: RedisClient;
   private handlers = new Map<string, Set<(msg: unknown) => void>>();
 
-  constructor(private pubClient: RedisClient, private keyPrefix: string) {
+  constructor(
+    private pubClient: RedisClient,
+    private keyPrefix: string,
+  ) {
     this.subClient = pubClient.duplicate();
   }
 
@@ -263,8 +280,18 @@ class RedisBus implements ClusterBus {
         const subs = this.handlers.get(prefixed);
         if (!subs) return;
         let parsed: unknown;
-        try { parsed = JSON.parse(msg); } catch { return; }
-        for (const h of subs) { try { h(parsed); } catch { /* ignore */ } }
+        try {
+          parsed = JSON.parse(msg);
+        } catch {
+          return;
+        }
+        for (const h of subs) {
+          try {
+            h(parsed);
+          } catch {
+            /* ignore */
+          }
+        }
       });
     }
     this.handlers.get(prefixed)!.add(handler);
@@ -282,8 +309,7 @@ class RedisBus implements ClusterBus {
 
 export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
   const clusterCfg = cfg.enterprise?.cluster;
-  const nodeId =
-    clusterCfg?.nodeId ?? `${os.hostname()}-${randomBytes(4).toString("hex")}`;
+  const nodeId = clusterCfg?.nodeId ?? `${os.hostname()}-${randomBytes(4).toString("hex")}`;
 
   const redisUrl = clusterCfg?.redis?.url as string | undefined;
 
@@ -316,7 +342,7 @@ export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
       lastHeartbeatAt: new Date().toISOString(),
     };
 
-    const coordinator = new RedisCoordinator(redis, nodeId, keyPrefix, heartbeatMs, nodeInfo);
+    const coordinator = new RedisCoordinator(redis, nodeId, keyPrefix, heartbeatMs);
     const bus = new RedisBus(redis, keyPrefix);
 
     await coordinator.registerNode(nodeInfo);
@@ -350,7 +376,8 @@ export async function initCluster(cfg: OpenClawConfig): Promise<ClusterHandle> {
 function buildInMemory(nodeId: string, cfg: OpenClawConfig): ClusterHandle {
   const coordinator = new InMemoryCoordinator(nodeId);
   const bus = new InMemoryBus();
-  const heartbeatMs = (cfg.enterprise?.cluster?.heartbeatIntervalMs as number | undefined) ?? 10_000;
+  const heartbeatMs =
+    (cfg.enterprise?.cluster?.heartbeatIntervalMs as number | undefined) ?? 10_000;
 
   const nodeInfo: ClusterNodeInfo = {
     nodeId,
